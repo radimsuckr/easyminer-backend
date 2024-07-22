@@ -1,0 +1,11 @@
+services:
+  mysql:
+    environment:
+      MYSQL_DATABASE: easyminer
+      MYSQL_PASSWORD: easyminer 
+      MYSQL_ROOT_PASSWORD: toortoor
+      MYSQL_USER: easyminer
+    image: mysql:9
+    ports:
+      - 3306:3306
+    restart: always
