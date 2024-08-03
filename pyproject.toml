@@ -4,21 +4,18 @@ version = "0.1.0"
 description = "Easyminer backend"
 authors = [{ name = "Radim Sückr", email = "sucr02@vse.cz" }]
 dependencies = [
-	"aerich>=0.7.2",
-	"celery[redis]>=5.4.0",
-	"cryptography>=43.0.0",
-	"defusedxml>=0.7.1",
-	"fastapi>=0.111.1",
-	"tortoise-orm[aiomysql]>=0.21.5",
-	"uvicorn[standard]>=0.30.3",
+    "aiomysql>=0.2.0",
+    "alembic>=1.13.2",
+    "celery[redis]>=5.4.0",
+    "cryptography>=43.0.0",
+    "defusedxml>=0.7.1",
+    "fastapi>=0.111.1",
+    "pydantic-settings>=2.4.0",
+    "sqlalchemy[asyncio]>=2.0.31",
+    "uvicorn[standard]>=0.30.3",
 ]
 readme = "readme.md"
 requires-python = ">= 3.12"
-
-[tool.aerich]
-tortoise_orm = "src.easyminer.settings.TORTOISE_ORM"
-location = "./migrations"
-src_folder = "./."
 
 [tool.pyright]
 extraPaths = ["./.venv/lib/python3.12/site-packages/"]
@@ -27,9 +24,9 @@ extraPaths = ["./.venv/lib/python3.12/site-packages/"]
 managed = true
 virtual = true
 dev-dependencies = [
-	"black>=24.4.2",
-	"flake8>=7.1.0",
-	"mypy>=1.11.0",
-	"pytest-asyncio>=0.23.8",
-	"pytest>=8.3.1",
+    "black>=24.4.2",
+    "flake8>=7.1.0",
+    "mypy>=1.11.0",
+    "pytest-asyncio>=0.23.8",
+    "pytest>=8.3.1",
 ]
