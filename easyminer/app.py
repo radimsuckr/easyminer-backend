@@ -7,6 +7,7 @@ from fastapi import FastAPI
 
 from easyminer.api.router import router
 from easyminer.config import settings
+from easyminer.data import api as data_api
 from easyminer.database import sessionmanager
 
 logging.basicConfig(
@@ -26,7 +27,13 @@ async def lifespan(app: FastAPI):
         await sessionmanager.close()
 
 
-app = FastAPI(lifespan=lifespan, title=settings.project_name, docs_url="/api/docs")
+app = FastAPI(
+    lifespan=lifespan,
+    title=settings.project_name,
+    docs_url="/api/docs",
+    version=settings.version,
+)
+app.include_router(data_api.router)
 
 
 @app.get("/")
