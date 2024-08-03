@@ -34,15 +34,12 @@ app = FastAPI(
     version=settings.version,
 )
 app.include_router(data_api.router)
+app.include_router(router)
 
 
 @app.get("/")
 async def root():
     return {"message": "Hello World"}
-
-
-# Routers
-app.include_router(router)
 
 
 if __name__ == "__main__":

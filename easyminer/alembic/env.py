@@ -55,6 +55,8 @@ async def run_migrations_online():
     In this scenario we need to create an Engine
     and associate a connection with the context.
     """
+    from easyminer.models.user import User
+
     configuration = config.get_section(config.config_ini_section)
     if not configuration:
         raise ValueError("Unable to get Alembic config section")
