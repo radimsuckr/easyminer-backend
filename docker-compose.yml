@@ -2,7 +2,7 @@ services:
   mysql:
     environment:
       MYSQL_DATABASE: easyminer
-      MYSQL_PASSWORD: easyminer 
+      MYSQL_PASSWORD: easyminer
       MYSQL_ROOT_PASSWORD: toortoor
       MYSQL_USER: easyminer
     image: mysql:9
