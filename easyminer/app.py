@@ -16,7 +16,7 @@ logging.basicConfig(
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(_: FastAPI):
     """
     Function that handles startup and shutdown events.
     To understand more, read https://fastapi.tiangolo.com/advanced/events/

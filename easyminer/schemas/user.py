@@ -1,8 +1,9 @@
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
 
 
 class User(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    class Config:
+        orm_mode = True
 
     id: int
     username: str

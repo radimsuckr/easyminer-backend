@@ -1,10 +1,16 @@
 from http import HTTPStatus
+from typing import Sequence
 
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from easyminer.models.user import User
+
+
+async def get_users(db_session: AsyncSession) -> Sequence[User]:
+    user = (await db_session.scalars(select(User))).all()
+    return user
 
 
 async def get_user(db_session: AsyncSession, user_id: int) -> User | None:
