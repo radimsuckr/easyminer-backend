@@ -1,5 +1,6 @@
 from enum import Enum
 from http import HTTPStatus
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Body, HTTPException, Path, Query
@@ -111,7 +112,7 @@ async def start_upload(upload: Upload):
     "/api/v1/upload/{id}",
     responses={200: {"model": DataSource}, 202: {"model": None}, 429: {"model": None}},
 )
-async def upload_chunk(id: UUID, chunk: str = Body()):
+async def upload_chunk(id: UUID, chunk: Annotated[str | None, Body()] = None):
     raise HTTPException(status_code=HTTPStatus.NOT_IMPLEMENTED)
 
 
@@ -123,7 +124,7 @@ async def start_preview_upload(preview_upload: PreviewUpload):
 @router.post(
     "/api/v1/upload/preview/{id}", responses={200: {"model": str}, 202: {"model": None}}
 )
-async def upload_preview_chunk(id: UUID, chunk: str = Body()):
+async def upload_preview_chunk(id: UUID, chunk: Annotated[str | None, Body()] = None):
     raise HTTPException(status_code=HTTPStatus.NOT_IMPLEMENTED)
 
 
@@ -133,61 +134,77 @@ async def list_datasources():
 
 
 @router.get("/api/v1/datasource/{id}", response_model=DataSource)
-async def get_datasource(id: int = Path()):
+async def get_datasource(id: Annotated[int | None, Path()]):
     raise HTTPException(status_code=HTTPStatus.NOT_IMPLEMENTED)
 
 
 @router.delete("/api/v1/datasource/{id}")
-async def delete_datasource(id: int = Path()):
+async def delete_datasource(id: Annotated[int | None, Path()]):
     raise HTTPException(status_code=HTTPStatus.NOT_IMPLEMENTED)
 
 
 @router.put("/api/v1/datasource/{id}")
-async def rename_datasource(id: int = Path(), new_name: str = Body()):
+async def rename_datasource(
+    id: Annotated[int | None, Path()],
+    new_name: Annotated[str | None, Body()] = None,
+):
     raise HTTPException(status_code=HTTPStatus.NOT_IMPLEMENTED)
 
 
 @router.get("/api/v1/datasource/{id}/instances")
 async def get_instances(
-    id: int = Path(),
-    offset: int = Query(ge=0),
-    limit: int = Query(ge=1, le=1000),
-    field: list[int] | None = Query(default=None),
+    id: Annotated[int | None, Path()],
+    offset: Annotated[int | None, Query(ge=0)] = None,
+    limit: Annotated[int | None, Query(ge=1, le=1000)] = None,
+    field: Annotated[list[int] | None, Query()] = None,
 ):
     raise HTTPException(status_code=HTTPStatus.NOT_IMPLEMENTED)
 
 
 @router.get("/api/v1/datasource/{dataSourceId}/field", response_model=list[Field])
-async def list_fields(dataSourceId: int = Path()):
+async def list_fields(dataSourceId: Annotated[int | None, Path()]):
     raise HTTPException(status_code=HTTPStatus.NOT_IMPLEMENTED)
 
 
 @router.get("/api/v1/datasource/{dataSourceId}/field/{fieldId}", response_model=Field)
-async def get_field(dataSourceId: int = Path(), fieldId: int = Path()):
+async def get_field(
+    dataSourceId: Annotated[int | None, Path()], fieldId: Annotated[int | None, Path()]
+):
     raise HTTPException(status_code=HTTPStatus.NOT_IMPLEMENTED)
 
 
 @router.delete("/api/v1/datasource/{dataSourceId}/field/{fieldId}")
-async def delete_field(dataSourceId: int = Path(), fieldId: int = Path()):
+async def delete_field(
+    dataSourceId: Annotated[int | None, Path()],
+    fieldId: Annotated[int | None, Path()],
+):
     raise HTTPException(status_code=HTTPStatus.NOT_IMPLEMENTED)
 
 
 @router.put("/api/v1/datasource/{dataSourceId}/field/{fieldId}")
 async def rename_field(
-    dataSourceId: int = Path(), fieldId: int = Path(), new_name: str = Body()
+    dataSourceId: Annotated[int | None, Path()],
+    fieldId: Annotated[int | None, Path()],
+    new_name: Annotated[str | None, Body()] = None,
 ):
     raise HTTPException(status_code=HTTPStatus.NOT_IMPLEMENTED)
 
 
 @router.put("/api/v1/datasource/{dataSourceId}/field/{fieldId}/change-type")
-async def change_field_type(dataSourceId: int = Path(), fieldId: int = Path()):
+async def change_field_type(
+    dataSourceId: Annotated[int | None, Path()],
+    fieldId: Annotated[int | None, Path()],
+):
     raise HTTPException(status_code=HTTPStatus.NOT_IMPLEMENTED)
 
 
 @router.get(
     "/api/v1/datasource/{dataSourceId}/field/{fieldId}/stats", response_model=Stats
 )
-async def get_field_stats(dataSourceId: int = Path(), fieldId: int = Path()):
+async def get_field_stats(
+    dataSourceId: Annotated[int | None, Path()],
+    fieldId: Annotated[int | None, Path()],
+):
     raise HTTPException(status_code=HTTPStatus.NOT_IMPLEMENTED)
 
 
@@ -196,10 +213,10 @@ async def get_field_stats(dataSourceId: int = Path(), fieldId: int = Path()):
     response_model=list[Value],
 )
 async def get_field_values(
-    dataSourceId: int = Path(),
-    fieldId: int = Path(),
-    offset: int = Query(ge=0),
-    limit: int = Query(ge=1, le=1000),
+    dataSourceId: Annotated[int | None, Path()],
+    fieldId: Annotated[int | None, Path()],
+    offset: Annotated[int | None, Query(ge=0)] = None,
+    limit: Annotated[int | None, Query(ge=1, le=1000)] = None,
 ):
     raise HTTPException(status_code=HTTPStatus.NOT_IMPLEMENTED)
 
@@ -209,22 +226,22 @@ async def get_field_values(
     response_model=TaskStatus,
 )
 async def get_aggregated_values(
-    dataSourceId: int = Path(),
-    fieldId: int = Path(),
-    bins: int = Query(ge=2, le=1000),
-    min: float | None = Query(default=None),
-    max: float | None = Query(default=None),
-    minInclusive: bool = Query(default=True),
-    maxInclusive: bool = Query(default=True),
+    dataSourceId: Annotated[int | None, Path()],
+    fieldId: Annotated[int | None, Path()],
+    bins: Annotated[int | None, Query(ge=2, le=1000)] = None,
+    min: Annotated[float | None, Query()] = None,
+    max: Annotated[float | None, Query()] = None,
+    minInclusive: Annotated[bool | None, Query()] = True,
+    maxInclusive: Annotated[bool | None, Query()] = True,
 ):
     raise HTTPException(status_code=HTTPStatus.NOT_IMPLEMENTED)
 
 
 @router.get("/api/v1/task-status/{taskId}", response_model=TaskStatus)
-async def get_task_status(taskId: UUID = Path()):
+async def get_task_status(taskId: Annotated[UUID | None, Path()]):
     raise HTTPException(status_code=HTTPStatus.NOT_IMPLEMENTED)
 
 
 @router.get("/api/v1/task-result/{taskId}")
-async def get_task_result(taskId: UUID = Path()):
+async def get_task_result(taskId: Annotated[UUID | None, Path()]):
     raise HTTPException(status_code=HTTPStatus.NOT_IMPLEMENTED)
