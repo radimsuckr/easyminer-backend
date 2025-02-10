@@ -1,5 +1,4 @@
 import asyncio
-import os
 from logging.config import fileConfig
 
 from aiomysql import Connection
@@ -7,8 +6,8 @@ from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
-from easyminer.database import Base
 from easyminer.config import settings
+from easyminer.models import Base
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -55,8 +54,6 @@ async def run_migrations_online():
     In this scenario we need to create an Engine
     and associate a connection with the context.
     """
-    from easyminer.models.user import User
-
     configuration = config.get_section(config.config_ini_section)
     if not configuration:
         raise ValueError("Unable to get Alembic config section")
