@@ -8,8 +8,8 @@ build-docker:
 
 [working-directory: "easyminer"]
 dev:
-	rye run fastapi dev
+	uv run fastapi dev
 
 [working-directory: "easyminer"]
 run:
-	rye run fastapi run
+	uv run fastapi run
