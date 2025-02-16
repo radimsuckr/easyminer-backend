@@ -13,3 +13,6 @@ dev:
 [working-directory: "easyminer"]
 run:
 	uv run fastapi run
+
+test:
+	uv tool run pytest
