@@ -1,5 +1,5 @@
+from collections.abc import Sequence
 from http import HTTPStatus
-from typing import Sequence
 
 from fastapi import HTTPException
 from sqlalchemy import select

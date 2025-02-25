@@ -1,18 +1,38 @@
 import logging
-import sys
+import logging.config
 from contextlib import asynccontextmanager
 
 import uvicorn
 from fastapi import FastAPI
 
+from easyminer.api.data import router as data_router
 from easyminer.api.router import router
 from easyminer.config import settings
-from easyminer.data import api as data_api
 from easyminer.database import sessionmanager
 
-logging.basicConfig(
-    stream=sys.stdout, level=logging.DEBUG if settings.debug_logs else logging.INFO
-)
+LOGGING_CONFIG = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "standard": {"format": "%(asctime)s [%(levelname)s] %(name)s: %(message)s"},
+    },
+    "handlers": {
+        "default": {
+            "level": "DEBUG" if settings.debug_logs else "INFO",
+            "formatter": "standard",
+            "class": "logging.StreamHandler",
+            "stream": "ext://sys.stdout",  # Use standard output
+        },
+    },
+    "loggers": {
+        "": {
+            "handlers": ["default"],
+            "level": "DEBUG" if settings.debug_logs else "INFO",
+            "propagate": True,
+        },
+    },
+}
+logging.config.dictConfig(LOGGING_CONFIG)
 
 
 @asynccontextmanager
@@ -33,7 +53,7 @@ app = FastAPI(
     docs_url="/api/docs",
     version=settings.version,
 )
-app.include_router(data_api.router)
+app.include_router(data_router)
 app.include_router(router)
 
 
@@ -43,4 +63,4 @@ async def root():
 
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", reload=True, port=8000)
+    uvicorn.run("easyminer.app:app", host="0.0.0.0", reload=True, port=8000)

@@ -7,6 +7,8 @@ from fastapi import APIRouter, Body, HTTPException, Path, Query
 from pydantic import BaseModel
 from pydantic import Field as PField
 
+from easyminer.crud.upload import create_upload
+
 router = APIRouter()
 
 
@@ -105,6 +107,8 @@ class TaskStatus(BaseModel):
 
 @router.post("/api/v1/upload/start", response_model=str)
 async def start_upload(upload: Upload):
+    upload = await create_upload(db_session=None, user_id=1, name=upload.name)
+    # TODO: Implement the actual upload
     raise HTTPException(status_code=HTTPStatus.NOT_IMPLEMENTED)
 
 

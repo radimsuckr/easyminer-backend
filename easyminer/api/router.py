@@ -1,4 +1,5 @@
-from typing import Annotated, Sequence
+from collections.abc import Sequence
+from typing import Annotated
 
 from fastapi import APIRouter, Depends
 from fastapi.security import HTTPAuthorizationCredentials
@@ -6,8 +7,8 @@ from fastapi.security import HTTPAuthorizationCredentials
 from easyminer.api import security
 from easyminer.api.dependencies.core import DBSessionDep
 from easyminer.crud.user import get_user, get_users
-from easyminer.schemas.user import User
 from easyminer.models.user import User as DBUser
+from easyminer.schemas.user import User
 
 router = APIRouter(
     prefix="/api/users",
