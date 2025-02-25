@@ -3,21 +3,20 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from easyminer.database import Base
 
-UploadNullValueTable = Table(
-    "upload_null_value_table",
-    Base.metadata,
-    Column("id", Integer, primary_key=True, autoincrement=True, index=True),
-    Column("upload_id", Integer, ForeignKey("upload.id")),
-    Column("upload_null_value_id", Integer, ForeignKey("upload_null_value.id")),
-)
 
-UploadDataTypeTable = Table(
-    "upload_data_type_table",
-    Base.metadata,
-    Column("id", Integer, primary_key=True, autoincrement=True, index=True),
-    Column("upload_id", Integer, ForeignKey("upload.id")),
-    Column("upload_data_type_id", Integer, ForeignKey("upload_data_types.id")),
-)
+def create_association_table(name: str, target_table: str) -> Table:
+    """Create a many-to-many association table."""
+    return Table(
+        f"{name}_table",
+        Base.metadata,
+        Column("id", Integer, primary_key=True, autoincrement=True, index=True),
+        Column("upload_id", Integer, ForeignKey("upload.id")),
+        Column(f"{name}_id", Integer, ForeignKey(f"{target_table}.id")),
+    )
+
+
+UploadNullValueTable = create_association_table("upload_null_value", "upload_null_value")
+UploadDataTypeTable = create_association_table("upload_data_type", "upload_data_types")
 
 
 class UploadNullValue(Base):
