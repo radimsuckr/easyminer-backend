@@ -4,6 +4,12 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 
+class PreviewUpload(BaseModel):
+    """Settings for preview upload."""
+    maxLines: int = Field(..., description="Maximum number of lines to preview")
+    compression: Optional[str] = Field(None, description="Compression type (none, gzip, etc.)")
+
+
 class UploadSettings(BaseModel):
     """Settings for file upload."""
     name: str = Field(..., description="Name of the file")
@@ -67,4 +73,4 @@ class FieldRead(FieldBase):
     std_value: Optional[float] = None
 
     class Config:
-        from_attributes = True 
+        from_attributes = True
