@@ -136,6 +136,7 @@ async def upload_chunk(
             select(DataSource).where(DataSource.upload_id == upload.id)
         )
         data_source = ds_result.scalar_one_or_none()
+        data_source_id = None
 
         # Create a data source if it doesn't exist
         if not data_source:
@@ -148,19 +149,17 @@ async def upload_chunk(
             )
             db.add(new_data_source)
             await db.commit()
+            await db.refresh(new_data_source)
 
-            # Get the newly created data source ID by directly accessing the attribute
+            # Get the newly created data source ID after refresh
             data_source_id = new_data_source.id
         else:
-            # Update data source size with explicit SQL
+            # Update data source size
+            data_source_id = data_source.id  # Store ID first
             data_source.size_bytes += len(chunk)
             await db.commit()
 
-            # Use existing data source ID
-            await db.refresh(data_source)
-            await db.refresh(user)
-            data_source_id = data_source.id
-
+        # Store the chunk using DiskStorage
         try:
             storage.save(
                 PathLib(
@@ -188,6 +187,7 @@ async def upload_chunk(
             # 3. Insert the data into appropriate database tables
             # 4. Update the data source status when complete
 
+        # Return 202 Accepted
         return Response(status_code=status.HTTP_202_ACCEPTED)
 
     except Exception as e:
@@ -269,6 +269,7 @@ async def upload_preview_chunk(
             select(DataSource).where(DataSource.upload_id == upload.id)
         )
         data_source = ds_result.scalar_one_or_none()
+        data_source_id = None
 
         # Create a data source if it doesn't exist
         if not data_source:
@@ -281,19 +282,17 @@ async def upload_preview_chunk(
             )
             db.add(new_data_source)
             await db.commit()
+            await db.refresh(new_data_source)
 
             # Get the newly created data source ID
             data_source_id = new_data_source.id
         else:
-            # Update data source size directly
+            # Update data source size
+            data_source_id = data_source.id  # Store ID first
             data_source.size_bytes += len(chunk)
             await db.commit()
 
-            await db.refresh(data_source)
-            await db.refresh(user)
-            # Use existing data source ID
-            data_source_id = data_source.id
-
+        # Store the chunk using DiskStorage
         try:
             storage.save(
                 PathLib(
