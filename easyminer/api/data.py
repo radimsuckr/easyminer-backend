@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime
 from enum import Enum
-from pathlib import Path as PathLib
+from pathlib import Path
 from typing import Annotated
 from uuid import UUID, uuid4
 
@@ -10,11 +10,13 @@ from fastapi import (
     Body,
     Depends,
     HTTPException,
-    Path,
     Query,
     Request,
     Response,
     status,
+)
+from fastapi import (
+    Path as FastAPIPath,
 )
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -24,6 +26,7 @@ from easyminer.api.dependencies.auth import get_current_user
 from easyminer.api.dependencies.db import get_db_session
 from easyminer.models import DataSource, Upload, User
 from easyminer.models import Field as FieldModel
+from easyminer.processing.csv_processor import CsvProcessor
 from easyminer.schemas.data import DataSourceCreate, DataSourceRead, UploadSettings
 from easyminer.storage import DiskStorage
 
@@ -108,88 +111,152 @@ async def start_upload(
 
 @router.post("/upload/{upload_id}", status_code=status.HTTP_202_ACCEPTED)
 async def upload_chunk(
-    upload_id: UUID,
+    upload_id: str,
     request: Request,
-    user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
-):
-    """Upload a chunk of data."""
-    storage = DiskStorage(PathLib("../../var/data"))
+    user: Annotated[User, Depends(get_current_user)],
+) -> Response:
+    """Upload a chunk of data for an upload.
+
+    Args:
+        upload_id: The UUID of the upload.
+        request: The request object containing the chunk data.
+        db: Database session.
+        user: Current authenticated user.
+
+    Returns:
+        Response with 202 Accepted status code.
+
+    Raises:
+        HTTPException: If the upload is not found, the user doesn't have access,
+            or there's an error processing the chunk.
+    """
+    storage = DiskStorage(Path("../../var/data"))
 
     try:
-        # Get the upload record by UUID
-        result = await db.execute(select(Upload).where(Upload.uuid == str(upload_id)))
-        upload = result.scalar_one_or_none()
-
-        if not upload:
-            raise HTTPException(status_code=404, detail="Upload not found")
-
-        # Read raw body data
+        # Read the chunk data from the request body
         chunk = await request.body()
-        if len(chunk) > 1024 * 1024:  # 1MB limit as per Swagger spec
+
+        # Retrieve the upload by UUID with all attributes
+        upload_result = await db.execute(select(Upload).where(Upload.uuid == upload_id))
+        upload_record = upload_result.scalar_one_or_none()
+
+        if not upload_record:
             raise HTTPException(
-                status_code=413, detail="Chunk too large. Maximum size is 1MB"
+                status_code=status.HTTP_404_NOT_FOUND, detail="Upload not found"
             )
 
-        # Check if data source exists for this upload
+        # Get upload attributes we'll need later
+        upload_id_value = upload_record.id
+        upload_name = upload_record.name
+        upload_media_type = upload_record.media_type
+
+        # Get upload settings
+        encoding = "utf-8"
+        separator = ","
+        quote_char = '"'
+
+        # Try to get these values from the database
+        try:
+            if hasattr(upload_record, "encoding") and upload_record.encoding:
+                encoding = upload_record.encoding
+            if hasattr(upload_record, "separator") and upload_record.separator:
+                separator = upload_record.separator
+            if hasattr(upload_record, "quotes_char") and upload_record.quotes_char:
+                quote_char = upload_record.quotes_char
+        except Exception:
+            # Use defaults if there's an error
+            pass
+
+        # Get the associated data source
         ds_result = await db.execute(
-            select(DataSource).where(DataSource.upload_id == upload.id)
+            select(DataSource).where(DataSource.upload_id == upload_id_value)
         )
-        data_source = ds_result.scalar_one_or_none()
-        data_source_id = None
+        data_source_record = ds_result.scalar_one_or_none()
 
         # Create a data source if it doesn't exist
-        if not data_source:
-            new_data_source = DataSource(
-                name=upload.name,
-                type=upload.media_type,
+        if not data_source_record:
+            data_source_record = DataSource(
+                name=upload_name,
+                type=upload_media_type,
                 user_id=user.id,
-                upload_id=upload.id,
+                upload_id=upload_id_value,
                 size_bytes=len(chunk),
             )
-            db.add(new_data_source)
+            db.add(data_source_record)
             await db.commit()
-            await db.refresh(new_data_source)
-
-            # Get the newly created data source ID after refresh
-            data_source_id = new_data_source.id
+            await db.refresh(data_source_record)
         else:
-            # Update data source size
-            data_source_id = data_source.id  # Store ID first
-            data_source.size_bytes += len(chunk)
-            await db.commit()
+            # Check permissions
+            if data_source_record.user_id != user.id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You don't have access to this upload",
+                )
 
-        # Store the chunk using DiskStorage
+            # Update data source size
+            data_source_record.size_bytes += len(chunk)
+
+        data_source_id = data_source_record.id
+
+        # For empty chunks (signaling end of upload), don't write to disk
         try:
-            storage.save(
-                PathLib(
+            if len(chunk) > 0:
+                # Use the storage service to save the chunk
+                chunk_path = Path(
                     f"{user.id}/{data_source_id}/chunks/{datetime.now().strftime('%Y%m%d%H%M%S%f')}.chunk"
-                ),
-                chunk,
-            )
-        except ValueError as e:
+                )
+                storage.save(chunk_path, chunk)
+                await db.commit()
+            else:
+                # Update the data source when upload is complete
+                # Row count will be updated by processor
+                await db.commit()
+        except Exception as e:
+            await db.rollback()
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Error saving chunk: {str(e)}",
             )
 
         # If this is the last chunk (empty chunk), process the data
         if len(chunk) == 0:
-            # TODO: Implement data processing
-            # For now, we'll just log that processing would happen here
+            # Process the uploaded chunks
             logging.info(
-                f"Upload complete for data source {data_source_id}. Processing would start here."
+                f"Upload complete for data source {data_source_id}. Processing data..."
             )
 
-            # In a real implementation, we would:
-            # 1. Start a background task to process all chunks
-            # 2. Parse the data according to the upload format (CSV, RDF, etc.)
-            # 3. Insert the data into appropriate database tables
-            # 4. Update the data source status when complete
+            # Process the CSV data
+            if upload_media_type == "csv":
+                try:
+                    # Create processor with settings
+                    processor = CsvProcessor(
+                        data_source_record,
+                        db,
+                        data_source_id,
+                        encoding=encoding,
+                        separator=separator,
+                        quote_char=quote_char,
+                    )
+                    storage_dir = Path(
+                        f"../../var/data/{user.id}/{data_source_id}/chunks"
+                    )
+                    await processor.process_chunks(storage_dir)
+                except Exception as e:
+                    logging.error(f"Error processing CSV: {str(e)}", exc_info=True)
+                    raise HTTPException(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail=f"Error processing CSV data: {str(e)}",
+                    )
+            else:
+                logging.warning(f"Unsupported media type: {upload_media_type}")
 
         # Return 202 Accepted
         return Response(status_code=status.HTTP_202_ACCEPTED)
 
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
     except Exception as e:
         # Ensure we rollback on any error
         try:
@@ -206,14 +273,15 @@ async def upload_chunk(
 
 
 @router.post(
-    "/upload/preview/start", response_model=str, response_model_exclude_none=True
+    "/upload/start/preview", response_model=str, response_model_exclude_none=True
 )
 async def start_preview_upload(
     settings: PreviewUpload,
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ):
-    """Start a preview upload process."""
+    """Start a new preview upload process."""
+    # Create a new upload with preview flag
     upload_id = uuid4()
     upload = Upload(
         uuid=str(upload_id),
@@ -234,68 +302,78 @@ async def start_preview_upload(
     return str(upload_id)
 
 
-@router.post("/upload/preview/{upload_id}")
+@router.post("/upload/{upload_id}/preview", status_code=status.HTTP_202_ACCEPTED)
 async def upload_preview_chunk(
-    upload_id: UUID,
+    upload_id: str,
     request: Request,
-    user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
-):
-    """Upload a chunk of preview data."""
-    storage = DiskStorage(PathLib("../../var/data"))
+    user: Annotated[User, Depends(get_current_user)],
+    max_lines: Annotated[int, Query(gt=0, le=1000)] = 100,
+) -> Response:
+    """Upload a chunk of preview data.
+
+    Args:
+        upload_id: The UUID of the upload
+        request: Request containing the chunk data
+        db: Database session
+        user: Current authenticated user
+        max_lines: Maximum number of lines to process for preview
+
+    Returns:
+        Response with 202 Accepted status code
+    """
+    storage = DiskStorage(Path("../../var/data"))
 
     try:
-        # Get the upload record by UUID
-        result = await db.execute(select(Upload).where(Upload.uuid == str(upload_id)))
-        upload = result.scalar_one_or_none()
+        # Retrieve the upload by UUID
+        upload_result = await db.execute(select(Upload).where(Upload.uuid == upload_id))
+        upload_record = upload_result.scalar_one_or_none()
 
-        if not upload:
-            raise HTTPException(status_code=404, detail="Upload not found")
-
-        # Check if this is a preview upload
-        if not upload.name.startswith("preview_"):
-            raise HTTPException(status_code=400, detail="Not a preview upload")
+        if not upload_record:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Upload not found"
+            )
 
         # Read raw body data
         chunk = await request.body()
         if len(chunk) > MAX_PREVIEW_CHUNK_SIZE:
             raise HTTPException(
-                status_code=413,
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
                 detail=f"Chunk too large. Maximum size is {MAX_PREVIEW_CHUNK_SIZE} bytes",
             )
 
-        # Check if data source exists for this upload
+        # Get the associated data source
         ds_result = await db.execute(
-            select(DataSource).where(DataSource.upload_id == upload.id)
+            select(DataSource).where(DataSource.upload_id == upload_record.id)
         )
-        data_source = ds_result.scalar_one_or_none()
-        data_source_id = None
+        data_source_record = ds_result.scalar_one_or_none()
 
         # Create a data source if it doesn't exist
-        if not data_source:
-            new_data_source = DataSource(
-                name=upload.name.replace("preview_", ""),
-                type=upload.media_type,
+        if not data_source_record:
+            data_source_record = DataSource(
+                name=upload_record.name,
+                type=upload_record.media_type,
                 user_id=user.id,
-                upload_id=upload.id,
+                upload_id=upload_record.id,
                 size_bytes=len(chunk),
             )
-            db.add(new_data_source)
+            db.add(data_source_record)
             await db.commit()
-            await db.refresh(new_data_source)
-
-            # Get the newly created data source ID
-            data_source_id = new_data_source.id
+            await db.refresh(data_source_record)
+            data_source_id = data_source_record.id
         else:
-            # Update data source size
-            data_source_id = data_source.id  # Store ID first
-            data_source.size_bytes += len(chunk)
-            await db.commit()
+            # Check permissions
+            if data_source_record.user_id != user.id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You don't have access to this upload",
+                )
+            data_source_id = data_source_record.id
 
         # Store the chunk using DiskStorage
         try:
             storage.save(
-                PathLib(
+                Path(
                     f"{user.id}/{data_source_id}/preview_chunks/{datetime.now().strftime('%Y%m%d%H%M%S%f')}.chunk"
                 ),
                 chunk,
@@ -303,30 +381,65 @@ async def upload_preview_chunk(
         except ValueError as e:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Error saving preview chunk: {str(e)}",
+                detail=f"Error saving chunk: {str(e)}",
             )
 
-        # If this is the last chunk (empty chunk), process the preview data
-        if len(chunk) == 0:
-            # TODO: Implement preview data processing
-            # For now, we'll just log that processing would happen here
-            logging.info(
-                f"Preview upload complete for data source {data_source_id}. Processing would start here."
-            )
+        # Process the preview data
+        if upload_record.media_type == "csv":
+            try:
+                # Get upload settings
+                encoding = "utf-8"
+                separator = ","
+                quote_char = '"'
 
-            # In a real implementation, we would:
-            # 1. Start a background task to process all chunks
-            # 2. Parse the data according to the upload format (CSV, RDF, etc.)
-            # 3. Generate a preview of the data (limited number of rows)
-            # 4. Return the preview data to the client
+                # Try to get these values from the database
+                try:
+                    if hasattr(upload_record, "encoding") and upload_record.encoding:
+                        encoding = upload_record.encoding
+                    if hasattr(upload_record, "separator") and upload_record.separator:
+                        separator = upload_record.separator
+                    if (
+                        hasattr(upload_record, "quotes_char")
+                        and upload_record.quotes_char
+                    ):
+                        quote_char = upload_record.quotes_char
+                except Exception:
+                    # Use defaults if there's an error
+                    pass
 
-            # For now, just return 202 Accepted
-            # In the future, this should return 200 OK with the preview data
-            return Response(status_code=status.HTTP_202_ACCEPTED)
+                # Process the preview CSV data
+                processor = CsvProcessor(
+                    data_source_record,
+                    db,
+                    data_source_id,
+                    encoding=encoding,
+                    separator=separator,
+                    quote_char=quote_char,
+                )
+                storage_dir = Path(
+                    f"../../var/data/{user.id}/{data_source_id}/preview_chunks"
+                )
+                await processor.process_chunks(storage_dir)
 
-        # Return 202 Accepted for intermediate chunks
+                # Update the data source with the max_lines limit for preview
+                if max_lines and data_source_record.row_count > max_lines:
+                    # For preview, limit the number of rows to max_lines
+                    data_source_record.row_count = max_lines
+                    await db.commit()
+
+            except Exception as e:
+                logging.error(f"Error processing preview CSV: {str(e)}", exc_info=True)
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Error processing preview CSV data: {str(e)}",
+                )
+
+        # Return 202 Accepted
         return Response(status_code=status.HTTP_202_ACCEPTED)
 
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
     except Exception as e:
         # Ensure we rollback on any error
         try:
@@ -334,7 +447,6 @@ async def upload_preview_chunk(
         except Exception:
             pass  # Ignore rollback errors
 
-        # Log the error for debugging
         logging.error(f"Error in upload_preview_chunk: {str(e)}", exc_info=True)
 
         raise HTTPException(
@@ -447,8 +559,8 @@ async def get_field_stats(
 
 @router.get("/sources/{source_id}/fields/{field_id}/values", response_model=list[Value])
 async def get_field_values(
-    source_id: Annotated[int, Path(gt=0)],
-    field_id: Annotated[int, Path(gt=0)],
+    source_id: Annotated[int, FastAPIPath(gt=0)],
+    field_id: Annotated[int, FastAPIPath(gt=0)],
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
     offset: Annotated[int, Query(ge=0)] = 0,
@@ -464,8 +576,8 @@ async def get_field_values(
     response_model=list[Value],
 )
 async def get_aggregated_values(
-    source_id: Annotated[int, Path(gt=0)],
-    field_id: Annotated[int, Path(gt=0)],
+    source_id: Annotated[int, FastAPIPath(gt=0)],
+    field_id: Annotated[int, FastAPIPath(gt=0)],
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
     bins: Annotated[int, Query(gt=0, le=100)] = 10,

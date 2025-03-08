@@ -15,7 +15,9 @@ def create_association_table(name: str, target_table: str) -> Table:
     )
 
 
-UploadNullValueTable = create_association_table("upload_null_value", "upload_null_value")
+UploadNullValueTable = create_association_table(
+    "upload_null_value", "upload_null_value"
+)
 UploadDataTypeTable = create_association_table("upload_data_type", "upload_data_types")
 
 
@@ -24,7 +26,9 @@ class UploadNullValue(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, index=True)
     value: Mapped[str] = mapped_column(String(100))
-    uploads = relationship("Upload", secondary=UploadNullValueTable, back_populates="null_values")
+    uploads = relationship(
+        "Upload", secondary=UploadNullValueTable, back_populates="null_values"
+    )
 
 
 class UploadDataType(Base):
@@ -32,7 +36,9 @@ class UploadDataType(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, index=True)
     name: Mapped[str] = mapped_column(String(100))
-    uploads = relationship("Upload", secondary=UploadDataTypeTable, back_populates="data_types")
+    uploads = relationship(
+        "Upload", secondary=UploadDataTypeTable, back_populates="data_types"
+    )
 
 
 class Upload(Base):
@@ -49,9 +55,14 @@ class Upload(Base):
     escape_char: Mapped[str] = mapped_column(String(1))
     locale: Mapped[str] = mapped_column(String(20))
     compression: Mapped[str] = mapped_column(String(20))
-    null_values = relationship("UploadNullValue", secondary=UploadNullValueTable, back_populates="uploads")
-    data_types = relationship("UploadDataType", secondary=UploadDataTypeTable, back_populates="uploads")
+    null_values = relationship(
+        "UploadNullValue", secondary=UploadNullValueTable, back_populates="uploads"
+    )
+    data_types = relationship(
+        "UploadDataType", secondary=UploadDataTypeTable, back_populates="uploads"
+    )
     format: Mapped[str] = mapped_column(String(20))
-    
+    preview_max_lines: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
     # Relationship to DataSource
     data_source = relationship("DataSource", back_populates="upload", uselist=False)
