@@ -194,7 +194,7 @@ async def upload_chunk(
         # Ensure we rollback on any error
         try:
             await db.rollback()
-        except:
+        except Exception:
             pass  # Ignore rollback errors
 
         logging.error(f"Error in upload_chunk: {str(e)}", exc_info=True)
@@ -332,7 +332,7 @@ async def upload_preview_chunk(
         # Ensure we rollback on any error
         try:
             await db.rollback()
-        except:
+        except Exception:
             pass  # Ignore rollback errors
 
         # Log the error for debugging
