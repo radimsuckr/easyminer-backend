@@ -2,39 +2,10 @@ import tempfile
 from pathlib import Path
 
 import pytest
-import pytest_asyncio
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import sessionmaker
 
-from easyminer.database import Base
 from easyminer.models import DataSource, Upload
 from easyminer.processing import CsvProcessor
-
-# Test configuration
-TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
-
-
-# Setup and teardown for test database
-@pytest_asyncio.fixture(scope="function")
-async def test_db():
-    # Create test engine and session
-    engine = create_async_engine(TEST_DB_URL)
-    TestingSessionLocal = sessionmaker(
-        autocommit=False, autoflush=False, bind=engine, class_=AsyncSession
-    )
-
-    # Create all tables in the test database
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    # Create a test session
-    async with TestingSessionLocal() as session:
-        yield session
-
-    # Drop all tables after the test
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
 
 
 @pytest.mark.asyncio
