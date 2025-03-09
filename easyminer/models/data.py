@@ -1,9 +1,16 @@
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from easyminer.database import Base
+
+if TYPE_CHECKING:
+    from easyminer.models.task import Task
+
+# Import Task as a string to avoid circular imports
+# Task will be resolved at runtime, not at import time
 
 
 class DataSource(Base):
@@ -31,6 +38,9 @@ class DataSource(Base):
     )
     user = relationship("User", back_populates="data_sources")
     upload = relationship("Upload", back_populates="data_source")
+    tasks: Mapped[list["Task"]] = relationship(
+        back_populates="data_source", cascade="all, delete-orphan"
+    )
 
 
 class Field(Base):

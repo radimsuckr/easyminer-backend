@@ -3,6 +3,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from easyminer.database import Base
 from easyminer.models.data import DataSource
+from easyminer.models.task import Task
 
 
 class User(Base):
@@ -19,3 +20,6 @@ class User(Base):
 
     # Relationships
     data_sources: Mapped[list[DataSource]] = relationship(back_populates="user")
+    tasks: Mapped[list[Task]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )

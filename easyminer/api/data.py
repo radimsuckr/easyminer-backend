@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from easyminer.api.dependencies.auth import get_current_user
 from easyminer.api.dependencies.db import get_db_session
+from easyminer.crud.task import create_task, get_task_by_id
 from easyminer.models import DataSource, Field, Upload, User
 from easyminer.models import Field as FieldModel
 from easyminer.processing import CsvProcessor
@@ -875,10 +876,23 @@ async def export_data_source(
             detail=f"Export format '{format}' not supported. Only 'csv' is currently supported.",
         )
 
-    # Start an export task
+    # Create a task ID
     task_id = uuid4()
 
-    # Return task ID - the actual export will be handled asynchronously
+    # Store the task in the database
+    await create_task(
+        db_session=db,
+        task_id=task_id,
+        name="export_data",
+        user_id=user.id,
+        data_source_id=source_id,
+    )
+
+    # In a real implementation, you would start a background task here
+    # For example, with a background task worker (Celery, etc.)
+    # background_tasks.add_task(process_export, task_id, data_source, format)
+
+    # Return task ID and status location
     return {
         "task_id": task_id,
         "task_name": "export_data",
@@ -911,9 +925,31 @@ async def get_task_status(
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ):
-    """Get the status of a task."""
-    # TODO: Implement task status retrieval
-    pass
+    """Get the status of a task.
+
+    Args:
+        task_id: The ID of the task
+        user: Current authenticated user
+        db: Database session
+
+    Returns:
+        Task status information
+    """
+    # Look up the task by ID
+    task = await get_task_by_id(db, task_id)
+
+    # Check if the task exists and belongs to the user
+    if not task or task.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    # Return the task status
+    return {
+        "task_id": task.task_id,
+        "task_name": task.name,
+        "status_message": task.status_message,
+        "status_location": f"/api/v1/tasks/{task_id}",
+        "result_location": task.result_location if task.result_location else None,
+    }
 
 
 @router.get("/tasks/{task_id}/result")
@@ -922,6 +958,40 @@ async def get_task_result(
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ):
-    """Get the result of a task."""
-    # TODO: Implement task result retrieval
-    pass
+    """Get the result of a completed task.
+
+    Args:
+        task_id: The ID of the task
+        user: Current authenticated user
+        db: Database session
+
+    Returns:
+        Task result file or data
+    """
+    # Look up the task by ID
+    task = await get_task_by_id(db, task_id)
+
+    # Check if the task exists and belongs to the user
+    if not task or task.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    # Check if the task is completed
+    if task.status != "completed":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Task is not completed yet (current status: {task.status})",
+        )
+
+    # Check if there's a result location
+    if not task.result_location:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No result available for this task",
+        )
+
+    # In a real implementation, you would return the actual file here
+    # For now, just return a placeholder message
+    return {
+        "message": "Result would be returned here",
+        "result_location": task.result_location,
+    }
