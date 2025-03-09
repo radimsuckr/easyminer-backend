@@ -2,7 +2,7 @@ import logging
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID, uuid4
 
 from fastapi import (
@@ -27,7 +27,12 @@ from easyminer.api.dependencies.db import get_db_session
 from easyminer.models import DataSource, Upload, User
 from easyminer.models import Field as FieldModel
 from easyminer.processing.csv_processor import CsvProcessor
-from easyminer.schemas.data import DataSourceCreate, DataSourceRead, UploadSettings
+from easyminer.schemas.data import (
+    DataSourceCreate,
+    DataSourceRead,
+    FieldRead,
+    UploadSettings,
+)
 from easyminer.storage import DiskStorage
 
 # Maximum chunk size for preview uploads (100KB)
@@ -491,6 +496,61 @@ async def get_data_source(
     return data_source
 
 
+@router.get("/sources/{source_id}/preview")
+async def preview_data_source(
+    source_id: int,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+    limit: Annotated[int, Query(ge=1, le=100)] = 10,
+):
+    """Get a preview of data from a data source.
+
+    Args:
+        source_id: The ID of the data source
+        user: Current authenticated user
+        db: Database session
+        limit: Maximum number of rows to return
+
+    Returns:
+        Preview data including field names and values
+    """
+    # Get the data source
+    data_source = await db.get(DataSource, source_id)
+    if not data_source or data_source.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Data source not found")
+
+    # Get fields for the data source
+    result = await db.execute(
+        select(FieldModel)
+        .where(FieldModel.data_source_id == source_id)
+        .order_by(FieldModel.index)
+    )
+    fields = result.scalars().all()
+
+    if not fields:
+        return {"field_names": [], "rows": []}
+
+    # For this preview implementation, we'll return field names and sample data
+    field_names = [field.name for field in fields]
+
+    # In a real implementation, you would retrieve actual data from your storage system
+    # For now, we'll return placeholder data with appropriate types
+    preview_rows = []
+    for i in range(min(limit, 10)):
+        # Create a row as a dictionary of field_name -> sample value
+        row_data: dict[str, Any] = {}
+        for field in fields:
+            if field.data_type == "integer":
+                row_data[field.name] = i * 10
+            elif field.data_type == "float":
+                row_data[field.name] = i * 10.5
+            else:
+                row_data[field.name] = f"Sample value {i}"
+        preview_rows.append(row_data)
+
+    return {"field_names": field_names, "rows": preview_rows}
+
+
 @router.delete("/sources/{source_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_data_source(
     source_id: int,
@@ -536,7 +596,70 @@ async def get_instances(
     if not data_source or data_source.user_id != user.id:
         raise HTTPException(status_code=404, detail="Data source not found")
     # TODO: Implement instance retrieval
-    pass
+    return []
+
+
+@router.get("/sources/{source_id}/fields", response_model=list[FieldRead])
+async def list_fields(
+    source_id: int,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+):
+    """List all fields for a data source.
+
+    Args:
+        source_id: The ID of the data source
+        user: Current authenticated user
+        db: Database session
+
+    Returns:
+        List of fields for the data source
+    """
+    # Get the data source to validate access
+    data_source = await db.get(DataSource, source_id)
+    if not data_source or data_source.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Data source not found")
+
+    # Get fields for the data source
+    result = await db.execute(
+        select(FieldModel)
+        .where(FieldModel.data_source_id == source_id)
+        .order_by(FieldModel.index)
+    )
+    fields = result.scalars().all()
+
+    return fields
+
+
+@router.get("/sources/{source_id}/fields/{field_id}", response_model=FieldRead)
+async def get_field(
+    source_id: int,
+    field_id: int,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+):
+    """Get metadata for a specific field.
+
+    Args:
+        source_id: The ID of the data source
+        field_id: The ID of the field
+        user: Current authenticated user
+        db: Database session
+
+    Returns:
+        Field metadata
+    """
+    # Get the data source to validate access
+    data_source = await db.get(DataSource, source_id)
+    if not data_source or data_source.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Data source not found")
+
+    # Get the field
+    field = await db.get(FieldModel, field_id)
+    if not field or field.data_source_id != source_id:
+        raise HTTPException(status_code=404, detail="Field not found")
+
+    return field
 
 
 @router.get("/sources/{source_id}/fields/{field_id}/stats", response_model=Stats)
@@ -566,9 +689,61 @@ async def get_field_values(
     offset: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(gt=0, le=100)] = 20,
 ):
-    """Get values for a field."""
-    # Implementation would go here
+    """Get values for a specific field."""
+    # First check data source
+    data_source = await db.get(DataSource, source_id)
+    if not data_source or data_source.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Data source not found")
+
+    # Then check field
+    field = await db.get(FieldModel, field_id)
+    if not field or field.data_source_id != source_id:
+        raise HTTPException(status_code=404, detail="Field not found")
+
+    # TODO: Implement field value retrieval
     return []
+
+
+@router.get("/sources/{source_id}/export")
+async def export_data_source(
+    source_id: Annotated[int, FastAPIPath(gt=0)],
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+    format: Annotated[str, Query()] = "csv",
+):
+    """Export data from a data source.
+
+    Args:
+        source_id: The ID of the data source to export
+        user: Current authenticated user
+        db: Database session
+        format: Export format (csv, json, etc.)
+
+    Returns:
+        Downloadable file with the exported data
+    """
+    # Get the data source
+    data_source = await db.get(DataSource, source_id)
+    if not data_source or data_source.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Data source not found")
+
+    # For now, only support CSV export
+    if format.lower() != "csv":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Export format '{format}' not supported. Only 'csv' is currently supported.",
+        )
+
+    # Start an export task
+    task_id = uuid4()
+
+    # Return task ID - the actual export will be handled asynchronously
+    return {
+        "task_id": task_id,
+        "task_name": "export_data",
+        "status_message": "Export task started",
+        "status_location": f"/api/v1/tasks/{task_id}",
+    }
 
 
 @router.get(
