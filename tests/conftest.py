@@ -1,6 +1,7 @@
 import pytest
 import pytest_asyncio
 from fastapi.testclient import TestClient
+from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -49,6 +50,28 @@ async def test_db():
     # Drop all tables after the test
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
+
+
+@pytest_asyncio.fixture
+async def async_client(test_db):
+    # Override the get_db_session dependency
+    async def get_test_db():
+        yield test_db
+
+    # Override the get_current_user dependency
+    async def get_test_user():
+        return TEST_USER
+
+    # Apply the overrides
+    app.dependency_overrides[get_db_session] = get_test_db
+    app.dependency_overrides[get_current_user] = get_test_user
+
+    # Create an async client
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        yield client
+
+    # Remove the overrides after the test
+    app.dependency_overrides = {}
 
 
 @pytest.fixture(scope="function")

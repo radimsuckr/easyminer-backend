@@ -1,7 +1,7 @@
 import pytest
 from sqlalchemy import text
 
-from easyminer.models import DataSource, Field
+from easyminer.models import DataSource, Field, Upload
 
 from .conftest import TEST_USER, client
 
@@ -422,3 +422,83 @@ async def test_delete_data_source(override_dependencies, test_db):
     )
     db_data_source = result.fetchone()
     assert db_data_source is None
+
+
+# Test for get_instances endpoint
+@pytest.mark.asyncio
+async def test_get_instances(override_dependencies, test_db):
+    """Test the get_instances endpoint following the same pattern as other CRUD tests."""
+    # Create a test data source
+    data_source = DataSource(
+        name="Instances Test Source",
+        type="csv",
+        user_id=TEST_USER.id,
+        size_bytes=1000,
+        row_count=10,
+    )
+    test_db.add(data_source)
+    await test_db.commit()
+    await test_db.refresh(data_source)
+
+    # Store the ID to avoid SQLAlchemy loading the object again
+    data_source_id = data_source.id
+
+    # Create an upload for the data source
+    upload = Upload(
+        uuid="test-instances-uuid",
+        name="test_upload.csv",
+        media_type="csv",
+        db_type="limited",
+        separator=",",
+        quotes_char='"',
+        encoding="utf-8",
+        escape_char="\\",
+        locale="en_US",
+        compression="none",
+        format="csv",
+    )
+    test_db.add(upload)
+    await test_db.commit()
+    await test_db.refresh(upload)  # Refresh the upload to ensure we have its ID
+
+    # Store the upload ID
+    upload_id = upload.id
+
+    # Link the upload to the data source
+    data_source.upload_id = upload_id
+    await test_db.commit()
+    await test_db.refresh(data_source)
+
+    # Create fields for the data source
+    fields = [
+        Field(
+            name="field1",
+            data_source_id=data_source_id,
+            data_type="string",
+            index=0,
+        ),
+        Field(
+            name="field2",
+            data_source_id=data_source_id,
+            data_type="numeric",
+            index=1,
+        ),
+    ]
+    for field in fields:
+        test_db.add(field)
+    await test_db.commit()
+
+    # Create some sample data
+    # In a real test, you would need to create actual file data
+    # For now, we'll just test that the endpoint responds correctly
+
+    # Test the get_instances endpoint
+    response = client.get(
+        f"/api/v1/sources/{data_source_id}/instances",
+        headers={"Authorization": "Bearer test_token"},
+    )
+
+    # Check the response
+    assert response.status_code == 200
+    # Additional assertions can be added to check the structure of the response
+    # For now, we'll just check that we get a response code of 200

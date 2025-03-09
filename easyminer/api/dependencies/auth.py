@@ -14,7 +14,7 @@ async def get_current_user(
     """Get the current authenticated user."""
     # For now, we'll return a default user since we have a static password auth
     # In a real app, we would decode a JWT token and get the user from the database
-    result = await db.execute(select(User).where(User.is_superuser is True))
+    result = await db.execute(select(User).where(User.is_superuser))
     user = result.scalar_one_or_none()
 
     if not user:

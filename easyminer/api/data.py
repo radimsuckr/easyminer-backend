@@ -1,3 +1,5 @@
+import csv
+import io
 import logging
 from datetime import datetime
 from enum import Enum
@@ -19,14 +21,14 @@ from fastapi import (
     Path as FastAPIPath,
 )
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from easyminer.api.dependencies.auth import get_current_user
 from easyminer.api.dependencies.db import get_db_session
-from easyminer.models import DataSource, Upload, User
+from easyminer.models import DataSource, Field, Upload, User
 from easyminer.models import Field as FieldModel
-from easyminer.processing.csv_processor import CsvProcessor
+from easyminer.processing import CsvProcessor
 from easyminer.schemas.data import (
     DataSourceCreate,
     DataSourceRead,
@@ -590,13 +592,134 @@ async def get_instances(
     offset: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=1000)] = 100,
     field_ids: Annotated[list[int] | None, Query()] = None,
-):
+) -> list[dict[str, Any]]:
     """Get instances from a data source."""
+    # Check if data source exists and belongs to the user
     data_source = await db.get(DataSource, source_id)
     if not data_source or data_source.user_id != user.id:
         raise HTTPException(status_code=404, detail="Data source not found")
-    # TODO: Implement instance retrieval
-    return []
+
+    # If field_ids are provided, verify they exist and belong to this data source
+    fields_to_include: list[Field] = []
+    if field_ids:
+        # Query for fields that belong to this data source and match the provided IDs
+        query = (
+            select(Field)
+            .where(and_(Field.data_source_id == source_id, Field.id.in_(field_ids)))
+            .order_by(Field.index)
+        )
+        result = await db.execute(query)
+        fields_to_include = list(result.scalars().all())
+
+        # If some field IDs don't exist, return an error
+        if len(fields_to_include) != len(field_ids):
+            raise HTTPException(
+                status_code=400,
+                detail="One or more requested fields do not exist in this data source",
+            )
+    else:
+        # If no field_ids are provided, include all fields
+        query = (
+            select(Field).where(Field.data_source_id == source_id).order_by(Field.index)
+        )
+        result = await db.execute(query)
+        fields_to_include = list(result.scalars().all())
+
+    # Get the file path for the data source from the upload
+    if not data_source.upload_id:
+        # If there's no upload associated with this data source, return empty list
+        return []
+
+    # Get the upload associated with this data source
+    upload = await db.get(Upload, data_source.upload_id)
+    if not upload:
+        return []
+
+    # Path to the data file
+    storage_dir = Path(f"uploads/{upload.uuid}")
+
+    try:
+        # Find all chunk files
+        chunks = list(storage_dir.glob("*.chunk"))
+        if not chunks:
+            return []
+
+        # Combine chunks
+        combined_data = b""
+        for chunk_file in chunks:
+            try:
+                combined_data += chunk_file.read_bytes()
+            except Exception:
+                continue
+
+        if not combined_data:
+            return []
+
+        # Safe CSV parameters
+        csv_params = {
+            "delimiter": ",",  # Default delimiter
+            "quotechar": '"',  # Default quote character
+        }
+
+        # Use upload parameters if available
+        encoding = "utf-8"  # Default encoding
+
+        # Safe attribute access with defaults
+        if upload.separator is not None:
+            csv_params["delimiter"] = upload.separator
+
+        if hasattr(upload, "quotes_char") and upload.quotes_char is not None:
+            csv_params["quotechar"] = upload.quotes_char
+
+        if upload.encoding is not None:
+            encoding = upload.encoding
+
+        # Decode the data with fallback
+        try:
+            text = combined_data.decode(encoding)
+        except UnicodeDecodeError:
+            text = combined_data.decode("utf-8", errors="replace")
+
+        # Parse the CSV safely
+        reader = csv.reader(io.StringIO(text), **csv_params)
+        csv_rows = list(reader)
+
+        if not csv_rows:
+            return []
+
+        # Get the actual data rows with pagination
+        start_row = offset + 1  # +1 because we skip the header
+        end_row = min(start_row + limit, len(csv_rows))
+
+        if start_row >= len(csv_rows):
+            return []
+
+        # Get field indices
+        field_indices = [field.index for field in fields_to_include]
+        field_names = [field.name for field in fields_to_include]
+
+        # Extract the requested instances
+        instances = []
+        for row_idx in range(start_row, end_row):
+            row = csv_rows[row_idx]
+            instance = {}
+
+            for i, field_idx in enumerate(field_indices):
+                field_name = field_names[i]
+
+                if field_idx < len(row):
+                    instance[field_name] = row[field_idx]
+                else:
+                    instance[field_name] = None
+
+            instances.append(instance)
+
+        return instances
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Error retrieving instances: {str(e)}"
+        )
 
 
 @router.get("/sources/{source_id}/fields", response_model=list[FieldRead])
