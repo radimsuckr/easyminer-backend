@@ -12,7 +12,7 @@ from easyminer.schemas.user import User
 
 router = APIRouter(
     prefix="/api/users",
-    tags=["users"],
+    tags=["Users API"],
 )
 
 

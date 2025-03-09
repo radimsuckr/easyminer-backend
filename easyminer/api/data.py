@@ -41,7 +41,7 @@ from easyminer.storage import DiskStorage
 # Maximum chunk size for preview uploads (100KB)
 MAX_PREVIEW_CHUNK_SIZE = 100 * 1024
 
-router = APIRouter(prefix="/api/v1", tags=["Upload"])
+router = APIRouter(prefix="/api/v1", tags=["Data API"])
 
 
 class MediaType(str, Enum):
