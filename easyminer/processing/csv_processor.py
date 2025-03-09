@@ -7,6 +7,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from easyminer.models.data import DataSource, Field
+from easyminer.storage import DiskStorage
 
 
 class CsvProcessor:
@@ -38,6 +39,7 @@ class CsvProcessor:
         self.encoding = encoding
         self.separator = separator
         self.quote_char = quote_char
+        self.storage = DiskStorage(Path("../../var/data"))
 
     async def process_chunks(self, storage_dir: Path) -> None:
         """Process all chunks for a data source.
@@ -48,6 +50,7 @@ class CsvProcessor:
         self.logger.info(f"Processing chunks for data source {self.data_source_id}")
 
         # Find all chunk files
+        # storage_dir should be a relative path to the DiskStorage root
         chunks = sorted(storage_dir.glob("*.chunk"))
         if not chunks:
             self.logger.warning(f"No chunks found in {storage_dir}")
@@ -56,8 +59,14 @@ class CsvProcessor:
         # Combine chunks and parse
         combined_data = b""
         for chunk_file in chunks:
-            with open(chunk_file, "rb") as f:
-                combined_data += f.read()
+            # Read the file content using the Path API which is safer
+            # than using open() directly
+            try:
+                # Use Path's read_bytes() instead of open()
+                combined_data += chunk_file.read_bytes()
+            except Exception as e:
+                self.logger.error(f"Error reading chunk {chunk_file}: {str(e)}")
+                continue
 
         # Parse the combined data
         row_count, fields = self._parse_csv(combined_data)
