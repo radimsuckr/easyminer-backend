@@ -5,7 +5,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from easyminer.api.dependencies.db import get_db_session
-from easyminer.api.security import http_bearer_token
 from easyminer.models import User
 
 
@@ -15,9 +14,9 @@ async def get_current_user(
     """Get the current authenticated user."""
     # For now, we'll return a default user since we have a static password auth
     # In a real app, we would decode a JWT token and get the user from the database
-    result = await db.execute(select(User).where(User.is_superuser == True))
+    result = await db.execute(select(User).where(User.is_superuser is True))
     user = result.scalar_one_or_none()
-    
+
     if not user:
         # Create a default superuser if none exists
         user = User(
@@ -32,5 +31,5 @@ async def get_current_user(
         db.add(user)
         await db.commit()
         await db.refresh(user)
-    
-    return user 
+
+    return user

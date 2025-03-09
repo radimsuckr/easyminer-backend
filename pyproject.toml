@@ -27,6 +27,7 @@ dev = [
     "mypy>=1.11.0",
     "pytest>=8.3.1",
     "pytest-asyncio>=0.25.3",
+    "ruff>=0.9.10",
 ]
 
 [tool.pyright]
