@@ -89,7 +89,7 @@ async def test_get_instances_comprehensive():
 
         # Call the function with default parameters
         result = await get_instances(
-            source_id=1,
+            id=1,
             user=mock_user,
             db=mock_db,
             offset=0,
@@ -119,7 +119,7 @@ async def test_get_instances_not_found():
     # Verify that HTTPException is raised
     with pytest.raises(HTTPException) as exc_info:
         await get_instances(
-            source_id=999,
+            id=999,
             user=mock_user,
             db=mock_db,
             offset=0,
@@ -212,7 +212,7 @@ async def test_get_instances_for_csv_data():
         ):
             # Call the function directly, not through the API
             result = await get_instances(
-                source_id=1, user=user, db=mock_db, offset=0, limit=10, field_ids=None
+                id=1, user=user, db=mock_db, offset=0, limit=10, field_ids=None
             )
 
             # Verify the result
@@ -230,7 +230,7 @@ async def test_get_instances_for_csv_data():
 
             # Test with pagination (offset=1, limit=1)
             result_paged = await get_instances(
-                source_id=1, user=user, db=mock_db, offset=1, limit=1, field_ids=None
+                id=1, user=user, db=mock_db, offset=1, limit=1, field_ids=None
             )
 
             # Verify we only get the second row
@@ -321,7 +321,7 @@ async def test_get_instances_basic_functionality():
         ):
             # Call the function directly, not through the API
             result = await get_instances(
-                source_id=1, user=user, db=mock_db, offset=0, limit=10, field_ids=None
+                id=1, user=user, db=mock_db, offset=0, limit=10, field_ids=None
             )
 
             # Verify the result
@@ -339,7 +339,7 @@ async def test_get_instances_basic_functionality():
 
             # Test with pagination (offset=1, limit=1)
             result_paged = await get_instances(
-                source_id=1, user=user, db=mock_db, offset=1, limit=1, field_ids=None
+                id=1, user=user, db=mock_db, offset=1, limit=1, field_ids=None
             )
 
             # Verify we only get the second row

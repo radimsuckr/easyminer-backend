@@ -30,7 +30,7 @@ async def test_list_data_sources(override_dependencies, test_db):
 
     # Make request to list data sources
     response = client.get(
-        "/api/v1/sources", headers={"Authorization": "Bearer test_token"}
+        "/api/v1/datasource", headers={"Authorization": "Bearer test_token"}
     )
 
     # Check response
@@ -56,7 +56,7 @@ async def test_create_data_source(override_dependencies, test_db):
 
     # Make request to create data source
     response = client.post(
-        "/api/v1/sources", json=data, headers={"Authorization": "Bearer test_token"}
+        "/api/v1/datasource", json=data, headers={"Authorization": "Bearer test_token"}
     )
 
     # Check response
@@ -96,7 +96,7 @@ async def test_get_data_source(override_dependencies, test_db):
 
     # Make request to get data source
     response = client.get(
-        f"/api/v1/sources/{data_source.id}",
+        f"/api/v1/datasource/{data_source.id}",
         headers={"Authorization": "Bearer test_token"},
     )
 
@@ -147,7 +147,7 @@ async def test_list_fields(override_dependencies, test_db):
 
     # Get fields for the data source
     response = client.get(
-        f"/api/v1/sources/{data_source_id}/fields",
+        f"/api/v1/datasource/{data_source_id}/field",
         headers={"Authorization": "Bearer test_token"},
     )
 
@@ -207,7 +207,7 @@ async def test_get_field(override_dependencies, test_db):
 
     # Get the field details
     response = client.get(
-        f"/api/v1/sources/{data_source_id}/fields/{field_id}",
+        f"/api/v1/datasource/{data_source_id}/field/{field_id}",
         headers={"Authorization": "Bearer test_token"},
     )
 
@@ -275,7 +275,7 @@ async def test_preview_data_source(override_dependencies, test_db):
 
     # Get preview data
     response = client.get(
-        f"/api/v1/sources/{data_source_id}/preview?limit=5",
+        f"/api/v1/datasource/{data_source_id}/preview?limit=5",
         headers={"Authorization": "Bearer test_token"},
     )
 
@@ -322,7 +322,7 @@ async def test_export_data_source(override_dependencies, test_db):
 
     # Request export
     response = client.get(
-        f"/api/v1/sources/{data_source_id}/export?format=csv",
+        f"/api/v1/datasource/{data_source_id}/export?format=csv",
         headers={"Authorization": "Bearer test_token"},
     )
 
@@ -339,11 +339,11 @@ async def test_export_data_source(override_dependencies, test_db):
     # Check the task details
     assert export_data["task_name"] == "export_data"
     assert export_data["status_message"] == "Export task started"
-    assert export_data["status_location"].startswith("/api/v1/tasks/")
+    assert export_data["status_location"].startswith("/api/v1/task-status/")
 
     # Verify invalid format is rejected
     response = client.get(
-        f"/api/v1/sources/{data_source_id}/export?format=invalid",
+        f"/api/v1/datasource/{data_source_id}/export?format=invalid",
         headers={"Authorization": "Bearer test_token"},
     )
 
@@ -373,7 +373,7 @@ async def test_rename_data_source(override_dependencies, test_db):
 
     # Make request to rename data source
     response = client.put(
-        f"/api/v1/sources/{data_source.id}/name",
+        f"/api/v1/datasource/{data_source.id}",
         json=new_name,
         headers={"Authorization": "Bearer test_token"},
     )
@@ -412,7 +412,7 @@ async def test_delete_data_source(override_dependencies, test_db):
 
     # Make request to delete data source
     response = client.delete(
-        f"/api/v1/sources/{data_source.id}",
+        f"/api/v1/datasource/{data_source.id}",
         headers={"Authorization": "Bearer test_token"},
     )
 
@@ -497,7 +497,7 @@ async def test_get_instances(override_dependencies, test_db):
 
     # Test the get_instances endpoint
     response = client.get(
-        f"/api/v1/sources/{data_source_id}/instances",
+        f"/api/v1/datasource/{data_source_id}/instances",
         headers={"Authorization": "Bearer test_token"},
     )
 
@@ -544,7 +544,7 @@ async def test_get_field_stats(override_dependencies, test_db):
 
     # Get the field statistics
     response = client.get(
-        f"/api/v1/sources/{data_source_id}/fields/{field_id}/stats",
+        f"/api/v1/datasource/{data_source_id}/field/{field_id}/stats",
         headers={"Authorization": "Bearer test_token"},
     )
 
@@ -571,7 +571,7 @@ async def test_get_field_stats(override_dependencies, test_db):
 
     # Try to get statistics for a non-numeric field
     response = client.get(
-        f"/api/v1/sources/{data_source_id}/fields/{non_numeric_field.id}/stats",
+        f"/api/v1/datasource/{data_source_id}/field/{non_numeric_field.id}/stats",
         headers={"Authorization": "Bearer test_token"},
     )
 
@@ -594,7 +594,7 @@ async def test_get_field_stats(override_dependencies, test_db):
 
     # Try to get statistics for a field without stats
     response = client.get(
-        f"/api/v1/sources/{data_source_id}/fields/{field_without_stats.id}/stats",
+        f"/api/v1/datasource/{data_source_id}/field/{field_without_stats.id}/stats",
         headers={"Authorization": "Bearer test_token"},
     )
 
@@ -646,7 +646,7 @@ async def test_export_data_source_task_persistence(override_dependencies, test_d
 
     # Request export
     response = client.get(
-        f"/api/v1/sources/{data_source_id}/export?format=csv",
+        f"/api/v1/datasource/{data_source_id}/export?format=csv",
         headers={"Authorization": "Bearer test_token"},
     )
 
@@ -663,7 +663,7 @@ async def test_export_data_source_task_persistence(override_dependencies, test_d
     # Check the task details
     assert export_data["task_name"] == "export_data"
     assert export_data["status_message"] == "Export task started"
-    assert export_data["status_location"].startswith("/api/v1/tasks/")
+    assert export_data["status_location"].startswith("/api/v1/task-status/")
 
     # Verify that the task was persisted to the database
     task_id = export_data["task_id"]
@@ -692,7 +692,7 @@ async def test_export_data_source_task_persistence(override_dependencies, test_d
 
     # Test the get_task_status endpoint
     status_response = client.get(
-        f"/api/v1/tasks/{task_id}",
+        f"/api/v1/task-status/{task_id}",
         headers={"Authorization": "Bearer test_token"},
     )
     assert status_response.status_code == 200
@@ -756,7 +756,7 @@ async def test_get_task_status(override_dependencies, test_db):
     # Update to completed
     completed_task.status = "completed"
     completed_task.status_message = "Task completed successfully"
-    completed_task.result_location = f"/api/v1/tasks/{completed_task_id}/result"
+    completed_task.result_location = f"/api/v1/task-result/{completed_task_id}"
     await test_db.commit()
 
     # 4. Create a "failed" task
@@ -786,7 +786,7 @@ async def test_get_task_status(override_dependencies, test_db):
 
     # Test 1: Get status of a pending task
     response = client.get(
-        f"/api/v1/tasks/{pending_task_id}",
+        f"/api/v1/task-status/{pending_task_id}",
         headers={"Authorization": "Bearer test_token"},
     )
     assert response.status_code == 200
@@ -799,7 +799,7 @@ async def test_get_task_status(override_dependencies, test_db):
 
     # Test 2: Get status of an in-progress task
     response = client.get(
-        f"/api/v1/tasks/{in_progress_task_id}",
+        f"/api/v1/task-status/{in_progress_task_id}",
         headers={"Authorization": "Bearer test_token"},
     )
     assert response.status_code == 200
@@ -810,7 +810,7 @@ async def test_get_task_status(override_dependencies, test_db):
 
     # Test 3: Get status of a completed task
     response = client.get(
-        f"/api/v1/tasks/{completed_task_id}",
+        f"/api/v1/task-status/{completed_task_id}",
         headers={"Authorization": "Bearer test_token"},
     )
     assert response.status_code == 200
@@ -818,11 +818,11 @@ async def test_get_task_status(override_dependencies, test_db):
     assert status_data["task_id"] == str(completed_task_id)
     assert status_data["task_name"] == "test_completed_task"
     assert status_data["status_message"] == "Task completed successfully"
-    assert status_data["result_location"] == f"/api/v1/tasks/{completed_task_id}/result"
+    assert status_data["result_location"] == f"/api/v1/task-result/{completed_task_id}"
 
     # Test 4: Get status of a failed task
     response = client.get(
-        f"/api/v1/tasks/{failed_task_id}",
+        f"/api/v1/task-status/{failed_task_id}",
         headers={"Authorization": "Bearer test_token"},
     )
     assert response.status_code == 200
@@ -834,7 +834,7 @@ async def test_get_task_status(override_dependencies, test_db):
     # Test 5: Get status of a non-existent task
     non_existent_task_id = UUID("99999999-9999-9999-9999-999999999999")
     response = client.get(
-        f"/api/v1/tasks/{non_existent_task_id}",
+        f"/api/v1/task-status/{non_existent_task_id}",
         headers={"Authorization": "Bearer test_token"},
     )
     assert response.status_code == 404
@@ -843,7 +843,7 @@ async def test_get_task_status(override_dependencies, test_db):
     # Test 6: Get status of a task belonging to another user
     # This should return 404 for security reasons (don't reveal task existence)
     response = client.get(
-        f"/api/v1/tasks/{other_user_task_id}",
+        f"/api/v1/task-status/{other_user_task_id}",
         headers={"Authorization": "Bearer test_token"},
     )
     assert response.status_code == 404
@@ -891,7 +891,7 @@ async def test_get_task_result(override_dependencies, test_db):
     # Update to completed with result
     completed_task.status = "completed"
     completed_task.status_message = "Task completed successfully"
-    completed_task.result_location = f"/api/v1/tasks/{completed_task_id}/result"
+    completed_task.result_location = f"/api/v1/task-result/{completed_task_id}"
     await test_db.commit()
 
     # 3. Failed task
@@ -926,7 +926,7 @@ async def test_get_task_result(override_dependencies, test_db):
     await test_db.execute(
         update_query,
         {
-            "result_location": f"/api/v1/tasks/{other_user_task_id}/result",
+            "result_location": f"/api/v1/task-result/{other_user_task_id}",
             "task_id": str(other_user_task_id),
         },
     )
@@ -934,7 +934,7 @@ async def test_get_task_result(override_dependencies, test_db):
 
     # Test 1: Get result of a completed task
     response = client.get(
-        f"/api/v1/tasks/{completed_task_id}/result",
+        f"/api/v1/task-result/{completed_task_id}",
         headers={"Authorization": "Bearer test_token"},
     )
     assert response.status_code == 200
@@ -944,7 +944,7 @@ async def test_get_task_result(override_dependencies, test_db):
 
     # Test 2: Get result of a pending task (not ready)
     response = client.get(
-        f"/api/v1/tasks/{pending_task_id}/result",
+        f"/api/v1/task-result/{pending_task_id}",
         headers={"Authorization": "Bearer test_token"},
     )
     assert response.status_code == 400
@@ -952,7 +952,7 @@ async def test_get_task_result(override_dependencies, test_db):
 
     # Test 3: Get result of a failed task
     response = client.get(
-        f"/api/v1/tasks/{failed_task_id}/result",
+        f"/api/v1/task-result/{failed_task_id}",
         headers={"Authorization": "Bearer test_token"},
     )
     assert response.status_code == 400
@@ -961,7 +961,7 @@ async def test_get_task_result(override_dependencies, test_db):
     # Test 4: Get result of a non-existent task
     non_existent_task_id = UUID("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee")
     response = client.get(
-        f"/api/v1/tasks/{non_existent_task_id}/result",
+        f"/api/v1/task-result/{non_existent_task_id}",
         headers={"Authorization": "Bearer test_token"},
     )
     assert response.status_code == 404
@@ -969,7 +969,7 @@ async def test_get_task_result(override_dependencies, test_db):
 
     # Test 5: Get result of a task belonging to another user
     response = client.get(
-        f"/api/v1/tasks/{other_user_task_id}/result",
+        f"/api/v1/task-result/{other_user_task_id}",
         headers={"Authorization": "Bearer test_token"},
     )
     assert response.status_code == 404

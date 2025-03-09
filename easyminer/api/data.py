@@ -280,9 +280,7 @@ async def upload_chunk(
         )
 
 
-@router.post(
-    "/upload/start/preview", response_model=str, response_model_exclude_none=True
-)
+@router.post("/upload/preview/start", response_model=UUID)
 async def start_preview_upload(
     settings: PreviewUpload,
     user: Annotated[User, Depends(get_current_user)],
@@ -310,7 +308,7 @@ async def start_preview_upload(
     return str(upload_id)
 
 
-@router.post("/upload/{upload_id}/preview", status_code=status.HTTP_202_ACCEPTED)
+@router.post("/upload/preview/{upload_id}", status_code=status.HTTP_202_ACCEPTED)
 async def upload_preview_chunk(
     upload_id: str,
     request: Request,
@@ -463,7 +461,7 @@ async def upload_preview_chunk(
         )
 
 
-@router.get("/sources", response_model=list[DataSourceRead])
+@router.get("/datasource", response_model=list[DataSourceRead])
 async def list_data_sources(
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
@@ -472,7 +470,7 @@ async def list_data_sources(
     return user.data_sources
 
 
-@router.post("/sources", response_model=DataSourceRead)
+@router.post("/datasource", response_model=DataSourceRead)
 async def create_data_source(
     data: DataSourceCreate,
     user: Annotated[User, Depends(get_current_user)],
@@ -486,22 +484,22 @@ async def create_data_source(
     return data_source
 
 
-@router.get("/sources/{source_id}", response_model=DataSourceRead)
+@router.get("/datasource/{id}", response_model=DataSourceRead)
 async def get_data_source(
-    source_id: int,
+    id: Annotated[int, FastAPIPath()],
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ):
     """Get a specific data source."""
-    data_source = await db.get(DataSource, source_id)
+    data_source = await db.get(DataSource, id)
     if not data_source or data_source.user_id != user.id:
         raise HTTPException(status_code=404, detail="Data source not found")
     return data_source
 
 
-@router.get("/sources/{source_id}/preview")
+@router.get("/datasource/{id}/preview")
 async def preview_data_source(
-    source_id: int,
+    id: Annotated[int, FastAPIPath()],
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
     limit: Annotated[int, Query(ge=1, le=100)] = 10,
@@ -509,7 +507,7 @@ async def preview_data_source(
     """Get a preview of data from a data source.
 
     Args:
-        source_id: The ID of the data source
+        id: The ID of the data source
         user: Current authenticated user
         db: Database session
         limit: Maximum number of rows to return
@@ -518,14 +516,14 @@ async def preview_data_source(
         Preview data including field names and values
     """
     # Get the data source
-    data_source = await db.get(DataSource, source_id)
+    data_source = await db.get(DataSource, id)
     if not data_source or data_source.user_id != user.id:
         raise HTTPException(status_code=404, detail="Data source not found")
 
     # Get fields for the data source
     result = await db.execute(
         select(FieldModel)
-        .where(FieldModel.data_source_id == source_id)
+        .where(FieldModel.data_source_id == id)
         .order_by(FieldModel.index)
     )
     fields = result.scalars().all()
@@ -554,40 +552,40 @@ async def preview_data_source(
     return {"field_names": field_names, "rows": preview_rows}
 
 
-@router.delete("/sources/{source_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/datasource/{id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_data_source(
-    source_id: int,
+    id: Annotated[int, FastAPIPath()],
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ):
     """Delete a data source."""
-    data_source = await db.get(DataSource, source_id)
+    data_source = await db.get(DataSource, id)
     if not data_source or data_source.user_id != user.id:
         raise HTTPException(status_code=404, detail="Data source not found")
     await db.delete(data_source)
     await db.commit()
 
 
-@router.put("/sources/{source_id}/name")
+@router.put("/datasource/{id}")
 async def rename_data_source(
-    source_id: int,
-    new_name: Annotated[str, Body()],
+    id: Annotated[int, FastAPIPath()],
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
+    name: str = Body(...),
 ):
     """Rename a data source."""
-    data_source = await db.get(DataSource, source_id)
+    data_source = await db.get(DataSource, id)
     if not data_source or data_source.user_id != user.id:
         raise HTTPException(status_code=404, detail="Data source not found")
-    data_source.name = new_name
+    data_source.name = name
     await db.commit()
     await db.refresh(data_source)
     return data_source
 
 
-@router.get("/sources/{source_id}/instances")
+@router.get("/datasource/{id}/instances")
 async def get_instances(
-    source_id: int,
+    id: Annotated[int, FastAPIPath()],
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
     offset: Annotated[int, Query(ge=0)] = 0,
@@ -596,7 +594,7 @@ async def get_instances(
 ) -> list[dict[str, Any]]:
     """Get instances from a data source."""
     # Check if data source exists and belongs to the user
-    data_source = await db.get(DataSource, source_id)
+    data_source = await db.get(DataSource, id)
     if not data_source or data_source.user_id != user.id:
         raise HTTPException(status_code=404, detail="Data source not found")
 
@@ -606,7 +604,7 @@ async def get_instances(
         # Query for fields that belong to this data source and match the provided IDs
         query = (
             select(Field)
-            .where(and_(Field.data_source_id == source_id, Field.id.in_(field_ids)))
+            .where(and_(Field.data_source_id == id, Field.id.in_(field_ids)))
             .order_by(Field.index)
         )
         result = await db.execute(query)
@@ -620,9 +618,7 @@ async def get_instances(
             )
     else:
         # If no field_ids are provided, include all fields
-        query = (
-            select(Field).where(Field.data_source_id == source_id).order_by(Field.index)
-        )
+        query = select(Field).where(Field.data_source_id == id).order_by(Field.index)
         result = await db.execute(query)
         fields_to_include = list(result.scalars().all())
 
@@ -723,16 +719,16 @@ async def get_instances(
         )
 
 
-@router.get("/sources/{source_id}/fields", response_model=list[FieldRead])
-async def list_fields(
-    source_id: int,
+@router.get("/datasource/{id}/field", response_model=list[FieldRead])
+async def get_fields(
+    id: Annotated[int, FastAPIPath()],
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ):
     """List all fields for a data source.
 
     Args:
-        source_id: The ID of the data source
+        id: The ID of the data source
         user: Current authenticated user
         db: Database session
 
@@ -740,14 +736,14 @@ async def list_fields(
         List of fields for the data source
     """
     # Get the data source to validate access
-    data_source = await db.get(DataSource, source_id)
+    data_source = await db.get(DataSource, id)
     if not data_source or data_source.user_id != user.id:
         raise HTTPException(status_code=404, detail="Data source not found")
 
     # Get fields for the data source
     result = await db.execute(
         select(FieldModel)
-        .where(FieldModel.data_source_id == source_id)
+        .where(FieldModel.data_source_id == id)
         .order_by(FieldModel.index)
     )
     fields = result.scalars().all()
@@ -755,18 +751,18 @@ async def list_fields(
     return fields
 
 
-@router.get("/sources/{source_id}/fields/{field_id}", response_model=FieldRead)
+@router.get("/datasource/{id}/field/{fieldId}", response_model=FieldRead)
 async def get_field(
-    source_id: int,
-    field_id: int,
+    id: Annotated[int, FastAPIPath()],
+    fieldId: Annotated[int, FastAPIPath()],
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ):
     """Get metadata for a specific field.
 
     Args:
-        source_id: The ID of the data source
-        field_id: The ID of the field
+        id: The ID of the data source
+        fieldId: The ID of the field
         user: Current authenticated user
         db: Database session
 
@@ -774,34 +770,34 @@ async def get_field(
         Field metadata
     """
     # Get the data source to validate access
-    data_source = await db.get(DataSource, source_id)
+    data_source = await db.get(DataSource, id)
     if not data_source or data_source.user_id != user.id:
         raise HTTPException(status_code=404, detail="Data source not found")
 
     # Get the field
-    field = await db.get(FieldModel, field_id)
-    if not field or field.data_source_id != source_id:
+    field = await db.get(FieldModel, fieldId)
+    if not field or field.data_source_id != id:
         raise HTTPException(status_code=404, detail="Field not found")
 
     return field
 
 
-@router.get("/sources/{source_id}/fields/{field_id}/stats", response_model=Stats)
+@router.get("/datasource/{id}/field/{fieldId}/stats", response_model=Stats)
 async def get_field_stats(
-    source_id: int,
-    field_id: int,
+    id: Annotated[int, FastAPIPath()],
+    fieldId: Annotated[int, FastAPIPath()],
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ):
     """Get statistical information about a field."""
     # Check if data source exists and belongs to the user
-    data_source = await db.get(DataSource, source_id)
+    data_source = await db.get(DataSource, id)
     if not data_source or data_source.user_id != user.id:
         raise HTTPException(status_code=404, detail="Data source not found")
 
     # Check if field exists and belongs to the data source
-    field = await db.get(Field, field_id)
-    if not field or field.data_source_id != source_id:
+    field = await db.get(Field, fieldId)
+    if not field or field.data_source_id != id:
         raise HTTPException(status_code=404, detail="Field not found")
 
     # Check if field is numeric
@@ -822,10 +818,10 @@ async def get_field_stats(
     )
 
 
-@router.get("/sources/{source_id}/fields/{field_id}/values", response_model=list[Value])
+@router.get("/datasource/{id}/field/{fieldId}/values", response_model=list[Value])
 async def get_field_values(
-    source_id: Annotated[int, FastAPIPath(gt=0)],
-    field_id: Annotated[int, FastAPIPath(gt=0)],
+    id: Annotated[int, FastAPIPath()],
+    fieldId: Annotated[int, FastAPIPath()],
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
     offset: Annotated[int, Query(ge=0)] = 0,
@@ -833,22 +829,22 @@ async def get_field_values(
 ):
     """Get values for a specific field."""
     # First check data source
-    data_source = await db.get(DataSource, source_id)
+    data_source = await db.get(DataSource, id)
     if not data_source or data_source.user_id != user.id:
         raise HTTPException(status_code=404, detail="Data source not found")
 
     # Then check field
-    field = await db.get(FieldModel, field_id)
-    if not field or field.data_source_id != source_id:
+    field = await db.get(FieldModel, fieldId)
+    if not field or field.data_source_id != id:
         raise HTTPException(status_code=404, detail="Field not found")
 
     # TODO: Implement field value retrieval
     return []
 
 
-@router.get("/sources/{source_id}/export")
+@router.get("/datasource/{id}/export")
 async def export_data_source(
-    source_id: Annotated[int, FastAPIPath(gt=0)],
+    id: Annotated[int, FastAPIPath()],
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
     format: Annotated[str, Query()] = "csv",
@@ -856,7 +852,7 @@ async def export_data_source(
     """Export data from a data source.
 
     Args:
-        source_id: The ID of the data source to export
+        id: The ID of the data source to export
         user: Current authenticated user
         db: Database session
         format: Export format (csv, json, etc.)
@@ -865,7 +861,7 @@ async def export_data_source(
         Downloadable file with the exported data
     """
     # Get the data source
-    data_source = await db.get(DataSource, source_id)
+    data_source = await db.get(DataSource, id)
     if not data_source or data_source.user_id != user.id:
         raise HTTPException(status_code=404, detail="Data source not found")
 
@@ -885,7 +881,7 @@ async def export_data_source(
         task_id=task_id,
         name="export_data",
         user_id=user.id,
-        data_source_id=source_id,
+        data_source_id=id,
     )
 
     # In a real implementation, you would start a background task here
@@ -897,17 +893,14 @@ async def export_data_source(
         "task_id": task_id,
         "task_name": "export_data",
         "status_message": "Export task started",
-        "status_location": f"/api/v1/tasks/{task_id}",
+        "status_location": f"/api/v1/task-status/{task_id}",
     }
 
 
-@router.get(
-    "/sources/{source_id}/fields/{field_id}/values/aggregated",
-    response_model=list[Value],
-)
+@router.get("/datasource/{id}/field/{fieldId}/aggregated-values")
 async def get_aggregated_values(
-    source_id: Annotated[int, FastAPIPath(gt=0)],
-    field_id: Annotated[int, FastAPIPath(gt=0)],
+    id: Annotated[int, FastAPIPath()],
+    fieldId: Annotated[int, FastAPIPath()],
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
     bins: Annotated[int, Query(gt=0, le=100)] = 10,
@@ -919,49 +912,49 @@ async def get_aggregated_values(
     return []
 
 
-@router.get("/tasks/{task_id}", response_model=TaskStatus)
+@router.get("/task-status/{taskId}", response_model=TaskStatus)
 async def get_task_status(
-    task_id: UUID,
+    taskId: Annotated[UUID, FastAPIPath()],
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ):
-    """Get the status of a task.
+    """Get status of a task.
 
     Args:
-        task_id: The ID of the task
+        taskId: The ID of the task
         user: Current authenticated user
         db: Database session
 
     Returns:
-        Task status information
+        TaskStatus: Task status information
     """
     # Look up the task by ID
-    task = await get_task_by_id(db, task_id)
+    task = await get_task_by_id(db, taskId)
 
     # Check if the task exists and belongs to the user
     if not task or task.user_id != user.id:
         raise HTTPException(status_code=404, detail="Task not found")
 
-    # Return the task status
+    # Return task information
     return {
         "task_id": task.task_id,
         "task_name": task.name,
         "status_message": task.status_message,
-        "status_location": f"/api/v1/tasks/{task_id}",
+        "status_location": f"/api/v1/task-status/{taskId}",
         "result_location": task.result_location if task.result_location else None,
     }
 
 
-@router.get("/tasks/{task_id}/result")
+@router.get("/task-result/{taskId}")
 async def get_task_result(
-    task_id: UUID,
+    taskId: Annotated[UUID, FastAPIPath()],
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ):
     """Get the result of a completed task.
 
     Args:
-        task_id: The ID of the task
+        taskId: The ID of the task
         user: Current authenticated user
         db: Database session
 
@@ -969,7 +962,7 @@ async def get_task_result(
         Task result file or data
     """
     # Look up the task by ID
-    task = await get_task_by_id(db, task_id)
+    task = await get_task_by_id(db, taskId)
 
     # Check if the task exists and belongs to the user
     if not task or task.user_id != user.id:
@@ -995,3 +988,37 @@ async def get_task_result(
         "message": "Result would be returned here",
         "result_location": task.result_location,
     }
+
+
+async def update_task_status(
+    db_session: AsyncSession,
+    task_id: UUID,
+    status: str,
+    status_message: str | None = None,
+    result_location: str | None = None,
+) -> None:
+    """Update task status.
+
+    Args:
+        db_session: Database session
+        task_id: Task ID
+        status: New status
+        status_message: New status message (optional)
+        result_location: URL to task result (optional)
+    """
+    task = await get_task_by_id(db_session, task_id)
+
+    if not task:
+        return
+
+    task.status = status
+    task.status_message = status_message
+    if result_location:
+        # Make sure task result location uses new path format
+        if "/api/v1/tasks/" in result_location:
+            result_location = result_location.replace(
+                "/api/v1/tasks/", "/api/v1/task-result/"
+            )
+        task.result_location = result_location
+
+    await db_session.commit()
