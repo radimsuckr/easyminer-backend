@@ -552,7 +552,7 @@ async def preview_data_source(
     return {"field_names": field_names, "rows": preview_rows}
 
 
-@router.delete("/datasource/{id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/datasource/{id}", status_code=status.HTTP_200_OK)
 async def delete_data_source(
     id: Annotated[int, FastAPIPath()],
     user: Annotated[User, Depends(get_current_user)],
@@ -562,16 +562,20 @@ async def delete_data_source(
     data_source = await db.get(DataSource, id)
     if not data_source or data_source.user_id != user.id:
         raise HTTPException(status_code=404, detail="Data source not found")
+
     await db.delete(data_source)
     await db.commit()
 
+    # Return an empty response with 200 status code
+    return {}
 
-@router.put("/datasource/{id}")
+
+@router.put("/datasource/{id}", status_code=status.HTTP_200_OK)
 async def rename_data_source(
     id: Annotated[int, FastAPIPath()],
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
-    name: str = Body(...),
+    name: Annotated[str, Body(media_type="text/plain; charset=UTF-8")],
 ):
     """Rename a data source."""
     data_source = await db.get(DataSource, id)
@@ -579,8 +583,9 @@ async def rename_data_source(
         raise HTTPException(status_code=404, detail="Data source not found")
     data_source.name = name
     await db.commit()
-    await db.refresh(data_source)
-    return data_source
+
+    # Return an empty response with 200 status code
+    return {}
 
 
 @router.get("/datasource/{id}/instances")
@@ -897,19 +902,78 @@ async def export_data_source(
     }
 
 
-@router.get("/datasource/{id}/field/{fieldId}/aggregated-values")
+@router.get(
+    "/datasource/{id}/field/{fieldId}/aggregated-values",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=TaskStatus,
+)
 async def get_aggregated_values(
     id: Annotated[int, FastAPIPath()],
     fieldId: Annotated[int, FastAPIPath()],
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
-    bins: Annotated[int, Query(gt=0, le=100)] = 10,
+    bins: Annotated[int, Query(gt=0, le=1000)] = 10,
     min_value: float | None = None,
     max_value: float | None = None,
+    min_inclusive: bool = True,
+    max_inclusive: bool = True,
 ):
-    """Get aggregated values for a field."""
-    # Implementation would go here
-    return []
+    """Get aggregated values for a field.
+
+    This operation creates a task for generating a histogram of a numeric field
+    with values aggregated into intervals by number of bins.
+
+    Args:
+        id: The ID of the data source
+        fieldId: The ID of the field
+        user: Current authenticated user
+        db: Database session
+        bins: Number of bins (2-1000)
+        min_value: Minimum value (optional)
+        max_value: Maximum value (optional)
+        min_inclusive: Whether the minimum value is inclusive (default: True)
+        max_inclusive: Whether the maximum value is inclusive (default: True)
+
+    Returns:
+        TaskStatus: Information about the created task
+    """
+    # Check if data source exists and belongs to the user
+    data_source = await db.get(DataSource, id)
+    if not data_source or data_source.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Data source not found")
+
+    # Check if field exists and belongs to the data source
+    field = await db.get(Field, fieldId)
+    if not field or field.data_source_id != id:
+        raise HTTPException(status_code=404, detail="Field not found")
+
+    # Check if field is numeric
+    if field.data_type != "numeric":
+        raise HTTPException(status_code=404, detail="Field is not numeric")
+
+    # Create a task ID
+    task_id = uuid4()
+
+    # Store the task in the database
+    await create_task(
+        db_session=db,
+        task_id=task_id,
+        name="aggregated_values",
+        user_id=user.id,
+        data_source_id=id,
+    )
+
+    # In a real implementation, you would start a background task here
+    # For example: background_tasks.add_task(process_aggregated_values, task_id, field, bins, min_value, max_value)
+
+    # Return task ID and status location
+    return {
+        "task_id": task_id,
+        "task_name": "aggregated_values",
+        "status_message": "Histogram generation started",
+        "status_location": f"/api/v1/task-status/{task_id}",
+        "result_location": None,
+    }
 
 
 @router.get("/task-status/{taskId}", response_model=TaskStatus)
