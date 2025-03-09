@@ -792,15 +792,33 @@ async def get_field_stats(
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ):
-    """Get statistics for a field."""
+    """Get statistical information about a field."""
+    # Check if data source exists and belongs to the user
     data_source = await db.get(DataSource, source_id)
     if not data_source or data_source.user_id != user.id:
         raise HTTPException(status_code=404, detail="Data source not found")
-    field = await db.get(FieldModel, field_id)
+
+    # Check if field exists and belongs to the data source
+    field = await db.get(Field, field_id)
     if not field or field.data_source_id != source_id:
         raise HTTPException(status_code=404, detail="Field not found")
-    # TODO: Implement field statistics calculation
-    pass
+
+    # Check if field is numeric
+    if field.data_type not in ["integer", "float", "numeric"]:
+        raise HTTPException(
+            status_code=400, detail="Statistics are only available for numeric fields"
+        )
+
+    # Check if statistics are available
+    if field.min_value is None or field.max_value is None or field.avg_value is None:
+        raise HTTPException(
+            status_code=404, detail="Statistics not available for this field"
+        )
+
+    # Create and return Stats object
+    return Stats(
+        min=float(field.min_value), max=float(field.max_value), avg=field.avg_value
+    )
 
 
 @router.get("/sources/{source_id}/fields/{field_id}/values", response_model=list[Value])

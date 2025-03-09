@@ -502,3 +502,188 @@ async def test_get_instances(override_dependencies, test_db):
     assert response.status_code == 200
     # Additional assertions can be added to check the structure of the response
     # For now, we'll just check that we get a response code of 200
+
+
+# Test for get_field_stats endpoint
+@pytest.mark.asyncio
+async def test_get_field_stats(override_dependencies, test_db):
+    # Create a test data source
+    test_data_source = DataSource(
+        name="Stats Test Data Source",
+        type="csv",
+        user_id=TEST_USER.id,
+        size_bytes=1000,
+        row_count=10,
+    )
+    test_db.add(test_data_source)
+    await test_db.commit()
+    await test_db.refresh(test_data_source)
+
+    data_source_id = test_data_source.id
+
+    # Create a test numeric field with statistics
+    test_field = Field(
+        name="test_numeric_field",
+        data_type="float",
+        data_source_id=data_source_id,
+        index=0,
+        min_value="10.5",
+        max_value="95.7",
+        avg_value=45.6,
+        std_value=15.2,
+    )
+
+    test_db.add(test_field)
+    await test_db.commit()
+    await test_db.refresh(test_field)
+
+    field_id = test_field.id
+
+    # Get the field statistics
+    response = client.get(
+        f"/api/v1/sources/{data_source_id}/fields/{field_id}/stats",
+        headers={"Authorization": "Bearer test_token"},
+    )
+
+    # Check response
+    assert response.status_code == 200
+    stats = response.json()
+
+    # Verify statistics values
+    assert stats["min"] == 10.5
+    assert stats["max"] == 95.7
+    assert stats["avg"] == 45.6
+
+    # Test non-numeric field
+    non_numeric_field = Field(
+        name="test_string_field",
+        data_type="string",
+        data_source_id=data_source_id,
+        index=1,
+    )
+
+    test_db.add(non_numeric_field)
+    await test_db.commit()
+    await test_db.refresh(non_numeric_field)
+
+    # Try to get statistics for a non-numeric field
+    response = client.get(
+        f"/api/v1/sources/{data_source_id}/fields/{non_numeric_field.id}/stats",
+        headers={"Authorization": "Bearer test_token"},
+    )
+
+    # Should return 400 Bad Request
+    assert response.status_code == 400
+    assert "numeric fields" in response.json()["detail"]
+
+    # Test field without statistics
+    field_without_stats = Field(
+        name="test_numeric_without_stats",
+        data_type="integer",
+        data_source_id=data_source_id,
+        index=2,
+        # No statistics values provided
+    )
+
+    test_db.add(field_without_stats)
+    await test_db.commit()
+    await test_db.refresh(field_without_stats)
+
+    # Try to get statistics for a field without stats
+    response = client.get(
+        f"/api/v1/sources/{data_source_id}/fields/{field_without_stats.id}/stats",
+        headers={"Authorization": "Bearer test_token"},
+    )
+
+    # Should return 404 Not Found for missing statistics
+    assert response.status_code == 404
+    assert "not available" in response.json()["detail"]
+
+
+# Additional dedicated test for get_field_stats error paths
+@pytest.mark.asyncio
+async def test_get_field_stats_error_paths(override_dependencies, test_db):
+    # Create test data source and field for valid reference
+    test_data_source = DataSource(
+        name="Stats Error Test Source",
+        type="csv",
+        user_id=TEST_USER.id,
+        size_bytes=1000,
+        row_count=10,
+    )
+    test_db.add(test_data_source)
+    await test_db.commit()
+    await test_db.refresh(test_data_source)
+
+    data_source_id = test_data_source.id
+
+    # Create a second data source for cross-reference testing
+    second_data_source = DataSource(
+        name="Second Test Source",
+        type="csv",
+        user_id=TEST_USER.id,
+        size_bytes=1000,
+        row_count=10,
+    )
+    test_db.add(second_data_source)
+    await test_db.commit()
+    await test_db.refresh(second_data_source)
+
+    second_source_id = second_data_source.id
+
+    # Create a test numeric field with statistics
+    test_field = Field(
+        name="test_field_stats",
+        data_type="float",
+        data_source_id=data_source_id,
+        index=0,
+        min_value="10.5",
+        max_value="95.7",
+        avg_value=45.6,
+    )
+    test_db.add(test_field)
+
+    # Create a field for the second data source
+    second_field = Field(
+        name="second_field_stats",
+        data_type="float",
+        data_source_id=second_source_id,
+        index=0,
+        min_value="20.5",
+        max_value="85.7",
+        avg_value=55.6,
+    )
+    test_db.add(second_field)
+
+    await test_db.commit()
+    await test_db.refresh(test_field)
+    await test_db.refresh(second_field)
+
+    field_id = test_field.id
+    second_field_id = second_field.id
+
+    # Test case 1: Non-existent data source (invalid source ID)
+    non_existent_source_id = 99999
+    response = client.get(
+        f"/api/v1/sources/{non_existent_source_id}/fields/{field_id}/stats",
+        headers={"Authorization": "Bearer test_token"},
+    )
+    assert response.status_code == 404
+    assert "Data source not found" in response.json()["detail"]
+
+    # Test case 2: Non-existent field (invalid field ID)
+    non_existent_field_id = 99999
+    response = client.get(
+        f"/api/v1/sources/{data_source_id}/fields/{non_existent_field_id}/stats",
+        headers={"Authorization": "Bearer test_token"},
+    )
+    assert response.status_code == 404
+    assert "Field not found" in response.json()["detail"]
+
+    # Test case 3: Field belongs to a different data source
+    response = client.get(
+        f"/api/v1/sources/{data_source_id}/fields/{second_field_id}/stats",
+        headers={"Authorization": "Bearer test_token"},
+    )
+    assert response.status_code == 404
+    assert "Field not found" in response.json()["detail"]
