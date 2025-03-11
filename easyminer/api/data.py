@@ -847,61 +847,6 @@ async def get_field_values(
     return []
 
 
-@router.get("/datasource/{id}/export")
-async def export_data_source(
-    id: Annotated[int, FastAPIPath()],
-    user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(get_db_session)],
-    format: Annotated[str, Query()] = "csv",
-):
-    """Export data from a data source.
-
-    Args:
-        id: The ID of the data source to export
-        user: Current authenticated user
-        db: Database session
-        format: Export format (csv, json, etc.)
-
-    Returns:
-        Downloadable file with the exported data
-    """
-    # Get the data source
-    data_source = await db.get(DataSource, id)
-    if not data_source or data_source.user_id != user.id:
-        raise HTTPException(status_code=404, detail="Data source not found")
-
-    # For now, only support CSV export
-    if format.lower() != "csv":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Export format '{format}' not supported. Only 'csv' is currently supported.",
-        )
-
-    # Create a task ID
-    task_id = uuid4()
-
-    # Store the task in the database
-    await create_task(
-        db_session=db,
-        task_id=task_id,
-        name="export_data",
-        user_id=user.id,
-        data_source_id=id,
-    )
-
-    # In a real implementation, you would start a background task here
-    # For example, with a background task worker (Celery, etc.)
-    # background_tasks.add_task(process_export, task_id, data_source, format)
-
-    # Return task ID and status location
-    return {
-        "task_id": task_id,
-        "task_name": "export_data",
-        "status_message": "Export task started",
-        "status_location": f"/api/v1/task-status/{task_id}",
-    }
-
-
 @router.get(
     "/datasource/{id}/field/{fieldId}/aggregated-values",
     status_code=status.HTTP_202_ACCEPTED,
