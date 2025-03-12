@@ -402,3 +402,13 @@ $RECYCLE.BIN/
 # End of https://www.toptal.com/developers/gitignore/api/python,vim,visualstudiocode,jetbrains,macos,linux,windows
 
 var/
+
+# Thesis
+thesis/
+
+# Cursor - for now
+.cursor/
+.cursorrules
+
+# Docs - for now
+docs/
