@@ -9,5 +9,5 @@ class Value(BaseModel):
     """A value for a field with its frequency."""
 
     id: int
-    value: Any
+    value: Any = None
     frequency: int

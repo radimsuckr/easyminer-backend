@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class PreviewUpload(BaseModel):
@@ -51,9 +51,7 @@ class DataSourceRead(DataSourceBase):
     size_bytes: int
     user_id: int
     upload_id: int | None = None
-
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class FieldBase(BaseModel):
@@ -81,6 +79,4 @@ class FieldRead(FieldBase):
     max_value: str | None = None
     avg_value: float | None = None
     std_value: float | None = None
-
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
