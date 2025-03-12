@@ -30,12 +30,14 @@ from easyminer.crud.task import create_task, get_task_by_id
 from easyminer.models import DataSource, Field, Upload, User
 from easyminer.models import Field as FieldModel
 from easyminer.processing import CsvProcessor
+from easyminer.processing.csv_utils import extract_field_values_from_csv
 from easyminer.schemas.data import (
     DataSourceCreate,
     DataSourceRead,
     FieldRead,
     UploadSettings,
 )
+from easyminer.schemas.field_values import Value
 from easyminer.storage import DiskStorage
 
 # Maximum chunk size for preview uploads (100KB)
@@ -70,12 +72,6 @@ class Stats(BaseModel):
     min: float
     max: float
     avg: float
-
-
-class Value(BaseModel):
-    id: int
-    frequency: int
-    value: str | float | None
 
 
 class TaskStatus(BaseModel):
@@ -683,7 +679,11 @@ async def get_instances(
             text = combined_data.decode("utf-8", errors="replace")
 
         # Parse the CSV safely
-        reader = csv.reader(io.StringIO(text), **csv_params)
+        reader = csv.reader(
+            io.StringIO(text),
+            delimiter=csv_params["delimiter"],
+            quotechar=csv_params["quotechar"],
+        )
         csv_rows = list(reader)
 
         if not csv_rows:
@@ -712,7 +712,7 @@ async def get_instances(
                 if field_idx < len(row):
                     instance[field_name] = row[field_idx]
                 else:
-                    instance[field_name] = None
+                    instance[field_name] = ""  # Empty string instead of None
 
             instances.append(instance)
 
@@ -832,7 +832,22 @@ async def get_field_values(
     offset: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(gt=0, le=100)] = 20,
 ):
-    """Get values for a specific field."""
+    """Get values for a specific field.
+
+    Args:
+        id: The ID of the data source
+        fieldId: The ID of the field
+        user: Current authenticated user
+        db: Database session
+        offset: Pagination offset
+        limit: Number of values to return
+
+    Returns:
+        List of unique values with their frequencies
+
+    Raises:
+        HTTPException: If the data source or field is not found
+    """
     # First check data source
     data_source = await db.get(DataSource, id)
     if not data_source or data_source.user_id != user.id:
@@ -843,8 +858,89 @@ async def get_field_values(
     if not field or field.data_source_id != id:
         raise HTTPException(status_code=404, detail="Field not found")
 
-    # TODO: Implement field value retrieval
-    return []
+    try:
+        # Initialize storage and settings
+        storage = DiskStorage(Path("../../var/data"))
+        storage_dir = Path(f"{user.id}/{id}/chunks")
+        encoding = "utf-8"
+        separator = ","
+        quote_char = '"'
+
+        # Get encoding and CSV settings from upload if available
+        if data_source.upload_id is not None:
+            upload_result = await db.execute(
+                select(Upload).where(Upload.id == data_source.upload_id)
+            )
+            upload = upload_result.scalar_one_or_none()
+
+            if upload:
+                if hasattr(upload, "encoding") and upload.encoding:
+                    encoding = upload.encoding
+                if hasattr(upload, "separator") and upload.separator:
+                    separator = upload.separator
+                if hasattr(upload, "quotes_char") and upload.quotes_char:
+                    quote_char = upload.quotes_char
+
+        # Find all chunk files
+        chunk_paths = list(storage_dir.glob("*.chunk"))
+        if not chunk_paths:
+            return []  # No data available
+
+        # Process each chunk file and aggregate the results
+        all_values = []
+        for chunk_path in sorted(chunk_paths):
+            try:
+                # Read the chunk file
+                chunk_full_path = storage._root / chunk_path
+                if not chunk_full_path.exists():
+                    continue
+
+                chunk_data = chunk_full_path.read_bytes()
+                if not chunk_data:
+                    continue
+
+                # Decode the data
+                try:
+                    text_data = chunk_data.decode(encoding)
+                except UnicodeDecodeError:
+                    text_data = chunk_data.decode("utf-8", errors="replace")
+
+                # Process this chunk using our utility function
+                chunk_values = extract_field_values_from_csv(
+                    text_data, field, encoding, separator, quote_char
+                )
+
+                # Add to our collection
+                all_values.extend(chunk_values)
+
+            except Exception as e:
+                logging.error(f"Error processing chunk {chunk_path}: {str(e)}")
+                continue
+
+        # Consolidate values (sum up frequencies for the same values)
+        value_map: dict[Any, int] = {}
+        for val in all_values:
+            if val.value in value_map:
+                value_map[val.value] += val.frequency
+            else:
+                value_map[val.value] = val.frequency
+
+        # Create final result list
+        result = []
+        for i, (value, frequency) in enumerate(
+            sorted(value_map.items(), key=lambda x: x[1], reverse=True)
+        ):
+            result.append(Value(id=i, value=value, frequency=frequency))
+
+        # Apply pagination
+        return result[offset : offset + limit]
+
+    except Exception as e:
+        logging.error(f"Error retrieving field values: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error retrieving field values: {str(e)}",
+        )
 
 
 @router.get(

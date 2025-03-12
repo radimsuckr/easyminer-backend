@@ -1,3 +1,5 @@
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 from uuid import UUID
 
 import pytest
@@ -943,3 +945,208 @@ async def test_get_aggregated_values_task_persistence(override_dependencies, tes
     assert task_from_orm.data_source_id == data_source_id, (
         "Task data source ID doesn't match"
     )
+
+
+@pytest.mark.asyncio
+async def test_get_field_values(override_dependencies, test_db):
+    """Test getting field values for a specific field, focusing on the field value extraction logic."""
+    # Create CSV data with known values and frequencies
+    csv_data = "TestField,OtherField\nvalue1,other1\nvalue2,other2\nvalue1,other3\nvalue3,other4"
+
+    # Import the actual utility function
+    from easyminer.processing.csv_utils import extract_field_values_from_csv
+
+    # Mock the entire endpoint function to bypass database operations
+    mock_field = MagicMock()
+    mock_field.index = 0  # First column
+    mock_field.data_type = "string"
+    mock_field.data_source_id = 1  # To match the data source ID we'll use
+
+    mock_data_source = MagicMock()
+    mock_data_source.user_id = TEST_USER.id
+
+    # Create a mock DiskStorage instance
+    mock_storage = MagicMock()
+    mock_storage._root = Path("/mock/path")
+
+    # Setup required mocks
+    with (
+        patch("easyminer.api.data.DiskStorage", return_value=mock_storage),
+        patch("easyminer.api.data.Path.glob", return_value=["chunk1.chunk"]),
+        patch("easyminer.api.data.Path.exists", return_value=True),
+        patch(
+            "easyminer.api.data.Path.read_bytes", return_value=csv_data.encode("utf-8")
+        ),
+        patch("sqlalchemy.ext.asyncio.AsyncSession.get") as mock_get,
+        patch("sqlalchemy.ext.asyncio.AsyncSession.execute") as mock_execute,
+    ):
+        # Mock the db.get calls to return our mock objects
+        def get_side_effect(model_class, id_value):
+            if model_class == DataSource:
+                return mock_data_source
+            elif model_class == Field:
+                return mock_field
+            return None
+
+        mock_get.side_effect = get_side_effect
+
+        # Mock db.execute to handle upload queries
+        mock_execute.return_value.scalar_one_or_none.return_value = MagicMock(
+            encoding="utf-8", separator=",", quotes_char='"'
+        )
+
+        # Import the function here to avoid early imports that might fail
+        from easyminer.api.data import get_field_values
+
+        # Call the function with our mocks
+        results = await get_field_values(
+            id=1,  # Dummy ID
+            fieldId=1,  # Dummy ID
+            user=TEST_USER,
+            db=test_db,
+            offset=0,
+            limit=10,
+        )
+
+        # Validate the results
+        assert len(results) == 3  # 3 unique values
+
+        # Convert to dictionary for easier checking
+        value_map = {item.value: item.frequency for item in results}
+        assert "value1" in value_map
+        assert value_map["value1"] == 2  # value1 appears twice
+        assert value_map["value2"] == 1
+        assert value_map["value3"] == 1
+
+        # Also test the utility function directly to confirm it works the same
+        direct_results = extract_field_values_from_csv(csv_data, mock_field)
+        direct_value_map = {item.value: item.frequency for item in direct_results}
+
+        # Verify the direct results match the endpoint results
+        assert len(direct_results) == len(results)
+        assert direct_value_map == value_map
+
+
+def test_value_frequencies_from_csv():
+    """Test the core functionality of extracting field values from CSV data using application code."""
+    # Import the actual utility function from our application
+    from easyminer.processing.csv_utils import extract_field_values_from_csv
+
+    # Create CSV data with known values and frequencies
+    csv_data = "TestField,OtherField\nvalue1,other1\nvalue2,other2\nvalue1,other3\nvalue3,other4"
+
+    # Mock a field object to match what's expected in the application
+    mock_field = MagicMock()
+    mock_field.index = 0  # First column (TestField)
+    mock_field.data_type = "string"
+
+    # Process the CSV data using the actual application code
+    results = extract_field_values_from_csv(csv_data, mock_field)
+
+    # Verify the results
+    assert len(results) == 3  # 3 unique values
+
+    # Check frequencies
+    value_map = {item.value: item.frequency for item in results}
+    assert "value1" in value_map
+    assert value_map["value1"] == 2  # value1 appears twice
+    assert value_map["value2"] == 1
+    assert value_map["value3"] == 1
+
+    # Check ordering (sorted by frequency descending)
+    assert results[0].value == "value1"  # Most frequent should be first
+
+
+@pytest.mark.asyncio
+async def test_get_field_values_endpoint(override_dependencies, test_db):
+    """End-to-end test for the get_field_values endpoint.
+
+    This test verifies the full functionality by making a real HTTP request to the endpoint.
+    """
+    # Step 1: Create a test data source
+    test_data_source = DataSource(
+        name="Field Values Test Data Source",
+        type="csv",
+        user_id=TEST_USER.id,
+        size_bytes=1000,
+        row_count=10,
+    )
+    test_db.add(test_data_source)
+    await test_db.commit()
+    await test_db.refresh(test_data_source)
+
+    data_source_id = test_data_source.id
+
+    # Step 2: Create a test field
+    test_field = Field(
+        name="test_field",
+        data_type="string",
+        data_source_id=data_source_id,
+        index=0,
+    )
+    test_db.add(test_field)
+    await test_db.commit()
+    await test_db.refresh(test_field)
+
+    field_id = test_field.id
+
+    # Step 3: Create an upload for the data source
+    test_upload = Upload(
+        uuid="test-field-values-uuid",
+        name="test_field_values.csv",
+        media_type="csv",
+        db_type="limited",
+        separator=",",
+        quotes_char='"',
+        encoding="utf-8",
+        escape_char="\\",
+        locale="en_US",
+        compression="none",
+        format="csv",
+    )
+    test_db.add(test_upload)
+    await test_db.commit()
+    await test_db.refresh(test_upload)
+
+    # Link the upload to the data source
+    test_data_source.upload_id = test_upload.id
+    await test_db.commit()
+
+    # Step 4: Prepare test CSV data
+    csv_data = "TestField,OtherField\nvalue1,other1\nvalue2,other2\nvalue1,other3\nvalue3,other4"
+
+    # Create a mock DiskStorage instance
+    mock_storage = MagicMock()
+    mock_storage._root = Path("/mock/path")
+
+    # Step 5: Mock the storage operations
+    with (
+        patch("easyminer.storage.storage.DiskStorage", return_value=mock_storage),
+        patch("easyminer.api.data.Path.glob", return_value=["chunk1.chunk"]),
+        patch("easyminer.api.data.Path.exists", return_value=True),
+        patch(
+            "easyminer.api.data.Path.read_bytes", return_value=csv_data.encode("utf-8")
+        ),
+    ):
+        # Step 6: Make the HTTP request to the endpoint
+        response = client.get(
+            f"/api/v1/datasource/{data_source_id}/field/{field_id}/values",
+            headers={"Authorization": "Bearer test_token"},
+        )
+
+        # Step 7: Verify the response
+        assert response.status_code == 200
+        values = response.json()
+
+        # Check the number of unique values
+        assert len(values) == 3
+
+        # Convert to dictionary for easier checking
+        value_map = {item["value"]: item["frequency"] for item in values}
+        assert "value1" in value_map
+        assert value_map["value1"] == 2  # value1 appears twice
+        assert value_map["value2"] == 1
+        assert value_map["value3"] == 1
+
+        # Check ordering (sorted by frequency descending)
+        assert values[0]["value"] == "value1"  # Most frequent should be first
