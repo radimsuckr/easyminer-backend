@@ -463,7 +463,10 @@ async def list_data_sources(
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ):
     """List all data sources for the current user."""
-    return user.data_sources
+    data_sources = await db.execute(
+        select(DataSource).where(DataSource.user_id == user.id)
+    )
+    return data_sources.scalars().all()
 
 
 @router.post("/datasource", response_model=DataSourceRead)
