@@ -6,7 +6,7 @@
     {
       "label": "FastAPI dev",
       "type": "shell",
-      "command": "uv run fastapi dev",
+      "command": "uv run fastapi dev --port 8000",
       "options": {
         "cwd": "${workspaceFolder}/easyminer"
       },
@@ -14,6 +14,18 @@
       "group": {
         "kind": "build",
         "isDefault": true
+      }
+    },
+    {
+      "label": "Easyminer Center Fake Server",
+      "type": "shell",
+      "command": "uv run python ./fake_server.py",
+      "options": {
+        "cwd": "${workspaceFolder}/tools"
+      },
+      "problemMatcher": [],
+      "group": {
+        "kind": "none"
       }
     }
   ]
