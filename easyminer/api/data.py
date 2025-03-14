@@ -1,5 +1,3 @@
-import csv
-import io
 import logging
 from datetime import datetime
 from enum import Enum
@@ -9,6 +7,7 @@ from uuid import UUID, uuid4
 
 from fastapi import (
     APIRouter,
+    BackgroundTasks,
     Body,
     Depends,
     HTTPException,
@@ -39,7 +38,7 @@ from easyminer.crud.field import (
     get_fields_by_data_source,
     get_fields_by_ids,
 )
-from easyminer.crud.task import create_task, get_task_by_id
+from easyminer.crud.task import create_task, get_task_by_id, update_task_status
 from easyminer.crud.upload import (
     create_preview_upload,
     create_upload,
@@ -49,6 +48,11 @@ from easyminer.crud.upload import (
 from easyminer.models import DataSource, Field, User
 from easyminer.processing import CsvProcessor
 from easyminer.processing.csv_utils import extract_field_values_from_csv
+from easyminer.processing.data_retrieval import (
+    generate_histogram_for_field,
+    get_data_preview,
+    read_task_result,
+)
 from easyminer.schemas import BaseSchema
 from easyminer.schemas.data import (
     DataSourceCreate,
@@ -63,6 +67,9 @@ from easyminer.storage import DiskStorage
 MAX_PREVIEW_CHUNK_SIZE = 100 * 1024
 
 router = APIRouter(prefix=API_V1_PREFIX, tags=["Data API"])
+
+# Setup logger
+logger = logging.getLogger(__name__)
 
 
 class MediaType(str, Enum):
@@ -522,25 +529,18 @@ async def preview_data_source(
     if not fields:
         return {"field_names": [], "rows": []}
 
-    # For this preview implementation, we'll return field names and sample data
-    field_names = [field.name for field in fields]
+    # Retrieve actual data from storage
+    try:
+        field_names, rows = await get_data_preview(
+            db=db, data_source=data_source, user_id=user.id, limit=limit
+        )
 
-    # In a real implementation, you would retrieve actual data from your storage system
-    # For now, we'll return placeholder data with appropriate types
-    preview_rows = []
-    for i in range(min(limit, 10)):
-        # Create a row as a dictionary of field_name -> sample value
-        row_data: dict[str, Any] = {}
-        for field in fields:
-            if field.data_type == "integer":
-                row_data[field.name] = i * 10
-            elif field.data_type == "float":
-                row_data[field.name] = i * 10.5
-            else:
-                row_data[field.name] = f"Sample value {i}"
-        preview_rows.append(row_data)
+        return {"field_names": field_names, "rows": rows}
+    except Exception as e:
+        logging.error(f"Error retrieving preview data: {str(e)}", exc_info=True)
 
-    return {"field_names": field_names, "rows": preview_rows}
+        # Return empty result if we can't get the actual data
+        return {"field_names": [field.name for field in fields], "rows": []}
 
 
 @router.delete("/datasource/{id}", status_code=status.HTTP_200_OK)
@@ -605,104 +605,33 @@ async def get_instances(
         # If no field_ids are provided, include all fields
         fields_to_include = list(await get_fields_by_data_source(db, id))
 
-    # Get the file path for the data source from the upload
-    if not data_source.upload_id:
-        # If there's no upload associated with this data source, return empty list
-        return []
-
-    # Get the upload associated with this data source
-    upload = await get_upload_by_id(db, data_source.upload_id)
-    if not upload:
-        return []
-
-    # Path to the data file
-    storage_dir = Path(f"uploads/{upload.uuid}")
-
     try:
-        # Find all chunk files
-        chunks = list(storage_dir.glob("*.chunk"))
-        if not chunks:
-            return []
+        # Use the same preview data function, but apply offset and limit
+        from easyminer.processing.data_retrieval import get_data_preview
 
-        # Combine chunks
-        combined_data = b""
-        for chunk_file in chunks:
-            try:
-                combined_data += chunk_file.read_bytes()
-            except Exception:
-                continue
-
-        if not combined_data:
-            return []
-
-        # Safe CSV parameters
-        csv_params = {
-            "delimiter": ",",  # Default delimiter
-            "quotechar": '"',  # Default quote character
-        }
-
-        # Use upload parameters if available
-        encoding = "utf-8"  # Default encoding
-
-        # Safe attribute access with defaults
-        if upload.separator is not None:
-            csv_params["delimiter"] = upload.separator
-
-        if hasattr(upload, "quotes_char") and upload.quotes_char is not None:
-            csv_params["quotechar"] = upload.quotes_char
-
-        if upload.encoding is not None:
-            encoding = upload.encoding
-
-        # Decode the data with fallback
-        try:
-            text = combined_data.decode(encoding)
-        except UnicodeDecodeError:
-            text = combined_data.decode("utf-8", errors="replace")
-
-        # Parse the CSV safely
-        reader = csv.reader(
-            io.StringIO(text),
-            delimiter=csv_params["delimiter"],
-            quotechar=csv_params["quotechar"],
+        field_names, rows = await get_data_preview(
+            db=db,
+            data_source=data_source,
+            user_id=user.id,
+            limit=offset + limit,  # Fetch enough rows to apply offset
+            field_ids=field_ids,
         )
-        csv_rows = list(reader)
 
-        if not csv_rows:
+        # Apply offset manually (the preview function always starts from the beginning)
+        if offset >= len(rows):
             return []
 
-        # Get the actual data rows with pagination
-        start_row = offset + 1  # +1 because we skip the header
-        end_row = min(start_row + limit, len(csv_rows))
+        # Return the paginated subset
+        return rows[offset : offset + limit]
 
-        if start_row >= len(csv_rows):
-            return []
-
-        # Get field indices
-        field_indices = [field.index for field in fields_to_include]
-        field_names = [field.name for field in fields_to_include]
-
-        # Extract the requested instances
-        instances = []
-        for row_idx in range(start_row, end_row):
-            row = csv_rows[row_idx]
-            instance = {}
-
-            for i, field_idx in enumerate(field_indices):
-                field_name = field_names[i]
-
-                if field_idx < len(row):
-                    instance[field_name] = row[field_idx]
-                else:
-                    instance[field_name] = ""  # Empty string instead of None
-
-            instances.append(instance)
-
-        return instances
-
+    except FileNotFoundError:
+        # No data found
+        return []
     except Exception as e:
+        logger.error(f"Error retrieving instances: {str(e)}", exc_info=True)
         raise HTTPException(
-            status_code=500, detail=f"Error retrieving instances: {str(e)}"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error retrieving instances: {str(e)}",
         )
 
 
@@ -932,6 +861,7 @@ async def get_aggregated_values(
     max_value: float | None = None,
     min_inclusive: bool = True,
     max_inclusive: bool = True,
+    background_tasks: BackgroundTasks = BackgroundTasks(),
 ):
     """Get aggregated values for a field.
 
@@ -948,6 +878,7 @@ async def get_aggregated_values(
         max_value: Maximum value (optional)
         min_inclusive: Whether the minimum value is inclusive (default: True)
         max_inclusive: Whether the maximum value is inclusive (default: True)
+        background_tasks: Background tasks manager
 
     Returns:
         TaskStatus: Information about the created task
@@ -963,8 +894,8 @@ async def get_aggregated_values(
         raise HTTPException(status_code=404, detail="Field not found")
 
     # Check if field is numeric
-    if field.data_type != "numeric":
-        raise HTTPException(status_code=404, detail="Field is not numeric")
+    if field.data_type not in ["numeric", "integer", "float"]:
+        raise HTTPException(status_code=400, detail="Field is not numeric")
 
     # Create a task ID
     task_id = uuid4()
@@ -978,8 +909,73 @@ async def get_aggregated_values(
         data_source_id=id,
     )
 
-    # In a real implementation, you would start a background task here
-    # For example: background_tasks.add_task(process_aggregated_values, task_id, field, bins, min_value, max_value)
+    # Start a background task to process the histogram data
+    async def process_histogram_task():
+        try:
+            # Create a new DB session for background task
+            from easyminer.database import sessionmanager
+
+            async with sessionmanager.session() as session:
+                # Get the task
+                task_record = await get_task_by_id(session, task_id)
+                if not task_record:
+                    logger.error(f"Task {task_id} not found")
+                    return
+
+                # Update task status to in_progress
+                await update_task_status(
+                    session, task_id, "in_progress", "Generating histogram data"
+                )
+
+                # Get data source and field again in this session
+                data_source_record = await get_data_source_by_id(session, id, user.id)
+                field_record = await get_field_by_id(session, fieldId, id)
+
+                if not data_source_record or not field_record:
+                    await update_task_status(
+                        session,
+                        task_id,
+                        "failed",
+                        "Data source or field no longer exists",
+                    )
+                    return
+
+                try:
+                    # Generate histogram
+                    _, result_path = await generate_histogram_for_field(
+                        db=session,
+                        field=field_record,
+                        data_source=data_source_record,
+                        user_id=user.id,
+                        bins=bins,
+                        min_value=min_value,
+                        max_value=max_value,
+                        min_inclusive=min_inclusive,
+                        max_inclusive=max_inclusive,
+                    )
+
+                    # Update task status
+                    await update_task_status(
+                        session,
+                        task_id,
+                        "completed",
+                        "Histogram generation completed",
+                        result_location=result_path,
+                    )
+
+                except Exception as e:
+                    logger.error(f"Error generating histogram: {str(e)}", exc_info=True)
+                    await update_task_status(
+                        session,
+                        task_id,
+                        "failed",
+                        f"Error generating histogram: {str(e)}",
+                    )
+        except Exception as e:
+            logger.error(f"Background task error: {str(e)}", exc_info=True)
+
+    # Add task to background_tasks
+    background_tasks.add_task(process_histogram_task)
 
     # Return task ID and status location
     return {
@@ -1024,7 +1020,7 @@ async def get_task_status(
     }
 
 
-@router.get("/task-result/{taskId}", response_model=TaskResult)
+@router.get("/task-result/{taskId}", response_model=dict[str, Any])
 async def get_task_result(
     taskId: Annotated[UUID, FastAPIPath()],
     user: Annotated[User, Depends(get_current_user)],
@@ -1061,9 +1057,18 @@ async def get_task_result(
             detail="No result available for this task",
         )
 
-    # In a real implementation, you would return the actual file here
-    # For now, just return a placeholder message
-    return {
-        "message": "Result would be returned here",
-        "result_location": task.result_location,
-    }
+    # Return the actual result
+    try:
+        # Read the task result
+        result_data = await read_task_result(user.id, task.result_location)
+        return result_data
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Result file not found",
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error reading result file: {str(e)}",
+        )
