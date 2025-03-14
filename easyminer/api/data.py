@@ -4,7 +4,7 @@ import logging
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 from uuid import UUID, uuid4
 
 from fastapi import (
@@ -20,15 +20,33 @@ from fastapi import (
 from fastapi import (
     Path as FastAPIPath,
 )
-from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from easyminer.api.dependencies.auth import get_current_user
 from easyminer.api.dependencies.db import get_db_session
 from easyminer.config import API_V1_PREFIX
+from easyminer.crud.data_source import (
+    create_data_source,
+    delete_data_source,
+    get_data_source_by_id,
+    get_data_source_by_upload_id,
+    get_data_sources_by_user,
+    update_data_source_name,
+    update_data_source_size,
+)
+from easyminer.crud.field import (
+    get_field_by_id,
+    get_fields_by_data_source,
+    get_fields_by_ids,
+)
 from easyminer.crud.task import create_task, get_task_by_id
-from easyminer.models import DataSource, Field, Upload, User
-from easyminer.models import Field as FieldModel
+from easyminer.crud.upload import (
+    create_preview_upload,
+    create_upload,
+    get_upload_by_id,
+    get_upload_by_uuid,
+)
+from easyminer.models import DataSource, Field, User
 from easyminer.processing import CsvProcessor
 from easyminer.processing.csv_utils import extract_field_values_from_csv
 from easyminer.schemas import BaseSchema
@@ -109,23 +127,8 @@ async def start_upload(
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ):
     """Start a new upload process."""
-    upload_id = uuid4()
-    upload = Upload(
-        uuid=str(upload_id),
-        name=settings.name,
-        media_type=settings.media_type,
-        db_type=settings.db_type,
-        separator=settings.separator,
-        encoding=settings.encoding,
-        quotes_char=settings.quotes_char,
-        escape_char=settings.escape_char,
-        locale=settings.locale,
-        compression=settings.compression,
-        format=settings.format,
-    )
-    db.add(upload)
-    await db.commit()
-    return upload_id
+    upload = await create_upload(db, settings)
+    return UUID(upload.uuid)
 
 
 @router.post("/upload/{upload_id}", status_code=status.HTTP_202_ACCEPTED)
@@ -156,9 +159,8 @@ async def upload_chunk(
         # Read the chunk data from the request body
         chunk = await request.body()
 
-        # Retrieve the upload by UUID with all attributes
-        upload_result = await db.execute(select(Upload).where(Upload.uuid == upload_id))
-        upload_record = upload_result.scalar_one_or_none()
+        # Retrieve the upload by UUID
+        upload_record = await get_upload_by_uuid(db, upload_id)
 
         if not upload_record:
             raise HTTPException(
@@ -188,23 +190,19 @@ async def upload_chunk(
             pass
 
         # Get the associated data source
-        ds_result = await db.execute(
-            select(DataSource).where(DataSource.upload_id == upload_id_value)
-        )
-        data_source_record = ds_result.scalar_one_or_none()
+        data_source_record = await get_data_source_by_upload_id(db, upload_id_value)
 
         # Create a data source if it doesn't exist
         if not data_source_record:
-            data_source_record = DataSource(
+            data_source_record = await create_data_source(
+                db_session=db,
                 name=upload_name,
                 type=upload_media_type,
                 user_id=user.id,
                 upload_id=upload_id_value,
                 size_bytes=len(chunk),
             )
-            db.add(data_source_record)
-            await db.commit()
-            await db.refresh(data_source_record)
+            data_source_id = data_source_record.id
         else:
             # Check permissions
             if data_source_record.user_id != user.id:
@@ -213,10 +211,13 @@ async def upload_chunk(
                     detail="You don't have access to this upload",
                 )
 
-            # Update data source size
-            data_source_record.size_bytes += len(chunk)
+            # Store data source ID before updating
+            data_source_id = data_source_record.id
 
-        data_source_id = data_source_record.id
+            # Update data source size
+            updated_ds = await update_data_source_size(db, data_source_id, len(chunk))
+            if updated_ds:
+                data_source_record = updated_ds
 
         # For empty chunks (signaling end of upload), don't write to disk
         try:
@@ -226,13 +227,10 @@ async def upload_chunk(
                     f"{user.id}/{data_source_id}/chunks/{datetime.now().strftime('%Y%m%d%H%M%S%f')}.chunk"
                 )
                 storage.save(chunk_path, chunk)
-                await db.commit()
             else:
-                # Update the data source when upload is complete
-                # Row count will be updated by processor
-                await db.commit()
+                # The chunk with zero length indicates the end of the upload
+                pass
         except Exception as e:
-            await db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Error saving chunk: {str(e)}",
@@ -250,7 +248,7 @@ async def upload_chunk(
                 try:
                     # Create processor with settings
                     processor = CsvProcessor(
-                        data_source_record,
+                        cast(DataSource, data_source_record),
                         db,
                         data_source_id,
                         encoding=encoding,
@@ -299,24 +297,12 @@ async def start_preview_upload(
 ):
     """Start a new preview upload process."""
     # Create a new upload with preview flag
-    upload_id = uuid4()
-    upload = Upload(
-        uuid=str(upload_id),
-        name=f"preview_{upload_id}",  # Using UUID as name for preview uploads
-        media_type="csv",  # Default to CSV for preview
-        db_type="limited",
-        separator=",",  # Default separator
-        encoding="utf-8",  # Default encoding
-        quotes_char='"',
-        escape_char="\\",
-        locale="en_US",
-        compression=settings.compression.value if settings.compression else None,
-        format="csv",
-        preview_max_lines=settings.max_lines,
+    upload = await create_preview_upload(
+        db,
+        settings.max_lines,
+        settings.compression.value if settings.compression else None,
     )
-    db.add(upload)
-    await db.commit()
-    return str(upload_id)
+    return UUID(upload.uuid)
 
 
 @router.post("/upload/preview/{upload_id}", status_code=status.HTTP_202_ACCEPTED)
@@ -343,8 +329,7 @@ async def upload_preview_chunk(
 
     try:
         # Retrieve the upload by UUID
-        upload_result = await db.execute(select(Upload).where(Upload.uuid == upload_id))
-        upload_record = upload_result.scalar_one_or_none()
+        upload_record = await get_upload_by_uuid(db, upload_id)
 
         if not upload_record:
             raise HTTPException(
@@ -360,23 +345,18 @@ async def upload_preview_chunk(
             )
 
         # Get the associated data source
-        ds_result = await db.execute(
-            select(DataSource).where(DataSource.upload_id == upload_record.id)
-        )
-        data_source_record = ds_result.scalar_one_or_none()
+        data_source_record = await get_data_source_by_upload_id(db, upload_record.id)
 
         # Create a data source if it doesn't exist
         if not data_source_record:
-            data_source_record = DataSource(
+            data_source_record = await create_data_source(
+                db_session=db,
                 name=upload_record.name,
                 type=upload_record.media_type,
                 user_id=user.id,
                 upload_id=upload_record.id,
                 size_bytes=len(chunk),
             )
-            db.add(data_source_record)
-            await db.commit()
-            await db.refresh(data_source_record)
             data_source_id = data_source_record.id
         else:
             # Check permissions
@@ -426,7 +406,7 @@ async def upload_preview_chunk(
 
                 # Process the preview CSV data
                 processor = CsvProcessor(
-                    data_source_record,
+                    cast(DataSource, data_source_record),
                     db,
                     data_source_id,
                     encoding=encoding,
@@ -478,35 +458,37 @@ async def list_data_sources(
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ):
     """List all data sources for the current user."""
-    data_sources = await db.execute(
-        select(DataSource).where(DataSource.user_id == user.id)
-    )
-    return data_sources.scalars().all()
+    data_sources = await get_data_sources_by_user(db, user.id)
+    return data_sources
 
 
 @router.post("/datasource", response_model=DataSourceRead)
-async def create_data_source(
+async def create_datasource(
     data: DataSourceCreate,
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ):
     """Create a new data source."""
-    data_source = DataSource(**data.model_dump(), user_id=user.id)
-    db.add(data_source)
-    await db.commit()
-    await db.refresh(data_source)
+    data_source = await create_data_source(
+        db_session=db,
+        name=data.name,
+        type=data.type,
+        user_id=user.id,
+        size_bytes=data.size_bytes if hasattr(data, "size_bytes") else 0,
+        row_count=data.row_count if hasattr(data, "row_count") else 0,
+    )
     return data_source
 
 
 @router.get("/datasource/{id}", response_model=DataSourceRead)
-async def get_data_source(
+async def get_data_source_api(
     id: Annotated[int, FastAPIPath()],
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ):
     """Get a specific data source."""
-    data_source = await db.get(DataSource, id)
-    if not data_source or data_source.user_id != user.id:
+    data_source = await get_data_source_by_id(db, id, user.id)
+    if not data_source:
         raise HTTPException(status_code=404, detail="Data source not found")
     return data_source
 
@@ -530,17 +512,12 @@ async def preview_data_source(
         Preview data including field names and values
     """
     # Get the data source
-    data_source = await db.get(DataSource, id)
-    if not data_source or data_source.user_id != user.id:
+    data_source = await get_data_source_by_id(db, id, user.id)
+    if not data_source:
         raise HTTPException(status_code=404, detail="Data source not found")
 
     # Get fields for the data source
-    result = await db.execute(
-        select(FieldModel)
-        .where(FieldModel.data_source_id == id)
-        .order_by(FieldModel.index)
-    )
-    fields = result.scalars().all()
+    fields = await get_fields_by_data_source(db, id)
 
     if not fields:
         return {"field_names": [], "rows": []}
@@ -567,18 +544,15 @@ async def preview_data_source(
 
 
 @router.delete("/datasource/{id}", status_code=status.HTTP_200_OK)
-async def delete_data_source(
+async def delete_data_source_api(
     id: Annotated[int, FastAPIPath()],
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ):
     """Delete a data source."""
-    data_source = await db.get(DataSource, id)
-    if not data_source or data_source.user_id != user.id:
+    success = await delete_data_source(db, id, user.id)
+    if not success:
         raise HTTPException(status_code=404, detail="Data source not found")
-
-    await db.delete(data_source)
-    await db.commit()
 
     # Return an empty response with 200 status code
     return {}
@@ -592,11 +566,9 @@ async def rename_data_source(
     name: Annotated[str, Body(media_type="text/plain; charset=UTF-8")],
 ):
     """Rename a data source."""
-    data_source = await db.get(DataSource, id)
-    if not data_source or data_source.user_id != user.id:
+    data_source = await update_data_source_name(db, id, user.id, name)
+    if not data_source:
         raise HTTPException(status_code=404, detail="Data source not found")
-    data_source.name = name
-    await db.commit()
 
     # Return an empty response with 200 status code
     return {}
@@ -613,21 +585,15 @@ async def get_instances(
 ) -> list[dict[str, Any]]:
     """Get instances from a data source."""
     # Check if data source exists and belongs to the user
-    data_source = await db.get(DataSource, id)
-    if not data_source or data_source.user_id != user.id:
+    data_source = await get_data_source_by_id(db, id, user.id)
+    if not data_source:
         raise HTTPException(status_code=404, detail="Data source not found")
 
     # If field_ids are provided, verify they exist and belong to this data source
     fields_to_include: list[Field] = []
     if field_ids:
         # Query for fields that belong to this data source and match the provided IDs
-        query = (
-            select(Field)
-            .where(and_(Field.data_source_id == id, Field.id.in_(field_ids)))
-            .order_by(Field.index)
-        )
-        result = await db.execute(query)
-        fields_to_include = list(result.scalars().all())
+        fields_to_include = list(await get_fields_by_ids(db, field_ids, id))
 
         # If some field IDs don't exist, return an error
         if len(fields_to_include) != len(field_ids):
@@ -637,9 +603,7 @@ async def get_instances(
             )
     else:
         # If no field_ids are provided, include all fields
-        query = select(Field).where(Field.data_source_id == id).order_by(Field.index)
-        result = await db.execute(query)
-        fields_to_include = list(result.scalars().all())
+        fields_to_include = list(await get_fields_by_data_source(db, id))
 
     # Get the file path for the data source from the upload
     if not data_source.upload_id:
@@ -647,7 +611,7 @@ async def get_instances(
         return []
 
     # Get the upload associated with this data source
-    upload = await db.get(Upload, data_source.upload_id)
+    upload = await get_upload_by_id(db, data_source.upload_id)
     if not upload:
         return []
 
@@ -743,7 +707,7 @@ async def get_instances(
 
 
 @router.get("/datasource/{id}/field", response_model=list[FieldRead])
-async def get_fields(
+async def get_fields_api(
     id: Annotated[int, FastAPIPath()],
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
@@ -759,23 +723,18 @@ async def get_fields(
         List of fields for the data source
     """
     # Get the data source to validate access
-    data_source = await db.get(DataSource, id)
-    if not data_source or data_source.user_id != user.id:
+    data_source = await get_data_source_by_id(db, id, user.id)
+    if not data_source:
         raise HTTPException(status_code=404, detail="Data source not found")
 
     # Get fields for the data source
-    result = await db.execute(
-        select(FieldModel)
-        .where(FieldModel.data_source_id == id)
-        .order_by(FieldModel.index)
-    )
-    fields = result.scalars().all()
+    fields = await get_fields_by_data_source(db, id)
 
     return fields
 
 
 @router.get("/datasource/{id}/field/{fieldId}", response_model=FieldRead)
-async def get_field(
+async def get_field_api(
     id: Annotated[int, FastAPIPath()],
     fieldId: Annotated[int, FastAPIPath()],
     user: Annotated[User, Depends(get_current_user)],
@@ -793,13 +752,13 @@ async def get_field(
         Field metadata
     """
     # Get the data source to validate access
-    data_source = await db.get(DataSource, id)
-    if not data_source or data_source.user_id != user.id:
+    data_source = await get_data_source_by_id(db, id, user.id)
+    if not data_source:
         raise HTTPException(status_code=404, detail="Data source not found")
 
     # Get the field
-    field = await db.get(FieldModel, fieldId)
-    if not field or field.data_source_id != id:
+    field = await get_field_by_id(db, fieldId, id)
+    if not field:
         raise HTTPException(status_code=404, detail="Field not found")
 
     return field
@@ -814,13 +773,13 @@ async def get_field_stats(
 ):
     """Get statistical information about a field."""
     # Check if data source exists and belongs to the user
-    data_source = await db.get(DataSource, id)
-    if not data_source or data_source.user_id != user.id:
+    data_source = await get_data_source_by_id(db, id, user.id)
+    if not data_source:
         raise HTTPException(status_code=404, detail="Data source not found")
 
     # Check if field exists and belongs to the data source
-    field = await db.get(Field, fieldId)
-    if not field or field.data_source_id != id:
+    field = await get_field_by_id(db, fieldId, id)
+    if not field:
         raise HTTPException(status_code=404, detail="Field not found")
 
     # Check if field is numeric
@@ -867,13 +826,13 @@ async def get_field_values(
         HTTPException: If the data source or field is not found
     """
     # First check data source
-    data_source = await db.get(DataSource, id)
-    if not data_source or data_source.user_id != user.id:
+    data_source = await get_data_source_by_id(db, id, user.id)
+    if not data_source:
         raise HTTPException(status_code=404, detail="Data source not found")
 
     # Then check field
-    field = await db.get(FieldModel, fieldId)
-    if not field or field.data_source_id != id:
+    field = await get_field_by_id(db, fieldId, id)
+    if not field:
         raise HTTPException(status_code=404, detail="Field not found")
 
     try:
@@ -886,10 +845,7 @@ async def get_field_values(
 
         # Get encoding and CSV settings from upload if available
         if data_source.upload_id is not None:
-            upload_result = await db.execute(
-                select(Upload).where(Upload.id == data_source.upload_id)
-            )
-            upload = upload_result.scalar_one_or_none()
+            upload = await get_upload_by_id(db, data_source.upload_id)
 
             if upload:
                 if hasattr(upload, "encoding") and upload.encoding:
@@ -997,13 +953,13 @@ async def get_aggregated_values(
         TaskStatus: Information about the created task
     """
     # Check if data source exists and belongs to the user
-    data_source = await db.get(DataSource, id)
-    if not data_source or data_source.user_id != user.id:
+    data_source = await get_data_source_by_id(db, id, user.id)
+    if not data_source:
         raise HTTPException(status_code=404, detail="Data source not found")
 
     # Check if field exists and belongs to the data source
-    field = await db.get(Field, fieldId)
-    if not field or field.data_source_id != id:
+    field = await get_field_by_id(db, fieldId, id)
+    if not field:
         raise HTTPException(status_code=404, detail="Field not found")
 
     # Check if field is numeric
@@ -1111,37 +1067,3 @@ async def get_task_result(
         "message": "Result would be returned here",
         "result_location": task.result_location,
     }
-
-
-async def update_task_status(
-    db_session: AsyncSession,
-    task_id: UUID,
-    status: str,
-    status_message: str | None = None,
-    result_location: str | None = None,
-) -> None:
-    """Update task status.
-
-    Args:
-        db_session: Database session
-        task_id: Task ID
-        status: New status
-        status_message: New status message (optional)
-        result_location: URL to task result (optional)
-    """
-    task = await get_task_by_id(db_session, task_id)
-
-    if not task:
-        return
-
-    task.status = status
-    task.status_message = status_message
-    if result_location:
-        # Make sure task result location uses new path format
-        if "/api/v1/tasks/" in result_location:
-            result_location = result_location.replace(
-                "/api/v1/tasks/", "/api/v1/task-result/"
-            )
-        task.result_location = result_location
-
-    await db_session.commit()
