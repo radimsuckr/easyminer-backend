@@ -17,7 +17,7 @@ def mock_db_session():
     """Mock the database session for testing."""
     mock_session = AsyncMock(spec=AsyncSession)
 
-    with patch("easyminer.api.data.get_db_session", return_value=mock_session):
+    with patch("easyminer.database.get_db_session", return_value=mock_session):
         yield mock_session
 
 

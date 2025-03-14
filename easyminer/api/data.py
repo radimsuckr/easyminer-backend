@@ -21,7 +21,6 @@ from fastapi import (
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from easyminer.api.dependencies.db import get_db_session
 from easyminer.config import API_V1_PREFIX
 from easyminer.crud.data_source import (
     create_data_source,
@@ -44,6 +43,7 @@ from easyminer.crud.upload import (
     get_upload_by_id,
     get_upload_by_uuid,
 )
+from easyminer.database import get_db_session
 from easyminer.models import DataSource, Field
 from easyminer.processing import CsvProcessor
 from easyminer.processing.csv_utils import extract_field_values_from_csv
