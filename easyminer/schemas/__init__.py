@@ -11,6 +11,5 @@ class BaseSchema(BaseModel):
     model_config = ConfigDict(
         populate_by_name=True,  # Allow population by Python attribute names
         alias_generator=camelize,  # Convert field names to camelCase for JSON
-        # Updated configuration for Pydantic v2:
         json_schema_extra={"by_alias": True},  # Use camelCase in JSON schema (API docs)
     )

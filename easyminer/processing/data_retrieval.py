@@ -6,7 +6,7 @@ import math
 from pathlib import Path
 from typing import Any
 
-import numpy as np  # type: ignore
+import numpy as np
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from easyminer.models.data import DataSource, Field

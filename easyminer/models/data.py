@@ -5,9 +5,6 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from easyminer.database import Base
 
-# Import Task as a string to avoid circular imports
-# Task will be resolved at runtime, not at import time
-
 
 class DataSource(Base):
     """Data source model representing a data set."""
