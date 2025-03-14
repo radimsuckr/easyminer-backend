@@ -461,7 +461,9 @@ async def get_data_source_api(
     """Get a specific data source."""
     data_source = await get_data_source_by_id(db, id)
     if not data_source:
-        raise HTTPException(status_code=404, detail="Data source not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found"
+        )
     return data_source
 
 
@@ -484,7 +486,9 @@ async def preview_data_source(
     # Get the data source
     data_source = await get_data_source_by_id(db, id)
     if not data_source:
-        raise HTTPException(status_code=404, detail="Data source not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found"
+        )
 
     # Get fields for the data source
     fields = await get_fields_by_data_source(db, id)
@@ -514,7 +518,9 @@ async def delete_data_source_api(
     """Delete a data source."""
     success = await delete_data_source(db, id)
     if not success:
-        raise HTTPException(status_code=404, detail="Data source not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found"
+        )
 
     # Return an empty response with 200 status code
     return {}
@@ -529,7 +535,9 @@ async def rename_data_source(
     """Rename a data source."""
     data_source = await update_data_source_name(db, id, name)
     if not data_source:
-        raise HTTPException(status_code=404, detail="Data source not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found"
+        )
 
     # Return an empty response with 200 status code
     return {}
@@ -547,7 +555,9 @@ async def get_instances(
     # Check if data source exists
     data_source = await get_data_source_by_id(db, id)
     if not data_source:
-        raise HTTPException(status_code=404, detail="Data source not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found"
+        )
 
     # If field_ids are provided, verify they exist and belong to this data source
     fields_to_include: list[Field] = []
@@ -558,7 +568,7 @@ async def get_instances(
         # If some field IDs don't exist, return an error
         if len(fields_to_include) != len(field_ids):
             raise HTTPException(
-                status_code=400,
+                status_code=status.HTTP_400_BAD_REQUEST,
                 detail="One or more requested fields do not exist in this data source",
             )
     else:
@@ -611,7 +621,9 @@ async def get_fields_api(
     # Get the data source to validate access
     data_source = await get_data_source_by_id(db, id)
     if not data_source:
-        raise HTTPException(status_code=404, detail="Data source not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found"
+        )
 
     # Get fields for the data source
     fields = await get_fields_by_data_source(db, id)
@@ -638,12 +650,16 @@ async def get_field_api(
     # Get the data source to validate access
     data_source = await get_data_source_by_id(db, id)
     if not data_source:
-        raise HTTPException(status_code=404, detail="Data source not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found"
+        )
 
     # Get the field
     field = await get_field_by_id(db, fieldId, id)
     if not field:
-        raise HTTPException(status_code=404, detail="Field not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Field not found"
+        )
 
     return field
 
@@ -658,23 +674,29 @@ async def get_field_stats(
     # Check if data source exists and belongs to the user
     data_source = await get_data_source_by_id(db, id)
     if not data_source:
-        raise HTTPException(status_code=404, detail="Data source not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found"
+        )
 
     # Check if field exists and belongs to the data source
     field = await get_field_by_id(db, fieldId, id)
     if not field:
-        raise HTTPException(status_code=404, detail="Field not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Field not found"
+        )
 
     # Check if field is numeric
     if field.data_type not in ["integer", "float", "numeric"]:
         raise HTTPException(
-            status_code=400, detail="Statistics are only available for numeric fields"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Statistics are only available for numeric fields",
         )
 
     # Check if statistics are available
     if field.min_value is None or field.max_value is None or field.avg_value is None:
         raise HTTPException(
-            status_code=404, detail="Statistics not available for this field"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Statistics not available for this field",
         )
 
     # Create and return Stats object
@@ -709,12 +731,16 @@ async def get_field_values(
     # First check data source
     data_source = await get_data_source_by_id(db, id)
     if not data_source:
-        raise HTTPException(status_code=404, detail="Data source not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found"
+        )
 
     # Then check field
     field = await get_field_by_id(db, fieldId, id)
     if not field:
-        raise HTTPException(status_code=404, detail="Field not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Field not found"
+        )
 
     try:
         # Initialize storage and settings
@@ -837,16 +863,22 @@ async def get_aggregated_values(
     # Check if data source exists
     data_source = await get_data_source_by_id(db, id)
     if not data_source:
-        raise HTTPException(status_code=404, detail="Data source not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found"
+        )
 
     # Check if field exists and belongs to the data source
     field = await get_field_by_id(db, fieldId, id)
     if not field:
-        raise HTTPException(status_code=404, detail="Field not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Field not found"
+        )
 
     # Check if field is numeric
     if field.data_type not in ["numeric", "integer", "float"]:
-        raise HTTPException(status_code=400, detail="Field is not numeric")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Field is not numeric"
+        )
 
     # Create a task ID
     task_id = uuid4()
@@ -956,7 +988,9 @@ async def get_task_status(
 
     # Check if the task exists
     if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Task not found"
+        )
 
     # Return task information
     return {
@@ -987,7 +1021,9 @@ async def get_task_result(
 
     # Check if the task exists
     if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Task not found"
+        )
 
     # Check if the task is completed
     if task.status != "completed":
