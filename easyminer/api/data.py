@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from easyminer.api.dependencies.auth import get_current_user
 from easyminer.api.dependencies.db import get_db_session
+from easyminer.config import API_V1_PREFIX
 from easyminer.crud.task import create_task, get_task_by_id
 from easyminer.models import DataSource, Field, Upload, User
 from easyminer.models import Field as FieldModel
@@ -43,7 +44,7 @@ from easyminer.storage import DiskStorage
 # Maximum chunk size for preview uploads (100KB)
 MAX_PREVIEW_CHUNK_SIZE = 100 * 1024
 
-router = APIRouter(prefix="/api/v1", tags=["Data API"])
+router = APIRouter(prefix=API_V1_PREFIX, tags=["Data API"])
 
 
 class MediaType(str, Enum):

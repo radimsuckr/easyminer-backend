@@ -6,12 +6,14 @@ from pydantic_settings import BaseSettings
 load_dotenv()
 
 
+API_V1_PREFIX = "/api/v1"
+
+
 class Settings(BaseSettings):
     database_url: str
     echo_sql: bool = True
     test: bool = False
-    project_name: str = "My FastAPI project"
-    oauth_token_secret: str = "my_dev_secret"
+    project_name: str = "EasyMiner Backend"
     debug_logs: bool = False
     version: str = "0.1.0"
 

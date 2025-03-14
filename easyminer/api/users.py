@@ -6,12 +6,13 @@ from fastapi.security import HTTPAuthorizationCredentials
 
 from easyminer.api import security
 from easyminer.api.dependencies.core import DBSessionDep
+from easyminer.config import API_V1_PREFIX
 from easyminer.crud.user import get_user, get_users
 from easyminer.models.user import User as DBUser
 from easyminer.schemas.user import User
 
 router = APIRouter(
-    prefix="/api/users",
+    prefix=f"{API_V1_PREFIX}/users",
     tags=["Users API"],
 )
 
