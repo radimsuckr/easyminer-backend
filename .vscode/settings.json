@@ -11,6 +11,7 @@
   "python.testing.unittestEnabled": false,
   "python.testing.pytestEnabled": true,
   "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+  "mypy-type-checker.interpreter": ["${workspaceFolder}/.venv/bin/python"],
   "flake8.args": ["--max-line-length=120", "--ignore=E203,E704,W391,W503"],
   "editor.rulers": [120]
 }
