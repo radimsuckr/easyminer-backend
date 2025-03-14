@@ -8,7 +8,6 @@ from fastapi import FastAPI, HTTPException, status
 
 from easyminer.api.data import router as data_router
 from easyminer.api.preprocessing import router as preprocessing_router
-from easyminer.api.users import router as users_router
 from easyminer.config import settings
 from easyminer.database import sessionmanager
 
@@ -57,7 +56,6 @@ app = FastAPI(
 )
 app.include_router(data_router)
 app.include_router(preprocessing_router)
-app.include_router(users_router)
 
 
 @app.exception_handler(sqlalchemy.exc.OperationalError)

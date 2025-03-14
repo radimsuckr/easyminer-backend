@@ -21,7 +21,6 @@ async def test_create_field(db_session: AsyncSession):
         db_session=db_session,
         name="Test Data Source",
         type="csv",
-        user_id=1,
     )
 
     # Create a new field
@@ -62,7 +61,6 @@ async def test_get_field_by_id(db_session: AsyncSession):
         db_session=db_session,
         name="Test Data Source",
         type="csv",
-        user_id=1,
     )
 
     # Create a field
@@ -90,7 +88,6 @@ async def test_get_field_by_id_wrong_data_source(db_session: AsyncSession):
         db_session=db_session,
         name="Test Data Source",
         type="csv",
-        user_id=1,
     )
 
     # Create a field
@@ -115,7 +112,6 @@ async def test_get_field_by_id_nonexistent(db_session: AsyncSession):
         db_session=db_session,
         name="Test Data Source",
         type="csv",
-        user_id=1,
     )
 
     # Test getting non-existent field
@@ -131,7 +127,6 @@ async def test_get_fields_by_data_source(db_session: AsyncSession):
         db_session=db_session,
         name="Test Data Source",
         type="csv",
-        user_id=1,
     )
 
     # Create another data source
@@ -139,7 +134,6 @@ async def test_get_fields_by_data_source(db_session: AsyncSession):
         db_session=db_session,
         name="Other Data Source",
         type="csv",
-        user_id=1,
     )
 
     # Create fields for both data sources
@@ -195,7 +189,6 @@ async def test_get_fields_by_ids(db_session: AsyncSession):
         db_session=db_session,
         name="Test Data Source",
         type="csv",
-        user_id=1,
     )
 
     # Create fields for the data source
@@ -230,14 +223,12 @@ async def test_get_fields_by_ids_wrong_data_source(db_session: AsyncSession):
         db_session=db_session,
         name="Test Data Source",
         type="csv",
-        user_id=1,
     )
 
     other_data_source = await create_data_source(
         db_session=db_session,
         name="Other Data Source",
         type="csv",
-        user_id=1,
     )
 
     # Create a field for the other data source
@@ -262,7 +253,6 @@ async def test_get_fields_by_ids_nonexistent(db_session: AsyncSession):
         db_session=db_session,
         name="Test Data Source",
         type="csv",
-        user_id=1,
     )
 
     # Try to get non-existent fields
@@ -278,7 +268,6 @@ async def test_update_field_stats(db_session: AsyncSession):
         db_session=db_session,
         name="Test Data Source",
         type="csv",
-        user_id=1,
     )
 
     # Create a field with initial stats

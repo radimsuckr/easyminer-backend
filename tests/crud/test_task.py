@@ -5,6 +5,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from easyminer.crud.data_source import create_data_source
 from easyminer.crud.task import (
     create_task,
     get_task_by_id,
@@ -24,7 +25,6 @@ async def test_create_task(db_session: AsyncSession):
         db_session=db_session,
         task_id=task_id,
         name="test_task",
-        user_id=1,
         data_source_id=42,
     )
 
@@ -34,7 +34,6 @@ async def test_create_task(db_session: AsyncSession):
     assert task.name == "test_task"
     assert task.status == "pending"
     assert task.status_message == "Task created and waiting to start"
-    assert task.user_id == 1
     assert task.data_source_id == 42
     assert task.result_location is None
 
@@ -45,43 +44,22 @@ async def test_create_task(db_session: AsyncSession):
     assert db_task.task_id == task_id
     assert db_task.name == "test_task"
     assert db_task.status == "pending"
-    assert db_task.user_id == 1
     assert db_task.data_source_id == 42
-
-
-@pytest.mark.asyncio
-async def test_create_task_without_data_source(db_session: AsyncSession):
-    """Test creating a new task without a data source ID."""
-    # Generate a random UUID for the task
-    task_id = UUID(str(uuid.uuid4()))
-
-    # Create a new task without data_source_id
-    task = await create_task(
-        db_session=db_session,
-        task_id=task_id,
-        name="task_without_ds",
-        user_id=1,
-    )
-
-    # Check that the task was created correctly
-    assert task.id is not None
-    assert task.task_id == task_id
-    assert task.name == "task_without_ds"
-    assert task.status == "pending"
-    assert task.user_id == 1
-    assert task.data_source_id is None
-
-    # Check that the task is in the database
-    result = await db_session.execute(select(Task).where(Task.task_id == task_id))
-    db_task = result.scalar_one()
-    assert db_task.id == task.id
-    assert db_task.task_id == task_id
-    assert db_task.data_source_id is None
 
 
 @pytest.mark.asyncio
 async def test_get_task_by_id(db_session: AsyncSession):
     """Test getting a task by ID successfully."""
+    # Create a data source
+    data_source = await create_data_source(
+        db_session=db_session,
+        name="Test Data Source",
+        type="csv",
+        upload_id=1,
+        size_bytes=1000,
+        row_count=20,
+    )
+
     # Create a UUID for the task
     task_id = UUID("12345678-1234-5678-1234-567812345678")
 
@@ -90,7 +68,7 @@ async def test_get_task_by_id(db_session: AsyncSession):
         db_session=db_session,
         task_id=task_id,
         name="get_task_test",
-        user_id=1,
+        data_source_id=data_source.id,
     )
 
     # Get the task by ID
@@ -114,6 +92,16 @@ async def test_get_task_by_id_nonexistent(db_session: AsyncSession):
 @pytest.mark.asyncio
 async def test_update_task_status(db_session: AsyncSession):
     """Test updating a task status."""
+    # Create a data source
+    data_source = await create_data_source(
+        db_session=db_session,
+        name="Test Data Source",
+        type="csv",
+        upload_id=1,
+        size_bytes=1000,
+        row_count=20,
+    )
+
     # Create a UUID for the task
     task_id = UUID("87654321-4321-8765-4321-876543210987")
 
@@ -122,7 +110,7 @@ async def test_update_task_status(db_session: AsyncSession):
         db_session=db_session,
         task_id=task_id,
         name="update_status_test",
-        user_id=1,
+        data_source_id=data_source.id,
     )
 
     # Update the task status

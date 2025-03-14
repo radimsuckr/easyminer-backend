@@ -1,35 +1,37 @@
+"""Authentication dependencies for FastAPI routes."""
+
+from dataclasses import dataclass
 from typing import Annotated
 
 from fastapi import Depends
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi.security import APIKeyHeader
 
-from easyminer.api.dependencies.db import get_db_session
-from easyminer.models import User
+# Simple API key header
+api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+
+@dataclass
+class UserInfo:
+    """Simple user info class that replaces the User model."""
+
+    id: int = 1  # Default to user ID 1 for simplicity
+    is_admin: bool = True
+    username: str = "admin"
+    email: str = "admin@example.com"
 
 
 async def get_current_user(
-    db: Annotated[AsyncSession, Depends(get_db_session)],
-) -> User:
-    """Get the current authenticated user."""
-    # For now, we'll return a default user since we have a static password auth
-    # In a real app, we would decode a JWT token and get the user from the database
-    result = await db.execute(select(User).where(User.is_superuser))
-    user = result.scalar_one_or_none()
+    api_key: Annotated[str, Depends(api_key_header)] = None,
+) -> UserInfo:
+    """Get current user based on API key.
 
-    if not user:
-        # Create a default superuser if none exists
-        user = User(
-            username="admin",
-            slug="admin",
-            email="admin@example.com",
-            first_name="Admin",
-            last_name="User",
-            hashed_password="not_used",  # We're using static token auth for now
-            is_superuser=True,
-        )
-        db.add(user)
-        await db.commit()
-        await db.refresh(user)
+    This is a simplified version that always returns the same user.
+    In a real application, you would validate the API key.
+    """
+    if not api_key:
+        # For development purposes, allow access without an API key
+        return UserInfo()
 
-    return user
+    # In a real app, you'd validate the API key here
+    # For now, always return a default user
+    return UserInfo()

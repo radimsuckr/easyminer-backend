@@ -23,7 +23,7 @@ def mock_storage():
         b"header1,header2,header3\nvalue1,value2,10\nvalue4,value5,20"
     )
     storage.exists.return_value = True
-    storage.list_files.return_value = [Path("user/1/chunks/file1.chunk")]
+    storage.list_files.return_value = [Path("chunks/file1.chunk")]
     return storage
 
 
@@ -38,7 +38,6 @@ def mock_data_source():
     """Create a mock DataSource for testing."""
     data_source = MagicMock(spec=DataSource)
     data_source.id = 1
-    data_source.user_id = 1
     data_source.upload = MagicMock()
     data_source.upload.encoding = "utf-8"
     data_source.upload.separator = ","
@@ -65,7 +64,13 @@ async def test_data_retrieval_get_preview_data(mock_storage, csv_test_data):
     """Test retrieving preview data."""
     # Setup
     mock_storage.read.return_value = csv_test_data.encode("utf-8")
-    retrieval = DataRetrieval(mock_storage, 1, 1)
+    retrieval = DataRetrieval(
+        storage=mock_storage,
+        data_source_id=1,
+        encoding="utf-8",
+        separator=",",
+        quote_char='"',
+    )
 
     # Execute
     header, rows = await retrieval.get_preview_data(limit=2)
@@ -79,7 +84,7 @@ async def test_data_retrieval_get_preview_data(mock_storage, csv_test_data):
     assert rows[1]["name"] == "Bob"
     assert rows[1]["age"] == "25"
     assert rows[1]["score"] == "92"
-    mock_storage.list_files.assert_called_once_with(Path("1/1/chunks"), "*.chunk")
+    mock_storage.list_files.assert_called_once_with(Path("1/chunks"), "*.chunk")
 
 
 @pytest.mark.asyncio
@@ -206,7 +211,7 @@ async def test_get_data_preview():
 
         # Execute
         result_header, result_rows = await get_data_preview(
-            db=mock_db, data_source=mock_data_source, user_id=1, limit=10
+            db=mock_db, data_source=mock_data_source, limit=10
         )
 
         # Assert
@@ -251,7 +256,6 @@ async def test_generate_histogram_for_field():
             db=mock_db,
             field=mock_field,
             data_source=mock_data_source,
-            user_id=1,
             bins=2,
         )
 
@@ -277,19 +281,16 @@ async def test_read_task_result():
         "field_id": 1,
         "histogram": [{"interval_start": 0, "interval_end": 10, "count": 5}],
     }
-    result_path = "1/1/results/histogram_1_2.json"
+    result_path = "1/results/histogram_1_2.json"
 
-    with patch(
-        "easyminer.processing.data_retrieval.DataRetrieval"
-    ) as MockDataRetrieval:
+    # Mock the storage to prevent actual file access
+    with patch("easyminer.storage.DiskStorage.read") as mock_read:
         # Configure the mock
-        mock_retrieval_instance = MockDataRetrieval.return_value
-        mock_retrieval_instance.read_file_result = AsyncMock(return_value=result_data)
+        mock_read.return_value = json.dumps(result_data).encode("utf-8")
 
         # Execute
-        result = await read_task_result(user_id=1, result_path=result_path)
+        result = await read_task_result(result_path)
 
         # Assert
         assert result == result_data
-        MockDataRetrieval.assert_called_once()
-        mock_retrieval_instance.read_file_result.assert_called_once_with(result_path)
+        mock_read.assert_called_once()

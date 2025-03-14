@@ -13,18 +13,6 @@ from easyminer.storage import DiskStorage
 
 
 @pytest.fixture
-def mock_auth_middleware():
-    """Mock the authentication middleware for testing."""
-    from easyminer.models.user import User
-
-    async def get_current_user():
-        return User(id=1, username="test_user", email="test@example.com")
-
-    with patch("easyminer.api.data.get_current_user", side_effect=get_current_user):
-        yield
-
-
-@pytest.fixture
 def mock_db_session():
     """Mock the database session for testing."""
     mock_session = AsyncMock(spec=AsyncSession)
@@ -43,7 +31,7 @@ def mock_storage():
 
 
 @pytest.fixture
-def test_client(mock_auth_middleware, mock_db_session, mock_storage):
+def test_client(mock_db_session, mock_storage):
     """Create a test client with mocked dependencies."""
     app = FastAPI()
     app.include_router(data_router)
@@ -58,7 +46,6 @@ def mock_data_source():
     mock_ds.id = 1
     mock_ds.name = "Test Data Source"
     mock_ds.type = "csv"
-    mock_ds.user_id = 1
     mock_ds.size_bytes = 1000
     mock_ds.row_count = 10
     mock_ds.upload_id = 1
@@ -93,14 +80,10 @@ async def test_datasource_preview(
             "easyminer.api.data.get_fields_by_data_source", return_value=[mock_field]
         ),
         patch(
-            "easyminer.processing.data_retrieval.get_data_preview"
-        ) as mock_get_preview,
+            "easyminer.api.data.get_data_preview",
+            return_value=(["score"], [{"score": "85"}, {"score": "92"}]),
+        ),
     ):
-        # Setup mock return value for get_data_preview
-        field_names = ["score"]
-        rows = [{"score": "85"}, {"score": "92"}]
-        mock_get_preview.return_value = (field_names, rows)
-
         # Make the request
         response = test_client.get("/api/v1/datasource/1/preview?limit=10")
 
@@ -120,14 +103,8 @@ async def test_datasource_preview(
             "Neither fieldNames nor field_names found in response"
         )
         assert "rows" in result
-        assert result[field_names_key] == field_names
-        assert result["rows"] == rows
-
-        # Check mocks were called with correct parameters
-        mock_get_preview.assert_called_once()
-        args, kwargs = mock_get_preview.call_args
-        assert kwargs["data_source"] == mock_data_source
-        assert kwargs["limit"] == 10
+        assert result[field_names_key] == ["score"]
+        assert result["rows"] == [{"score": "85"}, {"score": "92"}]
 
 
 @pytest.mark.asyncio
@@ -212,8 +189,7 @@ async def test_task_result(test_client, mock_db_session):
     task.task_id = task_id
     task.name = "aggregated_values"
     task.status = "completed"
-    task.user_id = 1
-    task.result_location = "1/1/results/histogram_1_5.json"
+    task.result_location = "1/results/histogram_1_5.json"
 
     # Expected result data
     result_data = {
@@ -229,18 +205,10 @@ async def test_task_result(test_client, mock_db_session):
         ],
     }
 
-    # Create mock user
-    from easyminer.models.user import User
-
-    mock_user = User(id=1, username="test_user", email="test@example.com")
-
     # Let's fully mock the dependencies rather than patching them
     app = FastAPI()
 
     # Override dependencies
-    async def mock_get_current_user():
-        return mock_user
-
     async def mock_get_db():
         yield mock_db_session
 

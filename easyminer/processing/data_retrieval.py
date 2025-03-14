@@ -21,7 +21,6 @@ class DataRetrieval:
     def __init__(
         self,
         storage: DiskStorage,
-        user_id: int,
         data_source_id: int,
         encoding: str = "utf-8",
         separator: str = ",",
@@ -31,19 +30,19 @@ class DataRetrieval:
 
         Args:
             storage: Storage instance for accessing files
-            user_id: User ID for determining storage paths
             data_source_id: Data source ID
             encoding: Text encoding for CSV files
             separator: CSV separator character
             quote_char: CSV quote character
         """
         self.storage = storage
-        self.user_id = user_id
         self.data_source_id = data_source_id
         self.encoding = encoding
         self.separator = separator
         self.quote_char = quote_char
         self.logger = logging.getLogger(__name__)
+        self.chunks_dir = Path(f"{data_source_id}/chunks")
+        self.results_dir = Path(f"{data_source_id}/results")
 
     async def get_preview_data(
         self, limit: int = 10, field_ids: list[int] | None = None
@@ -62,11 +61,9 @@ class DataRetrieval:
         Raises:
             FileNotFoundError: If no data chunks are found
         """
-        storage_dir = Path(f"{self.user_id}/{self.data_source_id}/chunks")
-
         try:
             # Get list of chunk files
-            chunk_files = self.storage.list_files(storage_dir, "*.chunk")
+            chunk_files = self.storage.list_files(self.chunks_dir, "*.chunk")
             if not chunk_files:
                 raise FileNotFoundError(
                     f"No chunks found for data source {self.data_source_id}"
@@ -203,15 +200,12 @@ class DataRetrieval:
         if range_min >= range_max:
             raise ValueError(f"Invalid range: min={range_min}, max={range_max}")
 
-        # Read the data to build the histogram
-        storage_dir = Path(f"{self.user_id}/{self.data_source_id}/chunks")
-
         # Get all values for the field
         field_values = []
 
         try:
             # Get list of chunk files
-            chunk_files = self.storage.list_files(storage_dir, "*.chunk")
+            chunk_files = self.storage.list_files(self.chunks_dir, "*.chunk")
             if not chunk_files:
                 raise FileNotFoundError(
                     f"No chunks found for data source {self.data_source_id}"
@@ -330,13 +324,12 @@ class DataRetrieval:
                     )
 
             # Save results to a JSON file
-            result_dir = Path(f"{self.user_id}/{self.data_source_id}/results")
             result_file = f"histogram_{field.id}_{bins}.json"
-            result_path = result_dir / result_file
+            result_path = self.results_dir / result_file
 
             # Create directory if it doesn't exist
-            if not self.storage.exists(result_dir):
-                result_dir.mkdir(parents=True, exist_ok=True)
+            if not self.storage.exists(self.results_dir):
+                self.storage.save(self.results_dir / ".keep", b"")  # Create directory
 
             # Save to JSON
             json_content = json.dumps(
@@ -389,7 +382,6 @@ class DataRetrieval:
 async def get_data_preview(
     db: AsyncSession,
     data_source: DataSource,
-    user_id: int,
     limit: int = 10,
     field_ids: list[int] | None = None,
 ) -> tuple[list[str], list[dict[str, Any]]]:
@@ -398,35 +390,21 @@ async def get_data_preview(
     Args:
         db: Database session
         data_source: Data source object
-        user_id: User ID
         limit: Maximum number of rows to return
         field_ids: List of field IDs to include (or None for all fields)
 
     Returns:
         Tuple of (field_names, rows)
     """
-    # Get data source settings
+    # Get data source settings - use defaults
     encoding = "utf-8"
     separator = ","
     quote_char = '"'
-
-    # If there's an upload associated with this data source, try to get settings from it
-    if data_source.upload and hasattr(data_source.upload, "encoding"):
-        if data_source.upload.encoding:
-            encoding = data_source.upload.encoding
-        if hasattr(data_source.upload, "separator") and data_source.upload.separator:
-            separator = data_source.upload.separator
-        if (
-            hasattr(data_source.upload, "quotes_char")
-            and data_source.upload.quotes_char
-        ):
-            quote_char = data_source.upload.quotes_char
 
     # Create data retrieval instance
     storage = DiskStorage(Path("../../var/data"))
     retrieval = DataRetrieval(
         storage=storage,
-        user_id=user_id,
         data_source_id=data_source.id,
         encoding=encoding,
         separator=separator,
@@ -472,7 +450,6 @@ async def generate_histogram_for_field(
     db: AsyncSession,
     field: Field,
     data_source: DataSource,
-    user_id: int,
     bins: int = 10,
     min_value: float | None = None,
     max_value: float | None = None,
@@ -485,7 +462,6 @@ async def generate_histogram_for_field(
         db: Database session
         field: Field to generate histogram for
         data_source: Data source
-        user_id: User ID
         bins: Number of bins to use
         min_value: Minimum value to include
         max_value: Maximum value to include
@@ -495,28 +471,15 @@ async def generate_histogram_for_field(
     Returns:
         Tuple of (histogram_data, result_path)
     """
-    # Get data source settings
+    # Get data source settings - use defaults
     encoding = "utf-8"
     separator = ","
     quote_char = '"'
-
-    # If there's an upload associated with this data source, try to get settings from it
-    if data_source.upload and hasattr(data_source.upload, "encoding"):
-        if data_source.upload.encoding:
-            encoding = data_source.upload.encoding
-        if hasattr(data_source.upload, "separator") and data_source.upload.separator:
-            separator = data_source.upload.separator
-        if (
-            hasattr(data_source.upload, "quotes_char")
-            and data_source.upload.quotes_char
-        ):
-            quote_char = data_source.upload.quotes_char
 
     # Create data retrieval instance
     storage = DiskStorage(Path("../../var/data"))
     retrieval = DataRetrieval(
         storage=storage,
-        user_id=user_id,
         data_source_id=data_source.id,
         encoding=encoding,
         separator=separator,
@@ -536,21 +499,26 @@ async def generate_histogram_for_field(
     return histogram_data, result_path
 
 
-async def read_task_result(user_id: int, result_path: str) -> dict[str, Any]:
+async def read_task_result(result_path: str) -> dict[str, Any]:
     """Read a task result file.
 
     Args:
-        user_id: User ID
         result_path: Path to the result file
 
     Returns:
         The file contents parsed as JSON
     """
     storage = DiskStorage(Path("../../var/data"))
-    retrieval = DataRetrieval(
-        storage=storage,
-        user_id=user_id,
-        data_source_id=0,  # Not used for reading results
-    )
 
-    return await retrieval.read_file_result(result_path)
+    try:
+        content = storage.read(Path(result_path))
+        return json.loads(content.decode("utf-8"))
+    except FileNotFoundError:
+        logger.error(f"Result file {result_path} not found")
+        raise
+    except json.JSONDecodeError as e:
+        logger.error(f"Error decoding JSON in result file {result_path}: {e}")
+        raise ValueError(f"Invalid JSON format in result file: {e}")
+    except Exception as e:
+        logger.error(f"Error reading result file {result_path}: {e}")
+        raise

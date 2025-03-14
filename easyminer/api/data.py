@@ -21,7 +21,6 @@ from fastapi import (
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from easyminer.api.dependencies.auth import get_current_user
 from easyminer.api.dependencies.db import get_db_session
 from easyminer.config import API_V1_PREFIX
 from easyminer.crud.data_source import (
@@ -45,7 +44,7 @@ from easyminer.crud.upload import (
     get_upload_by_id,
     get_upload_by_uuid,
 )
-from easyminer.models import DataSource, Field, User
+from easyminer.models import DataSource, Field
 from easyminer.processing import CsvProcessor
 from easyminer.processing.csv_utils import extract_field_values_from_csv
 from easyminer.processing.data_retrieval import (
@@ -130,7 +129,6 @@ class TaskResult(BaseSchema):
 @router.post("/upload/start", response_model=UUID)
 async def start_upload(
     settings: UploadSettings,
-    user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ):
     """Start a new upload process."""
@@ -143,7 +141,6 @@ async def upload_chunk(
     upload_id: str,
     request: Request,
     db: Annotated[AsyncSession, Depends(get_db_session)],
-    user: Annotated[User, Depends(get_current_user)],
 ) -> Response:
     """Upload a chunk of data for an upload.
 
@@ -151,14 +148,12 @@ async def upload_chunk(
         upload_id: The UUID of the upload.
         request: The request object containing the chunk data.
         db: Database session.
-        user: Current authenticated user.
 
     Returns:
         Response with 202 Accepted status code.
 
     Raises:
-        HTTPException: If the upload is not found, the user doesn't have access,
-            or there's an error processing the chunk.
+        HTTPException: If the upload is not found, or there's an error processing the chunk.
     """
     storage = DiskStorage(Path("../../var/data"))
 
@@ -205,19 +200,10 @@ async def upload_chunk(
                 db_session=db,
                 name=upload_name,
                 type=upload_media_type,
-                user_id=user.id,
-                upload_id=upload_id_value,
                 size_bytes=len(chunk),
             )
             data_source_id = data_source_record.id
         else:
-            # Check permissions
-            if data_source_record.user_id != user.id:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="You don't have access to this upload",
-                )
-
             # Store data source ID before updating
             data_source_id = data_source_record.id
 
@@ -231,7 +217,7 @@ async def upload_chunk(
             if len(chunk) > 0:
                 # Use the storage service to save the chunk
                 chunk_path = Path(
-                    f"{user.id}/{data_source_id}/chunks/{datetime.now().strftime('%Y%m%d%H%M%S%f')}.chunk"
+                    f"{data_source_id}/chunks/{datetime.now().strftime('%Y%m%d%H%M%S%f')}.chunk"
                 )
                 storage.save(chunk_path, chunk)
             else:
@@ -262,9 +248,7 @@ async def upload_chunk(
                         separator=separator,
                         quote_char=quote_char,
                     )
-                    storage_dir = Path(
-                        f"../../var/data/{user.id}/{data_source_id}/chunks"
-                    )
+                    storage_dir = Path(f"../../var/data/{data_source_id}/chunks")
                     await processor.process_chunks(storage_dir)
                 except Exception as e:
                     logging.error(f"Error processing CSV: {str(e)}", exc_info=True)
@@ -299,7 +283,6 @@ async def upload_chunk(
 @router.post("/upload/preview/start", response_model=UUID)
 async def start_preview_upload(
     settings: PreviewUpload,
-    user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ):
     """Start a new preview upload process."""
@@ -317,7 +300,6 @@ async def upload_preview_chunk(
     upload_id: str,
     request: Request,
     db: Annotated[AsyncSession, Depends(get_db_session)],
-    user: Annotated[User, Depends(get_current_user)],
     max_lines: Annotated[int, Query(gt=0, le=1000)] = 100,
 ) -> Response:
     """Upload a chunk of preview data.
@@ -326,7 +308,6 @@ async def upload_preview_chunk(
         upload_id: The UUID of the upload
         request: Request containing the chunk data
         db: Database session
-        user: Current authenticated user
         max_lines: Maximum number of lines to process for preview
 
     Returns:
@@ -360,25 +341,17 @@ async def upload_preview_chunk(
                 db_session=db,
                 name=upload_record.name,
                 type=upload_record.media_type,
-                user_id=user.id,
-                upload_id=upload_record.id,
                 size_bytes=len(chunk),
             )
             data_source_id = data_source_record.id
         else:
-            # Check permissions
-            if data_source_record.user_id != user.id:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="You don't have access to this upload",
-                )
             data_source_id = data_source_record.id
 
         # Store the chunk using DiskStorage
         try:
             storage.save(
                 Path(
-                    f"{user.id}/{data_source_id}/preview_chunks/{datetime.now().strftime('%Y%m%d%H%M%S%f')}.chunk"
+                    f"{data_source_id}/preview_chunks/{datetime.now().strftime('%Y%m%d%H%M%S%f')}.chunk"
                 ),
                 chunk,
             )
@@ -420,9 +393,7 @@ async def upload_preview_chunk(
                     separator=separator,
                     quote_char=quote_char,
                 )
-                storage_dir = Path(
-                    f"../../var/data/{user.id}/{data_source_id}/preview_chunks"
-                )
+                storage_dir = Path(f"../../var/data/{data_source_id}/preview_chunks")
                 await processor.process_chunks(storage_dir)
 
                 # Update the data source with the max_lines limit for preview
@@ -461,18 +432,16 @@ async def upload_preview_chunk(
 
 @router.get("/datasource", response_model=list[DataSourceRead])
 async def list_data_sources(
-    user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ):
     """List all data sources for the current user."""
-    data_sources = await get_data_sources_by_user(db, user.id)
+    data_sources = await get_data_sources_by_user(db)
     return data_sources
 
 
 @router.post("/datasource", response_model=DataSourceRead)
 async def create_datasource(
     data: DataSourceCreate,
-    user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ):
     """Create a new data source."""
@@ -480,7 +449,6 @@ async def create_datasource(
         db_session=db,
         name=data.name,
         type=data.type,
-        user_id=user.id,
         size_bytes=data.size_bytes if hasattr(data, "size_bytes") else 0,
         row_count=data.row_count if hasattr(data, "row_count") else 0,
     )
@@ -490,11 +458,10 @@ async def create_datasource(
 @router.get("/datasource/{id}", response_model=DataSourceRead)
 async def get_data_source_api(
     id: Annotated[int, FastAPIPath()],
-    user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ):
     """Get a specific data source."""
-    data_source = await get_data_source_by_id(db, id, user.id)
+    data_source = await get_data_source_by_id(db, id)
     if not data_source:
         raise HTTPException(status_code=404, detail="Data source not found")
     return data_source
@@ -503,7 +470,6 @@ async def get_data_source_api(
 @router.get("/datasource/{id}/preview", response_model=PreviewResponse)
 async def preview_data_source(
     id: Annotated[int, FastAPIPath()],
-    user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
     limit: Annotated[int, Query(ge=1, le=100)] = 10,
 ):
@@ -511,7 +477,6 @@ async def preview_data_source(
 
     Args:
         id: The ID of the data source
-        user: Current authenticated user
         db: Database session
         limit: Maximum number of rows to return
 
@@ -519,7 +484,7 @@ async def preview_data_source(
         Preview data including field names and values
     """
     # Get the data source
-    data_source = await get_data_source_by_id(db, id, user.id)
+    data_source = await get_data_source_by_id(db, id)
     if not data_source:
         raise HTTPException(status_code=404, detail="Data source not found")
 
@@ -532,7 +497,7 @@ async def preview_data_source(
     # Retrieve actual data from storage
     try:
         field_names, rows = await get_data_preview(
-            db=db, data_source=data_source, user_id=user.id, limit=limit
+            db=db, data_source=data_source, limit=limit
         )
 
         return {"field_names": field_names, "rows": rows}
@@ -546,11 +511,10 @@ async def preview_data_source(
 @router.delete("/datasource/{id}", status_code=status.HTTP_200_OK)
 async def delete_data_source_api(
     id: Annotated[int, FastAPIPath()],
-    user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ):
     """Delete a data source."""
-    success = await delete_data_source(db, id, user.id)
+    success = await delete_data_source(db, id)
     if not success:
         raise HTTPException(status_code=404, detail="Data source not found")
 
@@ -561,12 +525,11 @@ async def delete_data_source_api(
 @router.put("/datasource/{id}", status_code=status.HTTP_200_OK)
 async def rename_data_source(
     id: Annotated[int, FastAPIPath()],
-    user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
     name: Annotated[str, Body(media_type="text/plain; charset=UTF-8")],
 ):
     """Rename a data source."""
-    data_source = await update_data_source_name(db, id, user.id, name)
+    data_source = await update_data_source_name(db, id, name)
     if not data_source:
         raise HTTPException(status_code=404, detail="Data source not found")
 
@@ -577,15 +540,14 @@ async def rename_data_source(
 @router.get("/datasource/{id}/instances")
 async def get_instances(
     id: Annotated[int, FastAPIPath()],
-    user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
     offset: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=1000)] = 100,
     field_ids: Annotated[list[int] | None, Query()] = None,
 ) -> list[dict[str, Any]]:
     """Get instances from a data source."""
-    # Check if data source exists and belongs to the user
-    data_source = await get_data_source_by_id(db, id, user.id)
+    # Check if data source exists
+    data_source = await get_data_source_by_id(db, id)
     if not data_source:
         raise HTTPException(status_code=404, detail="Data source not found")
 
@@ -612,7 +574,6 @@ async def get_instances(
         field_names, rows = await get_data_preview(
             db=db,
             data_source=data_source,
-            user_id=user.id,
             limit=offset + limit,  # Fetch enough rows to apply offset
             field_ids=field_ids,
         )
@@ -638,21 +599,19 @@ async def get_instances(
 @router.get("/datasource/{id}/field", response_model=list[FieldRead])
 async def get_fields_api(
     id: Annotated[int, FastAPIPath()],
-    user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ):
     """List all fields for a data source.
 
     Args:
         id: The ID of the data source
-        user: Current authenticated user
         db: Database session
 
     Returns:
         List of fields for the data source
     """
     # Get the data source to validate access
-    data_source = await get_data_source_by_id(db, id, user.id)
+    data_source = await get_data_source_by_id(db, id)
     if not data_source:
         raise HTTPException(status_code=404, detail="Data source not found")
 
@@ -666,7 +625,6 @@ async def get_fields_api(
 async def get_field_api(
     id: Annotated[int, FastAPIPath()],
     fieldId: Annotated[int, FastAPIPath()],
-    user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ):
     """Get metadata for a specific field.
@@ -674,14 +632,13 @@ async def get_field_api(
     Args:
         id: The ID of the data source
         fieldId: The ID of the field
-        user: Current authenticated user
         db: Database session
 
     Returns:
         Field metadata
     """
     # Get the data source to validate access
-    data_source = await get_data_source_by_id(db, id, user.id)
+    data_source = await get_data_source_by_id(db, id)
     if not data_source:
         raise HTTPException(status_code=404, detail="Data source not found")
 
@@ -697,12 +654,11 @@ async def get_field_api(
 async def get_field_stats(
     id: Annotated[int, FastAPIPath()],
     fieldId: Annotated[int, FastAPIPath()],
-    user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ):
     """Get statistical information about a field."""
     # Check if data source exists and belongs to the user
-    data_source = await get_data_source_by_id(db, id, user.id)
+    data_source = await get_data_source_by_id(db, id)
     if not data_source:
         raise HTTPException(status_code=404, detail="Data source not found")
 
@@ -733,7 +689,6 @@ async def get_field_stats(
 async def get_field_values(
     id: Annotated[int, FastAPIPath()],
     fieldId: Annotated[int, FastAPIPath()],
-    user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
     offset: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(gt=0, le=100)] = 20,
@@ -743,7 +698,6 @@ async def get_field_values(
     Args:
         id: The ID of the data source
         fieldId: The ID of the field
-        user: Current authenticated user
         db: Database session
         offset: Pagination offset
         limit: Number of values to return
@@ -755,7 +709,7 @@ async def get_field_values(
         HTTPException: If the data source or field is not found
     """
     # First check data source
-    data_source = await get_data_source_by_id(db, id, user.id)
+    data_source = await get_data_source_by_id(db, id)
     if not data_source:
         raise HTTPException(status_code=404, detail="Data source not found")
 
@@ -767,7 +721,7 @@ async def get_field_values(
     try:
         # Initialize storage and settings
         storage = DiskStorage(Path("../../var/data"))
-        storage_dir = Path(f"{user.id}/{id}/chunks")
+        storage_dir = Path(f"{id}/chunks")
         encoding = "utf-8"
         separator = ","
         quote_char = '"'
@@ -854,7 +808,6 @@ async def get_field_values(
 async def get_aggregated_values(
     id: Annotated[int, FastAPIPath()],
     fieldId: Annotated[int, FastAPIPath()],
-    user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
     bins: Annotated[int, Query(gt=0, le=1000)] = 10,
     min_value: float | None = None,
@@ -871,7 +824,6 @@ async def get_aggregated_values(
     Args:
         id: The ID of the data source
         fieldId: The ID of the field
-        user: Current authenticated user
         db: Database session
         bins: Number of bins (2-1000)
         min_value: Minimum value (optional)
@@ -883,8 +835,8 @@ async def get_aggregated_values(
     Returns:
         TaskStatus: Information about the created task
     """
-    # Check if data source exists and belongs to the user
-    data_source = await get_data_source_by_id(db, id, user.id)
+    # Check if data source exists
+    data_source = await get_data_source_by_id(db, id)
     if not data_source:
         raise HTTPException(status_code=404, detail="Data source not found")
 
@@ -905,7 +857,6 @@ async def get_aggregated_values(
         db_session=db,
         task_id=task_id,
         name="aggregated_values",
-        user_id=user.id,
         data_source_id=id,
     )
 
@@ -928,7 +879,7 @@ async def get_aggregated_values(
                 )
 
                 # Get data source and field again in this session
-                data_source_record = await get_data_source_by_id(session, id, user.id)
+                data_source_record = await get_data_source_by_id(session, id)
                 field_record = await get_field_by_id(session, fieldId, id)
 
                 if not data_source_record or not field_record:
@@ -946,7 +897,6 @@ async def get_aggregated_values(
                         db=session,
                         field=field_record,
                         data_source=data_source_record,
-                        user_id=user.id,
                         bins=bins,
                         min_value=min_value,
                         max_value=max_value,
@@ -990,14 +940,12 @@ async def get_aggregated_values(
 @router.get("/task-status/{taskId}", response_model=TaskStatus)
 async def get_task_status(
     taskId: Annotated[UUID, FastAPIPath()],
-    user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ):
     """Get status of a task.
 
     Args:
         taskId: The ID of the task
-        user: Current authenticated user
         db: Database session
 
     Returns:
@@ -1006,8 +954,8 @@ async def get_task_status(
     # Look up the task by ID
     task = await get_task_by_id(db, taskId)
 
-    # Check if the task exists and belongs to the user
-    if not task or task.user_id != user.id:
+    # Check if the task exists
+    if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
     # Return task information
@@ -1023,14 +971,12 @@ async def get_task_status(
 @router.get("/task-result/{taskId}", response_model=dict[str, Any])
 async def get_task_result(
     taskId: Annotated[UUID, FastAPIPath()],
-    user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ):
     """Get the result of a completed task.
 
     Args:
         taskId: The ID of the task
-        user: Current authenticated user
         db: Database session
 
     Returns:
@@ -1039,8 +985,8 @@ async def get_task_result(
     # Look up the task by ID
     task = await get_task_by_id(db, taskId)
 
-    # Check if the task exists and belongs to the user
-    if not task or task.user_id != user.id:
+    # Check if the task exists
+    if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
     # Check if the task is completed
@@ -1060,7 +1006,7 @@ async def get_task_result(
     # Return the actual result
     try:
         # Read the task result
-        result_data = await read_task_result(user.id, task.result_location)
+        result_data = await read_task_result(task.result_location)
         return result_data
     except FileNotFoundError:
         raise HTTPException(
