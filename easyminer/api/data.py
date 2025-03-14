@@ -806,6 +806,7 @@ async def get_field_values(
     response_model=TaskStatus,
 )
 async def get_aggregated_values(
+    request: Request,
     id: Annotated[int, FastAPIPath()],
     fieldId: Annotated[int, FastAPIPath()],
     db: Annotated[AsyncSession, Depends(get_db_session)],
@@ -932,14 +933,15 @@ async def get_aggregated_values(
         "task_id": task_id,
         "task_name": "aggregated_values",
         "status_message": "Histogram generation started",
-        "status_location": f"/api/v1/task-status/{task_id}",
+        "status_location": request.url_for("get_task_status", task_id=task_id).path,
         "result_location": None,
     }
 
 
-@router.get("/task-status/{taskId}", response_model=TaskStatus)
+@router.get("/task-status/{task_id}", response_model=TaskStatus)
 async def get_task_status(
-    taskId: Annotated[UUID, FastAPIPath()],
+    request: Request,
+    task_id: Annotated[UUID, FastAPIPath()],
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ):
     """Get status of a task.
@@ -952,7 +954,7 @@ async def get_task_status(
         TaskStatus: Task status information
     """
     # Look up the task by ID
-    task = await get_task_by_id(db, taskId)
+    task = await get_task_by_id(db, task_id)
 
     # Check if the task exists
     if not task:
@@ -963,7 +965,7 @@ async def get_task_status(
         "task_id": task.task_id,
         "task_name": task.name,
         "status_message": task.status_message,
-        "status_location": f"/api/v1/task-status/{taskId}",
+        "status_location": request.url_for("get_task_status", task_id=task_id).path,
         "result_location": task.result_location if task.result_location else None,
     }
 
