@@ -1,7 +1,7 @@
 import logging
+import pathlib as pl
 from datetime import datetime
 from enum import Enum
-from pathlib import Path
 from typing import Annotated, Any, cast
 from uuid import UUID, uuid4
 
@@ -11,13 +11,11 @@ from fastapi import (
     Body,
     Depends,
     HTTPException,
+    Path,
     Query,
     Request,
     Response,
     status,
-)
-from fastapi import (
-    Path as FastAPIPath,
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -155,7 +153,7 @@ async def upload_chunk(
     Raises:
         HTTPException: If the upload is not found, or there's an error processing the chunk.
     """
-    storage = DiskStorage(Path("../../var/data"))
+    storage = DiskStorage(pl.Path("../../var/data"))
 
     try:
         # Read the chunk data from the request body
@@ -216,7 +214,7 @@ async def upload_chunk(
         try:
             if len(chunk) > 0:
                 # Use the storage service to save the chunk
-                chunk_path = Path(
+                chunk_path = pl.Path(
                     f"{data_source_id}/chunks/{datetime.now().strftime('%Y%m%d%H%M%S%f')}.chunk"
                 )
                 storage.save(chunk_path, chunk)
@@ -248,7 +246,7 @@ async def upload_chunk(
                         separator=separator,
                         quote_char=quote_char,
                     )
-                    storage_dir = Path(f"../../var/data/{data_source_id}/chunks")
+                    storage_dir = pl.Path(f"../../var/data/{data_source_id}/chunks")
                     await processor.process_chunks(storage_dir)
                 except Exception as e:
                     logging.error(f"Error processing CSV: {str(e)}", exc_info=True)
@@ -393,7 +391,7 @@ async def upload_preview_chunk(
                     separator=separator,
                     quote_char=quote_char,
                 )
-                storage_dir = Path(f"../../var/data/{data_source_id}/preview_chunks")
+                storage_dir = pl.Path(f"../../var/data/{data_source_id}/preview_chunks")
                 await processor.process_chunks(storage_dir)
 
                 # Update the data source with the max_lines limit for preview
@@ -457,7 +455,7 @@ async def create_datasource(
 
 @router.get("/datasource/{id}", response_model=DataSourceRead)
 async def get_data_source_api(
-    id: Annotated[int, FastAPIPath()],
+    id: Annotated[int, Path()],
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ):
     """Get a specific data source."""
@@ -469,7 +467,7 @@ async def get_data_source_api(
 
 @router.get("/datasource/{id}/preview", response_model=PreviewResponse)
 async def preview_data_source(
-    id: Annotated[int, FastAPIPath()],
+    id: Annotated[int, Path()],
     db: Annotated[AsyncSession, Depends(get_db_session)],
     limit: Annotated[int, Query(ge=1, le=100)] = 10,
 ):
@@ -510,7 +508,7 @@ async def preview_data_source(
 
 @router.delete("/datasource/{id}", status_code=status.HTTP_200_OK)
 async def delete_data_source_api(
-    id: Annotated[int, FastAPIPath()],
+    id: Annotated[int, Path()],
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ):
     """Delete a data source."""
@@ -524,7 +522,7 @@ async def delete_data_source_api(
 
 @router.put("/datasource/{id}", status_code=status.HTTP_200_OK)
 async def rename_data_source(
-    id: Annotated[int, FastAPIPath()],
+    id: Annotated[int, Path()],
     db: Annotated[AsyncSession, Depends(get_db_session)],
     name: Annotated[str, Body(media_type="text/plain; charset=UTF-8")],
 ):
@@ -539,7 +537,7 @@ async def rename_data_source(
 
 @router.get("/datasource/{id}/instances")
 async def get_instances(
-    id: Annotated[int, FastAPIPath()],
+    id: Annotated[int, Path()],
     db: Annotated[AsyncSession, Depends(get_db_session)],
     offset: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=1000)] = 100,
@@ -598,7 +596,7 @@ async def get_instances(
 
 @router.get("/datasource/{id}/field", response_model=list[FieldRead])
 async def get_fields_api(
-    id: Annotated[int, FastAPIPath()],
+    id: Annotated[int, Path()],
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ):
     """List all fields for a data source.
@@ -623,8 +621,8 @@ async def get_fields_api(
 
 @router.get("/datasource/{id}/field/{fieldId}", response_model=FieldRead)
 async def get_field_api(
-    id: Annotated[int, FastAPIPath()],
-    fieldId: Annotated[int, FastAPIPath()],
+    id: Annotated[int, Path()],
+    fieldId: Annotated[int, Path()],
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ):
     """Get metadata for a specific field.
@@ -652,8 +650,8 @@ async def get_field_api(
 
 @router.get("/datasource/{id}/field/{fieldId}/stats", response_model=Stats)
 async def get_field_stats(
-    id: Annotated[int, FastAPIPath()],
-    fieldId: Annotated[int, FastAPIPath()],
+    id: Annotated[int, Path()],
+    fieldId: Annotated[int, Path()],
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ):
     """Get statistical information about a field."""
@@ -687,8 +685,8 @@ async def get_field_stats(
 
 @router.get("/datasource/{id}/field/{fieldId}/values", response_model=list[Value])
 async def get_field_values(
-    id: Annotated[int, FastAPIPath()],
-    fieldId: Annotated[int, FastAPIPath()],
+    id: Annotated[int, Path()],
+    fieldId: Annotated[int, Path()],
     db: Annotated[AsyncSession, Depends(get_db_session)],
     offset: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(gt=0, le=100)] = 20,
@@ -720,8 +718,8 @@ async def get_field_values(
 
     try:
         # Initialize storage and settings
-        storage = DiskStorage(Path("../../var/data"))
-        storage_dir = Path(f"{id}/chunks")
+        storage = DiskStorage(pl.Path("../../var/data"))
+        storage_dir = pl.Path(f"{id}/chunks")
         encoding = "utf-8"
         separator = ","
         quote_char = '"'
@@ -807,8 +805,8 @@ async def get_field_values(
 )
 async def get_aggregated_values(
     request: Request,
-    id: Annotated[int, FastAPIPath()],
-    fieldId: Annotated[int, FastAPIPath()],
+    id: Annotated[int, Path()],
+    fieldId: Annotated[int, Path()],
     db: Annotated[AsyncSession, Depends(get_db_session)],
     bins: Annotated[int, Query(gt=0, le=1000)] = 10,
     min_value: float | None = None,
@@ -941,7 +939,7 @@ async def get_aggregated_values(
 @router.get("/task-status/{task_id}", response_model=TaskStatus)
 async def get_task_status(
     request: Request,
-    task_id: Annotated[UUID, FastAPIPath()],
+    task_id: Annotated[UUID, Path()],
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ):
     """Get status of a task.
@@ -972,7 +970,7 @@ async def get_task_status(
 
 @router.get("/task-result/{taskId}", response_model=dict[str, Any])
 async def get_task_result(
-    taskId: Annotated[UUID, FastAPIPath()],
+    taskId: Annotated[UUID, Path()],
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ):
     """Get the result of a completed task.
