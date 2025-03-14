@@ -20,7 +20,6 @@ from fastapi import (
 from fastapi import (
     Path as FastAPIPath,
 )
-from pydantic import BaseModel
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -31,6 +30,7 @@ from easyminer.models import DataSource, Field, Upload, User
 from easyminer.models import Field as FieldModel
 from easyminer.processing import CsvProcessor
 from easyminer.processing.csv_utils import extract_field_values_from_csv
+from easyminer.schemas import BaseSchema
 from easyminer.schemas.data import (
     DataSourceCreate,
     DataSourceRead,
@@ -68,13 +68,13 @@ class RdfFormat(str, Enum):
     ttl = "ttl"
 
 
-class Stats(BaseModel):
+class Stats(BaseSchema):
     min: float
     max: float
     avg: float
 
 
-class TaskStatus(BaseModel):
+class TaskStatus(BaseSchema):
     task_id: UUID
     task_name: str
     status_message: str | None = None
@@ -82,9 +82,23 @@ class TaskStatus(BaseModel):
     result_location: str | None = None
 
 
-class PreviewUpload(BaseModel):
-    maxLines: int
+class PreviewUpload(BaseSchema):
+    max_lines: int
     compression: CompressionType | None = None
+
+
+class PreviewResponse(BaseSchema):
+    """Response model for the data source preview endpoint."""
+
+    field_names: list[str]
+    rows: list[dict[str, Any]]
+
+
+class TaskResult(BaseSchema):
+    """Response model for the task result endpoint."""
+
+    message: str
+    result_location: str
 
 
 @router.post("/upload/start", response_model=UUID)
@@ -297,7 +311,7 @@ async def start_preview_upload(
         locale="en_US",
         compression=settings.compression.value if settings.compression else None,
         format="csv",
-        preview_max_lines=settings.maxLines,
+        preview_max_lines=settings.max_lines,
     )
     db.add(upload)
     await db.commit()
@@ -496,7 +510,7 @@ async def get_data_source(
     return data_source
 
 
-@router.get("/datasource/{id}/preview")
+@router.get("/datasource/{id}/preview", response_model=PreviewResponse)
 async def preview_data_source(
     id: Annotated[int, FastAPIPath()],
     user: Annotated[User, Depends(get_current_user)],
@@ -1053,7 +1067,7 @@ async def get_task_status(
     }
 
 
-@router.get("/task-result/{taskId}")
+@router.get("/task-result/{taskId}", response_model=TaskResult)
 async def get_task_result(
     taskId: Annotated[UUID, FastAPIPath()],
     user: Annotated[User, Depends(get_current_user)],

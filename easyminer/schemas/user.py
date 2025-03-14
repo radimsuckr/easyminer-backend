@@ -1,7 +1,9 @@
-from pydantic import BaseModel, ConfigDict
+from pydantic import ConfigDict
+
+from easyminer.schemas import BaseSchema
 
 
-class User(BaseModel):
+class User(BaseSchema):
     model_config = ConfigDict(from_attributes=True)
 
     id: int

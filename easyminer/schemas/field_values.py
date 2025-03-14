@@ -2,10 +2,10 @@
 
 from typing import Any
 
-from pydantic import BaseModel
+from easyminer.schemas import BaseSchema
 
 
-class Value(BaseModel):
+class Value(BaseSchema):
     """A value for a field with its frequency."""
 
     id: int

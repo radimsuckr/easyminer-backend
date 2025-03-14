@@ -68,8 +68,8 @@ async def test_create_data_source(override_dependencies, test_db):
     data_source = response.json()
     assert data_source["name"] == "New Data Source"
     assert data_source["type"] == "csv"
-    assert data_source["size_bytes"] == 2000
-    assert data_source["row_count"] == 20
+    assert data_source["sizeBytes"] == 2000
+    assert data_source["rowCount"] == 20
 
     # Verify the data source was created in the database
     result = await test_db.execute(
@@ -165,9 +165,9 @@ async def test_list_fields(override_dependencies, test_db):
     # Check that the field types are correct
     for field in response.json():
         if field["name"] == "test_field_1":
-            assert field["data_type"] == "string"
+            assert field["dataType"] == "string"
         elif field["name"] == "test_field_2":
-            assert field["data_type"] == "integer"
+            assert field["dataType"] == "integer"
 
 
 # Test for get_field endpoint
@@ -219,16 +219,16 @@ async def test_get_field(override_dependencies, test_db):
 
     # Verify field data
     assert field_data["name"] == "test_numeric_field"
-    assert field_data["data_type"] == "float"
+    assert field_data["dataType"] == "float"
     assert field_data["id"] == field_id
-    assert field_data["data_source_id"] == data_source_id
+    assert field_data["dataSourceId"] == data_source_id
     assert field_data["index"] == 0
-    assert field_data["min_value"] == "0.5"
-    assert field_data["max_value"] == "100.5"
-    assert field_data["avg_value"] == 50.25
-    assert field_data["std_value"] == 25.5
-    assert field_data["unique_values_count"] == 20
-    assert field_data["missing_values_count"] == 5
+    assert field_data["minValue"] == "0.5"
+    assert field_data["maxValue"] == "100.5"
+    assert field_data["avgValue"] == 50.25
+    assert field_data["stdValue"] == 25.5
+    assert field_data["uniqueValuesCount"] == 20
+    assert field_data["missingValuesCount"] == 5
 
 
 # Test for preview_data_source endpoint
@@ -286,14 +286,14 @@ async def test_preview_data_source(override_dependencies, test_db):
     preview_data = response.json()
 
     # Check structure of preview data
-    assert "field_names" in preview_data
+    assert "fieldNames" in preview_data
     assert "rows" in preview_data
 
     # Check field names
-    assert len(preview_data["field_names"]) == 3
-    assert "id" in preview_data["field_names"]
-    assert "name" in preview_data["field_names"]
-    assert "value" in preview_data["field_names"]
+    assert len(preview_data["fieldNames"]) == 3
+    assert "id" in preview_data["fieldNames"]
+    assert "name" in preview_data["fieldNames"]
+    assert "value" in preview_data["fieldNames"]
 
     # Check rows
     assert len(preview_data["rows"]) <= 5  # Should respect the limit parameter
@@ -641,11 +641,11 @@ async def test_get_task_status(override_dependencies, test_db):
     )
     assert response.status_code == 200
     status_data = response.json()
-    assert status_data["task_id"] == str(pending_task_id)
-    assert status_data["task_name"] == "test_pending_task"
-    assert status_data["status_message"] == "Task created and waiting to start"
-    assert "status_location" in status_data
-    assert status_data["result_location"] is None
+    assert status_data["taskId"] == str(pending_task_id)
+    assert status_data["taskName"] == "test_pending_task"
+    assert status_data["statusMessage"] == "Task created and waiting to start"
+    assert "statusLocation" in status_data
+    assert status_data["resultLocation"] is None
 
     # Test 2: Get status of an in-progress task
     response = client.get(
@@ -654,9 +654,9 @@ async def test_get_task_status(override_dependencies, test_db):
     )
     assert response.status_code == 200
     status_data = response.json()
-    assert status_data["task_id"] == str(in_progress_task_id)
-    assert status_data["task_name"] == "test_in_progress_task"
-    assert status_data["status_message"] == "Task is running"
+    assert status_data["taskId"] == str(in_progress_task_id)
+    assert status_data["taskName"] == "test_in_progress_task"
+    assert status_data["statusMessage"] == "Task is running"
 
     # Test 3: Get status of a completed task
     response = client.get(
@@ -665,10 +665,10 @@ async def test_get_task_status(override_dependencies, test_db):
     )
     assert response.status_code == 200
     status_data = response.json()
-    assert status_data["task_id"] == str(completed_task_id)
-    assert status_data["task_name"] == "test_completed_task"
-    assert status_data["status_message"] == "Task completed successfully"
-    assert status_data["result_location"] == f"/api/v1/task-result/{completed_task_id}"
+    assert status_data["taskId"] == str(completed_task_id)
+    assert status_data["taskName"] == "test_completed_task"
+    assert status_data["statusMessage"] == "Task completed successfully"
+    assert status_data["resultLocation"] == f"/api/v1/task-result/{completed_task_id}"
 
     # Test 4: Get status of a failed task
     response = client.get(
@@ -677,9 +677,9 @@ async def test_get_task_status(override_dependencies, test_db):
     )
     assert response.status_code == 200
     status_data = response.json()
-    assert status_data["task_id"] == str(failed_task_id)
-    assert status_data["task_name"] == "test_failed_task"
-    assert status_data["status_message"] == "Task failed due to an error"
+    assert status_data["taskId"] == str(failed_task_id)
+    assert status_data["taskName"] == "test_failed_task"
+    assert status_data["statusMessage"] == "Task failed due to an error"
 
     # Test 5: Get status of a non-existent task
     non_existent_task_id = UUID("99999999-9999-9999-9999-999999999999")
@@ -790,7 +790,7 @@ async def test_get_task_result(override_dependencies, test_db):
     assert response.status_code == 200
     # In our implementation we return a message since we haven't implemented the actual result
     assert "message" in response.json()
-    assert "result_location" in response.json()
+    assert "resultLocation" in response.json()
 
     # Test 2: Get result of a pending task (not ready)
     response = client.get(
@@ -864,15 +864,15 @@ async def test_get_aggregated_values(override_dependencies, monkeypatch, test_db
     task_data = response.json()
 
     # Check task data structure
-    assert "task_id" in task_data
-    assert "task_name" in task_data
-    assert "status_message" in task_data
-    assert "status_location" in task_data
+    assert "taskId" in task_data
+    assert "taskName" in task_data
+    assert "statusMessage" in task_data
+    assert "statusLocation" in task_data
 
     # Check specific values
-    assert task_data["task_name"] == "aggregated_values"
-    assert task_data["status_message"] == "Histogram generation started"
-    assert task_data["status_location"].startswith("/api/v1/task-status/")
+    assert task_data["taskName"] == "aggregated_values"
+    assert task_data["statusMessage"] == "Histogram generation started"
+    assert task_data["statusLocation"].startswith("/api/v1/task-status/")
 
 
 @pytest.mark.asyncio
@@ -917,18 +917,18 @@ async def test_get_aggregated_values_task_persistence(override_dependencies, tes
     task_data = response.json()
 
     # Check task data structure
-    assert "task_id" in task_data
-    assert "task_name" in task_data
-    assert "status_message" in task_data
-    assert "status_location" in task_data
+    assert "taskId" in task_data
+    assert "taskName" in task_data
+    assert "statusMessage" in task_data
+    assert "statusLocation" in task_data
 
     # Check specific values
-    assert task_data["task_name"] == "aggregated_values"
-    assert task_data["status_message"] == "Histogram generation started"
-    assert task_data["status_location"].startswith("/api/v1/task-status/")
+    assert task_data["taskName"] == "aggregated_values"
+    assert task_data["statusMessage"] == "Histogram generation started"
+    assert task_data["statusLocation"].startswith("/api/v1/task-status/")
 
     # Verify that the task was persisted to the database using ORM query
-    task_id = UUID(task_data["task_id"])
+    task_id = UUID(task_data["taskId"])
     query = select(Task).where(Task.task_id == task_id)
     result = await test_db.execute(query)
     task_from_orm = result.scalar_one_or_none()

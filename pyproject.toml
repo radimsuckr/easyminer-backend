@@ -12,6 +12,7 @@ dependencies = [
     "fastapi[standard]>=0.111.1",
     "httpx>=0.28.1",
     "pydantic-settings>=2.4.0",
+    "pyhumps>=3.8.0",
     "sqlalchemy[asyncio]>=2.0.31",
     "uvicorn[standard]>=0.30.3",
 ]

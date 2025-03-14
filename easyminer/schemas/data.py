@@ -1,18 +1,20 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import ConfigDict, Field
+
+from easyminer.schemas import BaseSchema
 
 
-class PreviewUpload(BaseModel):
+class PreviewUpload(BaseSchema):
     """Settings for preview upload."""
 
-    maxLines: int = Field(..., description="Maximum number of lines to preview")
+    max_lines: int = Field(..., description="Maximum number of lines to preview")
     compression: str | None = Field(
         None, description="Compression type (none, gzip, etc.)"
     )
 
 
-class UploadSettings(BaseModel):
+class UploadSettings(BaseSchema):
     """Settings for file upload."""
 
     name: str = Field(..., description="Name of the file")
@@ -27,7 +29,7 @@ class UploadSettings(BaseModel):
     format: str = Field("csv", description="File format")
 
 
-class DataSourceBase(BaseModel):
+class DataSourceBase(BaseSchema):
     """Base schema for data source."""
 
     name: str = Field(..., description="Name of the data source")
@@ -54,7 +56,7 @@ class DataSourceRead(DataSourceBase):
     model_config = ConfigDict(from_attributes=True)
 
 
-class FieldBase(BaseModel):
+class FieldBase(BaseSchema):
     """Base schema for field."""
 
     name: str = Field(..., description="Name of the field")
