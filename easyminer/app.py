@@ -53,6 +53,8 @@ app = FastAPI(
     title=settings.project_name,
     docs_url="/docs",
     version=settings.version,
+    description="API for the EasyMiner Backend modules Data, Preprocessing and Mining",
+    summary="EasyMiner Backend API",
 )
 app.include_router(data_router)
 app.include_router(preprocessing_router)

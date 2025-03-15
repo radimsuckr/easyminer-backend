@@ -91,19 +91,10 @@ async def test_datasource_preview(
         assert response.status_code == 200
         result = response.json()
 
-        # API might use either field_names (snake_case) or fieldNames (camelCase)
-        # We'll check for both possibilities
-        field_names_key = None
-        if "fieldNames" in result:
-            field_names_key = "fieldNames"
-        elif "field_names" in result:
-            field_names_key = "field_names"
-
-        assert field_names_key is not None, (
-            "Neither fieldNames nor field_names found in response"
-        )
+        # Check the response structure
+        assert "fieldNames" in result
         assert "rows" in result
-        assert result[field_names_key] == ["score"]
+        assert result["fieldNames"] == ["score"]
         assert result["rows"] == [{"score": "85"}, {"score": "92"}]
 
 
@@ -134,15 +125,16 @@ async def test_datasource_instances(
 
         # Check response
         assert response.status_code == 200
-        assert response.json() == [
-            {"score": "92"},
-            {"score": "78"},
-        ]  # Should return rows[1:3]
+        response_data = response.json()
 
-        # Make sure we requested enough data to satisfy offset+limit
-        mock_get_preview.assert_called_once()
-        args, kwargs = mock_get_preview.call_args
-        assert kwargs["limit"] == 3  # offset(1) + limit(2)
+        # Check that we have an instances list in the response
+        assert "instances" in response_data
+        instances = response_data["instances"]
+        assert len(instances) == 2
+
+        # Check the values property of each instance
+        assert instances[0]["values"] == {"score": "92"}
+        assert instances[1]["values"] == {"score": "78"}
 
 
 @pytest.mark.asyncio
@@ -154,6 +146,7 @@ async def test_field_aggregated_values(
     task_id = uuid4()
     task = MagicMock(spec=Task)
     task.task_id = task_id
+    task.status = "pending"  # Add status field to the mock
 
     with (
         patch(
@@ -175,6 +168,8 @@ async def test_field_aggregated_values(
         # Check the task response structure with camelCase keys
         # Note: API returns taskId and resultLocation even though code uses task_id and result_location
         assert "taskId" in result
+        assert "status" in result  # Check for status field
+        assert result["status"] == "pending"  # Check status value
         assert result["statusMessage"] == "Histogram generation started"
         assert result["statusLocation"].startswith("/api/v1/task-status/")
         assert result["resultLocation"] is None

@@ -1,17 +1,48 @@
 from datetime import datetime
+from enum import Enum
+from typing import Any
 
 from pydantic import ConfigDict, Field
 
 from easyminer.schemas import BaseSchema
 
 
+class CompressionType(str, Enum):
+    """Compression type for file uploads."""
+
+    zip = "zip"
+    gzip = "gzip"
+    bzip2 = "bzip2"
+
+
 class PreviewUpload(BaseSchema):
     """Settings for preview upload."""
 
     max_lines: int = Field(..., description="Maximum number of lines to preview")
-    compression: str | None = Field(
+    compression: CompressionType | None = Field(
         None, description="Compression type (none, gzip, etc.)"
     )
+
+
+class PreviewResponse(BaseSchema):
+    """Response model for the data source preview endpoint."""
+
+    field_names: list[str] = Field(..., description="List of field names")
+    rows: list[dict[str, Any]] = Field(
+        ..., description="List of rows with field values"
+    )
+
+
+class Instance(BaseSchema):
+    """A single instance (row) from a data source."""
+
+    values: dict[str, Any] = Field(..., description="Field values for this instance")
+
+
+class InstanceList(BaseSchema):
+    """List of instances from a data source."""
+
+    instances: list[Instance] = Field(..., description="List of instances")
 
 
 class UploadSettings(BaseSchema):

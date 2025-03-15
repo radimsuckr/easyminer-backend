@@ -7,7 +7,12 @@
     },
     "editor.defaultFormatter": "charliermarsh.ruff"
   },
-  "python.testing.pytestArgs": ["${workspaceFolder}/tests"],
+  "python.testing.pytestArgs": [
+    "-v",
+    "--cov",
+    "${workspaceFolder}/easyminer",
+    "${workspaceFolder}/tests"
+  ],
   "python.testing.unittestEnabled": false,
   "python.testing.pytestEnabled": true,
   "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",

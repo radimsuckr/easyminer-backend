@@ -1,9 +1,10 @@
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from easyminer.database import Base
+from easyminer.models.task import Task
 
 
 class DataSource(Base):
@@ -14,15 +15,16 @@ class DataSource(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, index=True)
     name: Mapped[str] = mapped_column(String(255))
     type: Mapped[str] = mapped_column(String(50))
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(default=datetime.now(UTC))
     updated_at: Mapped[datetime] = mapped_column(
-        default=datetime.utcnow, onupdate=datetime.utcnow
+        default=datetime.now(UTC), onupdate=datetime.now(UTC)
     )
     upload_id: Mapped[int | None] = mapped_column(
         ForeignKey("upload.id"), nullable=True
     )
     row_count: Mapped[int] = mapped_column(default=0)
     size_bytes: Mapped[int] = mapped_column(default=0)
+    user_id: Mapped[int] = mapped_column(default=1)  # Default user ID for testing
 
     # Relationships
     fields: Mapped[list["Field"]] = relationship(

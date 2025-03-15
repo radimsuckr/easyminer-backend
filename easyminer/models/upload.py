@@ -54,7 +54,7 @@ class Upload(Base):
     quotes_char: Mapped[str] = mapped_column(String(1))
     escape_char: Mapped[str] = mapped_column(String(1))
     locale: Mapped[str] = mapped_column(String(20))
-    compression: Mapped[str] = mapped_column(String(20))
+    compression: Mapped[str | None] = mapped_column(String(20), nullable=True)
     null_values = relationship(
         "UploadNullValue", secondary=UploadNullValueTable, back_populates="uploads"
     )

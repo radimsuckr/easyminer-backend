@@ -55,9 +55,14 @@ from easyminer.schemas.data import (
     DataSourceCreate,
     DataSourceRead,
     FieldRead,
+    Instance,
+    InstanceList,
+    PreviewResponse,
+    PreviewUpload,
     UploadSettings,
 )
 from easyminer.schemas.field_values import Value
+from easyminer.schemas.task import TaskResult, TaskStatus
 from easyminer.storage import DiskStorage
 
 # Maximum chunk size for preview uploads (100KB)
@@ -79,12 +84,6 @@ class DbType(str, Enum):
     unlimited = "unlimited"
 
 
-class CompressionType(str, Enum):
-    zip = "zip"
-    gzip = "gzip"
-    bzip2 = "bzip2"
-
-
 class RdfFormat(str, Enum):
     nt = "nt"
     nq = "nq"
@@ -95,33 +94,6 @@ class Stats(BaseSchema):
     min: float
     max: float
     avg: float
-
-
-class TaskStatus(BaseSchema):
-    task_id: UUID
-    task_name: str
-    status_message: str | None = None
-    status_location: str | None = None
-    result_location: str | None = None
-
-
-class PreviewUpload(BaseSchema):
-    max_lines: int
-    compression: CompressionType | None = None
-
-
-class PreviewResponse(BaseSchema):
-    """Response model for the data source preview endpoint."""
-
-    field_names: list[str]
-    rows: list[dict[str, Any]]
-
-
-class TaskResult(BaseSchema):
-    """Response model for the task result endpoint."""
-
-    message: str
-    result_location: str
 
 
 @router.post("/upload/start", response_model=UUID)
@@ -473,16 +445,7 @@ async def preview_data_source(
     db: Annotated[AsyncSession, Depends(get_db_session)],
     limit: Annotated[int, Query(ge=1, le=100)] = 10,
 ):
-    """Get a preview of data from a data source.
-
-    Args:
-        id: The ID of the data source
-        db: Database session
-        limit: Maximum number of rows to return
-
-    Returns:
-        Preview data including field names and values
-    """
+    """Get a preview of data from a data source."""
     # Get the data source
     data_source = await get_data_source_by_id(db, id)
     if not data_source:
@@ -494,7 +457,7 @@ async def preview_data_source(
     fields = await get_fields_by_data_source(db, id)
 
     if not fields:
-        return {"field_names": [], "rows": []}
+        return PreviewResponse(field_names=[], rows=[])
 
     # Retrieve actual data from storage
     try:
@@ -502,12 +465,12 @@ async def preview_data_source(
             db=db, data_source=data_source, limit=limit
         )
 
-        return {"field_names": field_names, "rows": rows}
+        return PreviewResponse(field_names=field_names, rows=rows)
     except Exception as e:
         logging.error(f"Error retrieving preview data: {str(e)}", exc_info=True)
 
         # Return empty result if we can't get the actual data
-        return {"field_names": [field.name for field in fields], "rows": []}
+        return PreviewResponse(field_names=[field.name for field in fields], rows=[])
 
 
 @router.delete("/datasource/{id}", status_code=status.HTTP_200_OK)
@@ -543,14 +506,14 @@ async def rename_data_source(
     return {}
 
 
-@router.get("/datasource/{id}/instances")
+@router.get("/datasource/{id}/instances", response_model=InstanceList)
 async def get_instances(
     id: Annotated[int, Path()],
     db: Annotated[AsyncSession, Depends(get_db_session)],
     offset: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=1000)] = 100,
     field_ids: Annotated[list[int] | None, Query()] = None,
-) -> list[dict[str, Any]]:
+):
     """Get instances from a data source."""
     # Check if data source exists
     data_source = await get_data_source_by_id(db, id)
@@ -588,14 +551,17 @@ async def get_instances(
 
         # Apply offset manually (the preview function always starts from the beginning)
         if offset >= len(rows):
-            return []
+            return InstanceList(instances=[])
+
+        # Convert rows to Instance objects
+        instances = [Instance(values=row) for row in rows[offset : offset + limit]]
 
         # Return the paginated subset
-        return rows[offset : offset + limit]
+        return InstanceList(instances=instances)
 
     except FileNotFoundError:
         # No data found
-        return []
+        return InstanceList(instances=[])
     except Exception as e:
         logger.error(f"Error retrieving instances: {str(e)}", exc_info=True)
         raise HTTPException(
@@ -962,29 +928,22 @@ async def get_aggregated_values(
     return {
         "task_id": task_id,
         "task_name": "aggregated_values",
+        "status": "pending",
         "status_message": "Histogram generation started",
-        "status_location": request.url_for("get_task_status", task_id=task_id).path,
+        "status_location": request.url_for("get_task_status", taskId=task_id).path,
         "result_location": None,
     }
 
 
-@router.get("/task-status/{task_id}", response_model=TaskStatus)
+@router.get("/task-status/{taskId}", response_model=TaskStatus, name="get_task_status")
 async def get_task_status(
     request: Request,
-    task_id: Annotated[UUID, Path()],
+    taskId: Annotated[UUID, Path()],
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ):
-    """Get status of a task.
-
-    Args:
-        taskId: The ID of the task
-        db: Database session
-
-    Returns:
-        TaskStatus: Task status information
-    """
+    """Get status of a task."""
     # Look up the task by ID
-    task = await get_task_by_id(db, task_id)
+    task = await get_task_by_id(db, taskId)
 
     # Check if the task exists
     if not task:
@@ -996,26 +955,19 @@ async def get_task_status(
     return {
         "task_id": task.task_id,
         "task_name": task.name,
+        "status": task.status,
         "status_message": task.status_message,
-        "status_location": request.url_for("get_task_status", task_id=task_id).path,
+        "status_location": request.url_for("get_task_status", taskId=task.task_id).path,
         "result_location": task.result_location if task.result_location else None,
     }
 
 
-@router.get("/task-result/{taskId}", response_model=dict[str, Any])
+@router.get("/task-result/{taskId}", response_model=TaskResult)
 async def get_task_result(
     taskId: Annotated[UUID, Path()],
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ):
-    """Get the result of a completed task.
-
-    Args:
-        taskId: The ID of the task
-        db: Database session
-
-    Returns:
-        Task result file or data
-    """
+    """Get the result of a completed task."""
     # Look up the task by ID
     task = await get_task_by_id(db, taskId)
 
@@ -1043,7 +995,11 @@ async def get_task_result(
     try:
         # Read the task result
         result_data = await read_task_result(task.result_location)
-        return result_data
+        return {
+            "message": "Task result retrieved successfully",
+            "resultLocation": task.result_location,
+            "result": result_data,
+        }
     except FileNotFoundError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
