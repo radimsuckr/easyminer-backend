@@ -19,12 +19,9 @@ class DataSource(Base):
     updated_at: Mapped[datetime] = mapped_column(
         default=datetime.now(UTC), onupdate=datetime.now(UTC)
     )
-    upload_id: Mapped[int | None] = mapped_column(
-        ForeignKey("upload.id"), nullable=True
-    )
+    upload_id: Mapped[int | None] = mapped_column(ForeignKey("upload.id"))
     row_count: Mapped[int] = mapped_column(default=0)
     size_bytes: Mapped[int] = mapped_column(default=0)
-    user_id: Mapped[int] = mapped_column(default=1)  # Default user ID for testing
 
     # Relationships
     fields: Mapped[list["Field"]] = relationship(

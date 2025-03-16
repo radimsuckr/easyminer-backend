@@ -82,7 +82,6 @@ class DataSourceRead(DataSourceBase):
     updated_at: datetime
     row_count: int
     size_bytes: int
-    user_id: int
     upload_id: int | None = None
     model_config = ConfigDict(from_attributes=True)
 

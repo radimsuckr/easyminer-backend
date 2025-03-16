@@ -164,6 +164,7 @@ async def upload_chunk(
                 name=upload_name,
                 type=upload_media_type,
                 size_bytes=len(chunk),
+                upload_id=upload_id_value,
             )
             data_source_id = data_source_record.id
         else:

@@ -34,7 +34,6 @@ async def test_csv_processor(test_db):
         id=456,  # Manual ID assignment to avoid async fetch issues
         name="test_source",
         type="csv",
-        user_id=789,  # Mock user ID
         upload_id=123,  # Reference to upload ID
         size_bytes=0,
         row_count=0,
