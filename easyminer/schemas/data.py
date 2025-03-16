@@ -33,18 +33,6 @@ class PreviewResponse(BaseSchema):
     )
 
 
-class Instance(BaseSchema):
-    """A single instance (row) from a data source."""
-
-    values: dict[str, Any] = Field(..., description="Field values for this instance")
-
-
-class InstanceList(BaseSchema):
-    """List of instances from a data source."""
-
-    instances: list[Instance] = Field(..., description="List of instances")
-
-
 class UploadSettings(BaseSchema):
     """Settings for file upload."""
 

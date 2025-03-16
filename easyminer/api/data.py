@@ -41,7 +41,7 @@ from easyminer.crud.upload import (
     get_upload_by_id,
     get_upload_by_uuid,
 )
-from easyminer.database import get_db_session
+from easyminer.database import get_db_session, sessionmanager
 from easyminer.models import DataSource, Field
 from easyminer.processing import CsvProcessor
 from easyminer.processing.csv_utils import extract_field_values_from_csv
@@ -54,8 +54,6 @@ from easyminer.schemas.data import (
     DataSourceCreate,
     DataSourceRead,
     FieldRead,
-    Instance,
-    InstanceList,
     PreviewResponse,
     PreviewUpload,
     Stats,
@@ -492,7 +490,7 @@ async def get_instances(
     offset: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=1000)] = 100,
     field_ids: Annotated[list[int] | None, Query()] = None,
-) -> InstanceList:
+) -> list[dict[Any, Any]]:
     """Get instances from a data source."""
     # Check if data source exists
     data_source = await get_data_source_by_id(db, id)
@@ -519,7 +517,6 @@ async def get_instances(
 
     try:
         # Use the same preview data function, but apply offset and limit
-        from easyminer.processing.data_retrieval import get_data_preview
 
         field_names, rows = await get_data_preview(
             db=db,
@@ -530,17 +527,17 @@ async def get_instances(
 
         # Apply offset manually (the preview function always starts from the beginning)
         if offset >= len(rows):
-            return InstanceList(instances=[])
+            return []
 
         # Convert rows to Instance objects
-        instances = [Instance(values=row) for row in rows[offset : offset + limit]]
+        instances = [row for row in rows[offset : offset + limit]]
 
         # Return the paginated subset
-        return InstanceList(instances=instances)
+        return instances
 
     except FileNotFoundError:
         # No data found
-        return InstanceList(instances=[])
+        return []
     except Exception as e:
         logger.error(f"Error retrieving instances: {str(e)}", exc_info=True)
         raise HTTPException(
@@ -839,7 +836,6 @@ async def get_aggregated_values(
     async def process_histogram_task():
         try:
             # Create a new DB session for background task
-            from easyminer.database import sessionmanager
 
             async with sessionmanager.session() as session:
                 # Get the task
