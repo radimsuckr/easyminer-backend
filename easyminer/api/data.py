@@ -50,7 +50,6 @@ from easyminer.processing.data_retrieval import (
     get_data_preview,
     read_task_result,
 )
-from easyminer.schemas import BaseSchema
 from easyminer.schemas.data import (
     DataSourceCreate,
     DataSourceRead,
@@ -59,6 +58,7 @@ from easyminer.schemas.data import (
     InstanceList,
     PreviewResponse,
     PreviewUpload,
+    Stats,
     UploadSettings,
 )
 from easyminer.schemas.field_values import Value
@@ -70,7 +70,6 @@ MAX_PREVIEW_CHUNK_SIZE = 100 * 1024
 
 router = APIRouter(prefix=API_V1_PREFIX, tags=["Data API"])
 
-# Setup logger
 logger = logging.getLogger(__name__)
 
 
@@ -90,17 +89,11 @@ class RdfFormat(str, Enum):
     ttl = "ttl"
 
 
-class Stats(BaseSchema):
-    min: float
-    max: float
-    avg: float
-
-
-@router.post("/upload/start", response_model=UUID)
+@router.post("/upload/start")
 async def start_upload(
     settings: UploadSettings,
     db: Annotated[AsyncSession, Depends(get_db_session)],
-):
+) -> UUID:
     """Start a new upload process."""
     upload = await create_upload(db, settings)
     return UUID(upload.uuid)
@@ -250,11 +243,11 @@ async def upload_chunk(
         )
 
 
-@router.post("/upload/preview/start", response_model=UUID)
+@router.post("/upload/preview/start")
 async def start_preview_upload(
     settings: PreviewUpload,
     db: Annotated[AsyncSession, Depends(get_db_session)],
-):
+) -> UUID:
     """Start a new preview upload process."""
     # Create a new upload with preview flag
     upload = await create_preview_upload(
@@ -400,20 +393,20 @@ async def upload_preview_chunk(
         )
 
 
-@router.get("/datasource", response_model=list[DataSourceRead])
+@router.get("/datasource")
 async def list_data_sources(
     db: Annotated[AsyncSession, Depends(get_db_session)],
-):
+) -> list[DataSourceRead]:
     """List all data sources for the current user."""
     data_sources = await get_data_sources_by_user(db)
-    return data_sources
+    return [DataSourceRead.model_validate(ds) for ds in data_sources]
 
 
-@router.post("/datasource", response_model=DataSourceRead)
+@router.post("/datasource")
 async def create_datasource(
     data: DataSourceCreate,
     db: Annotated[AsyncSession, Depends(get_db_session)],
-):
+) -> DataSourceRead:
     """Create a new data source."""
     data_source = await create_data_source(
         db_session=db,
@@ -422,29 +415,29 @@ async def create_datasource(
         size_bytes=data.size_bytes if hasattr(data, "size_bytes") else 0,
         row_count=data.row_count if hasattr(data, "row_count") else 0,
     )
-    return data_source
+    return DataSourceRead.model_validate(data_source)
 
 
-@router.get("/datasource/{id}", response_model=DataSourceRead)
+@router.get("/datasource/{id}")
 async def get_data_source_api(
     id: Annotated[int, Path()],
     db: Annotated[AsyncSession, Depends(get_db_session)],
-):
+) -> DataSourceRead:
     """Get a specific data source."""
     data_source = await get_data_source_by_id(db, id)
     if not data_source:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found"
         )
-    return data_source
+    return DataSourceRead.model_validate(data_source)
 
 
-@router.get("/datasource/{id}/preview", response_model=PreviewResponse)
+@router.get("/datasource/{id}/preview")
 async def preview_data_source(
     id: Annotated[int, Path()],
     db: Annotated[AsyncSession, Depends(get_db_session)],
     limit: Annotated[int, Query(ge=1, le=100)] = 10,
-):
+) -> PreviewResponse:
     """Get a preview of data from a data source."""
     # Get the data source
     data_source = await get_data_source_by_id(db, id)
@@ -473,11 +466,14 @@ async def preview_data_source(
         return PreviewResponse(field_names=[field.name for field in fields], rows=[])
 
 
-@router.delete("/datasource/{id}", status_code=status.HTTP_200_OK)
+@router.delete(
+    "/datasource/{id}",
+    status_code=status.HTTP_200_OK,  # TODO: This should return 204 to be Restful and also have better OAPI UI
+)
 async def delete_data_source_api(
     id: Annotated[int, Path()],
     db: Annotated[AsyncSession, Depends(get_db_session)],
-):
+) -> None:
     """Delete a data source."""
     success = await delete_data_source(db, id)
     if not success:
@@ -485,16 +481,16 @@ async def delete_data_source_api(
             status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found"
         )
 
-    # Return an empty response with 200 status code
-    return {}
 
-
-@router.put("/datasource/{id}", status_code=status.HTTP_200_OK)
+@router.put(
+    "/datasource/{id}",
+    status_code=status.HTTP_200_OK,  # TODO: This should return 204 to be Restful and also have better OAPI UI
+)
 async def rename_data_source(
     id: Annotated[int, Path()],
     db: Annotated[AsyncSession, Depends(get_db_session)],
     name: Annotated[str, Body(media_type="text/plain; charset=UTF-8")],
-):
+) -> None:
     """Rename a data source."""
     data_source = await update_data_source_name(db, id, name)
     if not data_source:
@@ -502,18 +498,15 @@ async def rename_data_source(
             status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found"
         )
 
-    # Return an empty response with 200 status code
-    return {}
 
-
-@router.get("/datasource/{id}/instances", response_model=InstanceList)
+@router.get("/datasource/{id}/instances")
 async def get_instances(
     id: Annotated[int, Path()],
     db: Annotated[AsyncSession, Depends(get_db_session)],
     offset: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=1000)] = 100,
     field_ids: Annotated[list[int] | None, Query()] = None,
-):
+) -> InstanceList:
     """Get instances from a data source."""
     # Check if data source exists
     data_source = await get_data_source_by_id(db, id)
@@ -570,11 +563,11 @@ async def get_instances(
         )
 
 
-@router.get("/datasource/{id}/field", response_model=list[FieldRead])
+@router.get("/datasource/{id}/field")
 async def get_fields_api(
     id: Annotated[int, Path()],
     db: Annotated[AsyncSession, Depends(get_db_session)],
-):
+) -> list[FieldRead]:
     """List all fields for a data source.
 
     Args:
@@ -594,15 +587,15 @@ async def get_fields_api(
     # Get fields for the data source
     fields = await get_fields_by_data_source(db, id)
 
-    return fields
+    return [FieldRead.model_validate(field) for field in fields]
 
 
-@router.get("/datasource/{id}/field/{fieldId}", response_model=FieldRead)
+@router.get("/datasource/{id}/field/{fieldId}")
 async def get_field_api(
     id: Annotated[int, Path()],
     fieldId: Annotated[int, Path()],
     db: Annotated[AsyncSession, Depends(get_db_session)],
-):
+) -> FieldRead:
     """Get metadata for a specific field.
 
     Args:
@@ -627,15 +620,15 @@ async def get_field_api(
             status_code=status.HTTP_404_NOT_FOUND, detail="Field not found"
         )
 
-    return field
+    return FieldRead.model_validate(field)
 
 
-@router.get("/datasource/{id}/field/{fieldId}/stats", response_model=Stats)
+@router.get("/datasource/{id}/field/{fieldId}/stats")
 async def get_field_stats(
     id: Annotated[int, Path()],
     fieldId: Annotated[int, Path()],
     db: Annotated[AsyncSession, Depends(get_db_session)],
-):
+) -> Stats:
     """Get statistical information about a field."""
     # Check if data source exists and belongs to the user
     data_source = await get_data_source_by_id(db, id)
@@ -671,14 +664,14 @@ async def get_field_stats(
     )
 
 
-@router.get("/datasource/{id}/field/{fieldId}/values", response_model=list[Value])
+@router.get("/datasource/{id}/field/{fieldId}/values")
 async def get_field_values(
     id: Annotated[int, Path()],
     fieldId: Annotated[int, Path()],
     db: Annotated[AsyncSession, Depends(get_db_session)],
     offset: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(gt=0, le=100)] = 20,
-):
+) -> list[Value]:
     """Get values for a specific field.
 
     Args:
@@ -793,7 +786,6 @@ async def get_field_values(
 @router.get(
     "/datasource/{id}/field/{fieldId}/aggregated-values",
     status_code=status.HTTP_202_ACCEPTED,
-    response_model=TaskStatus,
 )
 async def get_aggregated_values(
     request: Request,
@@ -806,7 +798,7 @@ async def get_aggregated_values(
     min_inclusive: bool = True,
     max_inclusive: bool = True,
     background_tasks: BackgroundTasks = BackgroundTasks(),
-):
+) -> TaskStatus:
     """Get aggregated values for a field.
 
     This operation creates a task for generating a histogram of a numeric field
@@ -925,22 +917,22 @@ async def get_aggregated_values(
     background_tasks.add_task(process_histogram_task)
 
     # Return task ID and status location
-    return {
-        "task_id": task_id,
-        "task_name": "aggregated_values",
-        "status": "pending",
-        "status_message": "Histogram generation started",
-        "status_location": request.url_for("get_task_status", taskId=task_id).path,
-        "result_location": None,
-    }
+    return TaskStatus(
+        task_id=task_id,
+        task_name="aggregated_values",
+        status="pending",
+        status_message="Histogram generation started",
+        status_location=request.url_for("get_task_status", taskId=task_id).path,
+        result_location=None,
+    )
 
 
-@router.get("/task-status/{taskId}", response_model=TaskStatus, name="get_task_status")
+@router.get("/task-status/{taskId}", name="get_task_status")
 async def get_task_status(
     request: Request,
     taskId: Annotated[UUID, Path()],
     db: Annotated[AsyncSession, Depends(get_db_session)],
-):
+) -> TaskStatus:
     """Get status of a task."""
     # Look up the task by ID
     task = await get_task_by_id(db, taskId)
@@ -951,22 +943,21 @@ async def get_task_status(
             status_code=status.HTTP_404_NOT_FOUND, detail="Task not found"
         )
 
-    # Return task information
-    return {
-        "task_id": task.task_id,
-        "task_name": task.name,
-        "status": task.status,
-        "status_message": task.status_message,
-        "status_location": request.url_for("get_task_status", taskId=task.task_id).path,
-        "result_location": task.result_location if task.result_location else None,
-    }
+    return TaskStatus(
+        task_id=task.task_id,
+        task_name=task.name,
+        status=task.status,
+        status_message=task.status_message,
+        status_location=request.url_for("get_task_status", taskId=task.task_id).path,
+        result_location=task.result_location if task.result_location else None,
+    )
 
 
-@router.get("/task-result/{taskId}", response_model=TaskResult)
+@router.get("/task-result/{taskId}")
 async def get_task_result(
     taskId: Annotated[UUID, Path()],
     db: Annotated[AsyncSession, Depends(get_db_session)],
-):
+) -> TaskResult:
     """Get the result of a completed task."""
     # Look up the task by ID
     task = await get_task_by_id(db, taskId)
@@ -995,11 +986,11 @@ async def get_task_result(
     try:
         # Read the task result
         result_data = await read_task_result(task.result_location)
-        return {
-            "message": "Task result retrieved successfully",
-            "resultLocation": task.result_location,
-            "result": result_data,
-        }
+        return TaskResult(
+            message="Task result retrieved successfully",
+            result_location=task.result_location,
+            result=result_data,
+        )
     except FileNotFoundError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

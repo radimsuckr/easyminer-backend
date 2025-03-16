@@ -113,3 +113,9 @@ class FieldRead(FieldBase):
     avg_value: float | None = None
     std_value: float | None = None
     model_config = ConfigDict(from_attributes=True)
+
+
+class Stats(BaseSchema):
+    min: float
+    max: float
+    avg: float
