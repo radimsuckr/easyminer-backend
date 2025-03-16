@@ -1,7 +1,6 @@
 import logging
 import pathlib as pl
 from datetime import datetime
-from enum import Enum
 from typing import Annotated, Any, cast
 from uuid import UUID, uuid4
 
@@ -72,22 +71,6 @@ MAX_PREVIEW_CHUNK_SIZE = 100 * 1024
 router = APIRouter(prefix=API_V1_PREFIX, tags=["Data API"])
 
 logger = logging.getLogger(__name__)
-
-
-class MediaType(str, Enum):
-    csv = "csv"
-    rdf = "rdf"
-
-
-class DbType(str, Enum):
-    limited = "limited"
-    unlimited = "unlimited"
-
-
-class RdfFormat(str, Enum):
-    nt = "nt"
-    nq = "nq"
-    ttl = "ttl"
 
 
 @router.post("/upload/start")
