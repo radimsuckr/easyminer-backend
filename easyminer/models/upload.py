@@ -64,5 +64,16 @@ class Upload(Base):
     format: Mapped[str] = mapped_column(String(20))
     preview_max_lines: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
-    # Relationship to DataSource
     data_source = relationship("DataSource", back_populates="upload", uselist=False)
+
+    chunks = relationship("Chunk", back_populates="upload")
+
+
+class Chunk(Base):
+    __tablename__: str = "chunk"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, index=True)
+    upload_id: Mapped[int] = mapped_column(ForeignKey("upload.id"))
+    path: Mapped[str] = mapped_column(String(255))
+
+    upload = relationship("Upload", back_populates="chunks")

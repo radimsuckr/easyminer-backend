@@ -3,7 +3,7 @@ from uuid import uuid4
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from easyminer.models.upload import Upload
+from easyminer.models.upload import Chunk, Upload
 from easyminer.schemas.data import UploadSettings
 
 
@@ -65,3 +65,11 @@ async def get_upload_by_uuid(
 async def get_upload_by_id(db_session: AsyncSession, upload_id: int) -> Upload | None:
     """Get an upload by its ID."""
     return await db_session.get(Upload, upload_id)
+
+
+async def create_chunk(db_session: AsyncSession, upload_id: int, path: str) -> Chunk:
+    chunk = Chunk(upload_id=upload_id, path=path)
+    db_session.add(chunk)
+    await db_session.commit()
+    await db_session.refresh(chunk)
+    return chunk

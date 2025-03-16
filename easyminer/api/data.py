@@ -36,6 +36,7 @@ from easyminer.crud.field import (
 )
 from easyminer.crud.task import create_task, get_task_by_id, update_task_status
 from easyminer.crud.upload import (
+    create_chunk,
     create_preview_upload,
     create_upload,
     get_upload_by_id,
@@ -184,6 +185,7 @@ async def upload_chunk(
                     f"{data_source_id}/chunks/{datetime.now().strftime('%Y%m%d%H%M%S%f')}.chunk"
                 )
                 storage.save(chunk_path, chunk)
+                await create_chunk(db, upload_id_value, str(chunk_path.resolve()))
             else:
                 # The chunk with zero length indicates the end of the upload
                 pass
