@@ -4,6 +4,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from sqlalchemy import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from easyminer.models.data import DataSource, Field
@@ -49,8 +50,7 @@ class CsvProcessor:
         """
         self.logger.info(f"Processing chunks for data source {self.data_source_id}")
 
-        # Find all chunk files
-        # storage_dir should be a relative path to the DiskStorage root
+        # Find all chunk files storage_dir should be a relative path to the DiskStorage root
         chunks = sorted(storage_dir.glob("*.chunk"))
         if not chunks:
             self.logger.warning(f"No chunks found in {storage_dir}")
@@ -59,8 +59,6 @@ class CsvProcessor:
         # Combine chunks and parse
         combined_data = b""
         for chunk_file in chunks:
-            # Read the file content using the Path API which is safer
-            # than using open() directly
             try:
                 # Use Path's read_bytes() instead of open()
                 combined_data += chunk_file.read_bytes()
@@ -75,15 +73,19 @@ class CsvProcessor:
         self.data_source.row_count = row_count
 
         # Create fields for the data source
-        for idx, (name, field_type, stats) in enumerate(fields):
-            field = Field(
-                name=name,
-                data_type=field_type,
-                data_source_id=self.data_source_id,
-                index=idx,
-                **stats,
-            )
-            self.db.add(field)
+        await self.db.execute(
+            insert(Field),
+            [
+                {
+                    "name": name,
+                    "data_type": field_type,
+                    "data_source_id": self.data_source_id,
+                    "index": idx,
+                    **stats,
+                }
+                for idx, (name, field_type, stats) in enumerate(fields)
+            ],
+        )
 
         # Commit changes
         await self.db.commit()
@@ -126,15 +128,13 @@ class CsvProcessor:
             col_values = [row[i] for row in rows if i < len(row)]
 
             # Determine field type and stats
-            field_type, stats = self._analyze_field(col_name, col_values)
+            field_type, stats = self._analyze_field(col_values)
 
             fields.append((col_name, field_type, stats))
 
         return row_count, fields
 
-    def _analyze_field(
-        self, name: str, values: list[str]
-    ) -> tuple[str, dict[str, Any]]:
+    def _analyze_field(self, values: list[str]) -> tuple[str, dict[str, Any]]:
         """Analyze field values to determine type and statistics.
 
         Args:
@@ -142,7 +142,7 @@ class CsvProcessor:
             values: List of field values as strings
 
         Returns:
-            Tuple containing (field_type, statistics_dict)
+            Tuple containing ( field_type, statistics_dict)
         """
         # Count missing values
         missing_values = values.count("")
@@ -151,8 +151,9 @@ class CsvProcessor:
         non_empty = [v for v in values if v]
         if not non_empty:
             return "string", {
-                "missing_values_count": missing_values,
-                "unique_values_count": 0,
+                "missing_count": missing_values,
+                "unique_count": 0,
+                "has_nulls": missing_values > 0,
             }
 
         # Determine if values can be parsed as numbers
@@ -167,7 +168,8 @@ class CsvProcessor:
                 break
 
         # Calculate statistics
-        unique_values_count = len(set(values))
+        unique_count = len(set(values))
+        has_nulls = missing_values > 0
 
         if is_numeric:
             # Field is numeric, calculate numeric stats
@@ -178,28 +180,20 @@ class CsvProcessor:
                 sum(numeric_values) / len(numeric_values) if numeric_values else None
             )
 
-            # Calculate standard deviation
-            std_value = None
-            if len(numeric_values) > 1 and avg_value is not None:
-                mean = avg_value
-                variance = sum((x - mean) ** 2 for x in numeric_values) / len(
-                    numeric_values
-                )
-                std_value = variance**0.5
-
             return field_type, {
-                "missing_values_count": missing_values,
-                "unique_values_count": unique_values_count,
+                "missing_count": missing_values,
+                "unique_count": unique_count,
                 "min_value": min_value,
                 "max_value": max_value,
                 "avg_value": avg_value,
-                "std_value": std_value,
+                "has_nulls": has_nulls,
             }
         else:
             # Field is string, calculate string stats
             return "string", {
-                "missing_values_count": missing_values,
-                "unique_values_count": unique_values_count,
+                "missing_count": missing_values,
+                "unique_count": unique_count,
                 "min_value": min(non_empty, key=len) if non_empty else None,
                 "max_value": max(non_empty, key=len) if non_empty else None,
+                "has_nulls": has_nulls,
             }

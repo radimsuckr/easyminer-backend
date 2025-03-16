@@ -47,6 +47,7 @@ class Field(Base):
     max_value: Mapped[str | None] = mapped_column(String(255), nullable=True)
     avg_value: Mapped[float | None] = mapped_column(nullable=True)
     unique_count: Mapped[int] = mapped_column(default=0)
+    missing_count: Mapped[int] = mapped_column(default=0)
     has_nulls: Mapped[bool] = mapped_column(default=False)
 
     data_source: Mapped[DataSource] = relationship(
