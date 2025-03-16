@@ -15,4 +15,4 @@ run:
 	uv run fastapi run
 
 test:
-	uv tool run pytest
+	uv run pytest
