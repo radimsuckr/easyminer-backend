@@ -2,6 +2,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
+from easyminer.models.data import FieldType
 from pydantic import ConfigDict, Field
 
 from easyminer.schemas import BaseSchema
@@ -79,7 +80,6 @@ class FieldBase(BaseSchema):
 
     name: str = Field(..., description="Name of the field")
     data_type: str = Field(..., description="Data type of the field")
-    index: int = Field(..., description="Position in the data source")
 
 
 class FieldCreate(FieldBase):
@@ -93,12 +93,11 @@ class FieldRead(FieldBase):
 
     id: int
     data_source_id: int
-    unique_values_count: int | None = None
-    missing_values_count: int | None = None
-    min_value: str | None = None
-    max_value: str | None = None
+    unique_count: int | None = None
+    support: int | None = None
+    min_value: float | None = None
+    max_value: float | None = None
     avg_value: float | None = None
-    std_value: float | None = None
     model_config = ConfigDict(from_attributes=True)
 
 

@@ -9,8 +9,9 @@ import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from easyminer.models.data import DataSource, Field
+from easyminer.models.data import DataSource, Field, FieldType
 from easyminer.storage import DiskStorage
+from easyminer.crud.field import create_field
 
 
 @pytest_asyncio.fixture
@@ -38,36 +39,37 @@ async def test_data_source_with_data(db_session: AsyncSession):
 
             # Create fields
             fields = [
-                Field(
+                await create_field(
+                    db_session=db_session,
                     name="name",
-                    data_type="string",
+                    data_type=FieldType.nominal,
                     data_source_id=data_source.id,
-                    index=0,
+                    unique_count=10,
+                    support=5,
                 ),
-                Field(
+                await create_field(
+                    db_session=db_session,
                     name="age",
-                    data_type="integer",
+                    data_type=FieldType.numeric,
                     data_source_id=data_source.id,
-                    index=1,
-                    min_value="25",
-                    max_value="40",
+                    unique_count=10,
+                    support=5,
+                    min_value=25,
+                    max_value=40,
                     avg_value=32.5,
                 ),
-                Field(
+                await create_field(
+                    db_session=db_session,
                     name="score",
-                    data_type="integer",
+                    data_type=FieldType.numeric,
                     data_source_id=data_source.id,
-                    index=2,
-                    min_value="70",
-                    max_value="95",
+                    unique_count=10,
+                    support=5,
+                    min_value=70,
+                    max_value=95,
                     avg_value=85.0,
                 ),
             ]
-
-            for field in fields:
-                db_session.add(field)
-
-            await db_session.commit()
 
             # Create test CSV data
             csv_data = "name,age,score\nAlice,30,85\nBob,25,92\nCharlie,35,78\nDavid,40,90\nEve,33,80"
@@ -114,9 +116,9 @@ async def test_get_field_stats(client, test_data_source_with_data):
             assert "avg" in stats
 
             # Check that the values are numeric
-            assert isinstance(stats["min"], (int, float))
-            assert isinstance(stats["max"], (int, float))
-            assert isinstance(stats["avg"], (int, float))
+            assert isinstance(stats["min"], int | float)
+            assert isinstance(stats["max"], int | float)
+            assert isinstance(stats["avg"], int | float)
 
             # Check that min <= avg <= max
             assert stats["min"] <= stats["avg"] <= stats["max"]
@@ -165,8 +167,7 @@ async def test_get_instances(client, test_data_source_with_data):
     response_data = response.json()
 
     # Check that we have an instances list in the response
-    assert "instances" in response_data
-    instances = response_data["instances"]
+    instances = response_data
     assert isinstance(instances, list)
 
     # Should have two instances
@@ -174,10 +175,9 @@ async def test_get_instances(client, test_data_source_with_data):
 
     # Each instance should have a values property
     for instance in instances:
-        assert "values" in instance
-        assert "name" in instance["values"]
-        assert "age" in instance["values"]
-        assert "score" in instance["values"]
+        assert "name" in instance
+        assert "age" in instance
+        assert "score" in instance
 
     # Test with field filtering
     # First, get field IDs
@@ -203,13 +203,10 @@ async def test_get_instances(client, test_data_source_with_data):
         response_data = response.json()
 
         # Check that we have an instances list in the response
-        assert "instances" in response_data
-        filtered_instances = response_data["instances"]
+        filtered_instances = response_data
 
         # Check that each instance has only the name field
         for instance in filtered_instances:
-            assert "values" in instance
-            values = instance["values"]
-            assert "name" in values
-            assert "age" not in values
-            assert "score" not in values
+            assert "name" in instance
+            assert "age" not in instance
+            assert "score" not in instance

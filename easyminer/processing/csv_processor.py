@@ -7,8 +7,18 @@ from typing import Any
 from sqlalchemy import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from easyminer.models.data import DataSource, Field
+from easyminer.models.data import DataSource, Field, FieldType
+from easyminer.schemas import BaseSchema
 from easyminer.storage import DiskStorage
+
+
+class FieldStats(BaseSchema):
+    missing_count: int
+    unique_count: int
+    min_value: str | int | float | None
+    max_value: str | int | float | None
+    avg_value: float | None
+    has_nulls: bool
 
 
 class CsvProcessor:
@@ -134,7 +144,7 @@ class CsvProcessor:
 
         return row_count, fields
 
-    def _analyze_field(self, values: list[str]) -> tuple[str, dict[str, Any]]:
+    def _analyze_field(self, values: list[str]) -> tuple[FieldType, FieldStats]:
         """Analyze field values to determine type and statistics.
 
         Args:
@@ -142,7 +152,7 @@ class CsvProcessor:
             values: List of field values as strings
 
         Returns:
-            Tuple containing ( field_type, statistics_dict)
+            Tuple containing (field_type, statistics_dict)
         """
         # Count missing values
         missing_values = values.count("")
@@ -150,11 +160,14 @@ class CsvProcessor:
         # Remove empty values for analysis
         non_empty = [v for v in values if v]
         if not non_empty:
-            return "string", {
-                "missing_count": missing_values,
-                "unique_count": 0,
-                "has_nulls": missing_values > 0,
-            }
+            return FieldType.nominal, FieldStats(
+                missing_count=missing_values,
+                unique_count=0,
+                min_value=None,
+                max_value=None,
+                avg_value=None,
+                has_nulls=missing_values > 0,
+            )
 
         # Determine if values can be parsed as numbers
         numeric_values = []
@@ -165,35 +178,36 @@ class CsvProcessor:
                 numeric_values.append(float(val))
             except ValueError:
                 is_numeric = False
+                numeric_values.clear()  # The data is not numerical, we can clear the list
                 break
 
         # Calculate statistics
         unique_count = len(set(values))
         has_nulls = missing_values > 0
 
-        if is_numeric:
+        if is_numeric and len(numeric_values) > 0:
             # Field is numeric, calculate numeric stats
-            field_type = "float" if any("." in val for val in non_empty) else "integer"
             min_value = str(min(numeric_values)) if numeric_values else None
             max_value = str(max(numeric_values)) if numeric_values else None
             avg_value = (
                 sum(numeric_values) / len(numeric_values) if numeric_values else None
             )
 
-            return field_type, {
-                "missing_count": missing_values,
-                "unique_count": unique_count,
-                "min_value": min_value,
-                "max_value": max_value,
-                "avg_value": avg_value,
-                "has_nulls": has_nulls,
-            }
+            return FieldType.numeric, FieldStats(
+                missing_count=missing_values,
+                unique_count=unique_count,
+                min_value=min_value,
+                max_value=max_value,
+                avg_value=avg_value,
+                has_nulls=has_nulls,
+            )
         else:
             # Field is string, calculate string stats
-            return "string", {
-                "missing_count": missing_values,
-                "unique_count": unique_count,
-                "min_value": min(non_empty, key=len) if non_empty else None,
-                "max_value": max(non_empty, key=len) if non_empty else None,
-                "has_nulls": has_nulls,
-            }
+            return FieldType.nominal, FieldStats(
+                missing_count=missing_values,
+                unique_count=unique_count,
+                min_value=min(non_empty, key=len),
+                max_value=max(non_empty, key=len),
+                avg_value=None,
+                has_nulls=has_nulls,
+            )

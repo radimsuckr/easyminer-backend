@@ -30,6 +30,7 @@ from easyminer.crud.data_source import (
 )
 from easyminer.crud.field import (
     get_field_by_id,
+    get_field_stats,
     get_fields_by_data_source,
     get_fields_by_ids,
 )
@@ -43,6 +44,7 @@ from easyminer.crud.upload import (
 )
 from easyminer.database import get_db_session, sessionmanager
 from easyminer.models import DataSource, Field
+from easyminer.models.data import FieldType
 from easyminer.processing import CsvProcessor
 from easyminer.processing.csv_utils import extract_field_values_from_csv
 from easyminer.processing.data_retrieval import (
@@ -607,7 +609,7 @@ async def get_field_api(
 
 
 @router.get("/datasource/{id}/field/{fieldId}/stats")
-async def get_field_stats(
+async def get_field_stats_api(
     id: Annotated[int, Path()],
     fieldId: Annotated[int, Path()],
     db: Annotated[AsyncSession, Depends(get_db_session)],
@@ -628,23 +630,27 @@ async def get_field_stats(
         )
 
     # Check if field is numeric
-    if field.data_type not in ["integer", "float", "numeric"]:
+    if field.data_type != FieldType.numeric:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Statistics are only available for numeric fields",
         )
 
     # Check if statistics are available
-    if field.min_value is None or field.max_value is None or field.avg_value is None:
+    stats = await get_field_stats(db, field.id)
+    if not stats:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Statistics not available for this field",
+        )
+    if stats.min_value is None or stats.max_value is None or stats.avg_value is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Statistics not available for this field",
         )
 
     # Create and return Stats object
-    return Stats(
-        min=float(field.min_value), max=float(field.max_value), avg=field.avg_value
-    )
+    return Stats(min=stats.min_value, max=stats.max_value, avg=stats.avg_value)
 
 
 @router.get("/datasource/{id}/field/{fieldId}/values")

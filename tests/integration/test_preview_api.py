@@ -11,7 +11,8 @@ import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from easyminer.models.data import DataSource, Field
+from easyminer.crud.field import create_field
+from easyminer.models.data import DataSource, FieldType
 from easyminer.storage import DiskStorage
 
 
@@ -40,36 +41,37 @@ async def test_data_source_with_chunks(db_session: AsyncSession):
 
             # Create fields
             fields = [
-                Field(
+                await create_field(
+                    db_session=db_session,
                     name="name",
-                    data_type="string",
+                    data_type=FieldType.nominal,
                     data_source_id=data_source.id,
-                    index=0,
+                    unique_count=10,
+                    support=5,
                 ),
-                Field(
+                await create_field(
+                    db_session=db_session,
                     name="age",
-                    data_type="integer",
+                    data_type=FieldType.numeric,
                     data_source_id=data_source.id,
-                    index=1,
-                    min_value="25",
-                    max_value="40",
+                    unique_count=10,
+                    support=5,
+                    min_value=25,
+                    max_value=40,
                     avg_value=32.5,
                 ),
-                Field(
+                await create_field(
+                    db_session=db_session,
                     name="score",
-                    data_type="float",
+                    data_type=FieldType.numeric,
                     data_source_id=data_source.id,
-                    index=2,
-                    min_value="70.0",
-                    max_value="95.0",
+                    unique_count=10,
+                    support=5,
+                    min_value=70.0,
+                    max_value=95.0,
                     avg_value=85.0,
                 ),
             ]
-
-            for field in fields:
-                db_session.add(field)
-
-            await db_session.commit()
 
             # Create the chunks directory for the data source
             chunk_dir = Path(f"{data_source.id}/chunks")
@@ -151,18 +153,16 @@ async def test_get_instances(client, test_data_source_with_chunks):
     response_data = response.json()
 
     # Check that we have an instances list in the response
-    assert "instances" in response_data
-    instances = response_data["instances"]
+    instances = response_data
     assert isinstance(instances, list)
     assert len(instances) == 2
 
     # Each instance should have a values property
     for instance in instances:
-        assert "values" in instance
         # Check for expected fields in the values
-        assert "name" in instance["values"]
-        assert "age" in instance["values"]
-        assert "score" in instance["values"]
+        assert "name" in instance
+        assert "age" in instance
+        assert "score" in instance
 
 
 @pytest.mark.asyncio
@@ -184,13 +184,10 @@ async def test_get_instances_with_field_filter(client, test_data_source_with_chu
     response_data = response.json()
 
     # Check that we have an instances list in the response
-    assert "instances" in response_data
-    instances = response_data["instances"]
+    instances = response_data
 
     # Check that only requested fields are included
     for instance in instances:
-        assert "values" in instance
-        values = instance["values"]
-        assert "name" in values
-        assert "age" in values
-        assert "score" not in values  # Score field was not requested
+        assert "name" in instance
+        assert "age" in instance
+        assert "score" not in instance  # Score field was not requested

@@ -1,6 +1,7 @@
+import enum
 from datetime import UTC, datetime
 
-from sqlalchemy import ForeignKey, String
+from sqlalchemy import Enum, ForeignKey, String, Double
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from easyminer.database import Base
@@ -33,6 +34,11 @@ class DataSource(Base):
     )
 
 
+class FieldType(str, enum.Enum):
+    nominal = "nominal"
+    numeric = "numeric"
+
+
 class Field(Base):
     """Field model representing a column in a data source."""
 
@@ -40,16 +46,22 @@ class Field(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, index=True)
     name: Mapped[str] = mapped_column(String(255))
-    data_type: Mapped[str] = mapped_column(String(50))
+    data_type: Mapped[FieldType] = mapped_column(Enum(FieldType))
     data_source_id: Mapped[int] = mapped_column(ForeignKey("data_source.id"))
-    index: Mapped[int] = mapped_column()  # Position in the data source
-    min_value: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    max_value: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    avg_value: Mapped[float | None] = mapped_column(nullable=True)
-    unique_count: Mapped[int] = mapped_column(default=0)
-    missing_count: Mapped[int] = mapped_column(default=0)
-    has_nulls: Mapped[bool] = mapped_column(default=False)
+    unique_count: Mapped[int] = mapped_column()
+    support: Mapped[int] = mapped_column()
 
     data_source: Mapped[DataSource] = relationship(
         "DataSource", back_populates="fields"
     )
+
+
+class FieldNumericDetails(Base):
+    """Field details model for numeric fields."""
+
+    __tablename__ = "field_numeric_details"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    min_value: Mapped[float] = mapped_column(Double())
+    max_value: Mapped[float] = mapped_column(Double())
+    avg_value: Mapped[float] = mapped_column(Double())

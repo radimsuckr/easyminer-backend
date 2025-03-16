@@ -3,7 +3,7 @@ from collections.abc import Sequence
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from easyminer.models import Field
+from easyminer.models import Field, FieldNumericDetails, FieldType
 
 
 async def get_fields_by_data_source(
@@ -11,9 +11,7 @@ async def get_fields_by_data_source(
 ) -> Sequence[Field]:
     """Get all fields for a data source."""
     result = await db_session.execute(
-        select(Field)
-        .where(Field.data_source_id == data_source_id)
-        .order_by(Field.index)
+        select(Field).where(Field.data_source_id == data_source_id)
     )
     return result.scalars().all()
 
@@ -33,9 +31,9 @@ async def get_fields_by_ids(
 ) -> Sequence[Field]:
     """Get fields by IDs if they belong to the data source."""
     result = await db_session.execute(
-        select(Field)
-        .where(and_(Field.data_source_id == data_source_id, Field.id.in_(field_ids)))
-        .order_by(Field.index)
+        select(Field).where(
+            and_(Field.data_source_id == data_source_id, Field.id.in_(field_ids))
+        )
     )
     return result.scalars().all()
 
@@ -44,10 +42,11 @@ async def create_field(
     db_session: AsyncSession,
     name: str,
     data_source_id: int,
-    data_type: str,
-    index: int,
-    min_value: str | None = None,
-    max_value: str | None = None,
+    data_type: FieldType,
+    unique_count: int,
+    support: int,
+    min_value: float | None = None,
+    max_value: float | None = None,
     avg_value: float | None = None,
 ) -> Field:
     """Create a new field."""
@@ -55,12 +54,17 @@ async def create_field(
         name=name,
         data_source_id=data_source_id,
         data_type=data_type,
-        index=index,
-        min_value=min_value,
-        max_value=max_value,
-        avg_value=avg_value,
+        unique_count=unique_count,
+        support=support,
     )
     db_session.add(field)
+    if data_type == FieldType.numeric:
+        if min_value is None or max_value is None or avg_value is None:
+            raise ValueError("Numeric fields require statistical information.")
+        field_numeric_details = FieldNumericDetails(
+            id=field.id, min_value=min_value, max_value=max_value, avg_value=avg_value
+        )
+        db_session.add(field_numeric_details)
     await db_session.commit()
     await db_session.refresh(field)
     return field
@@ -69,18 +73,25 @@ async def create_field(
 async def update_field_stats(
     db_session: AsyncSession,
     field_id: int,
-    min_value: str,
-    max_value: str,
+    min_value: float,
+    max_value: float,
     avg_value: float,
-) -> Field | None:
+) -> FieldNumericDetails | None:
     """Update statistical information for a field."""
-    field = await db_session.get(Field, field_id)
-    if not field:
+    field_numeric_details = await db_session.get(FieldNumericDetails, field_id)
+    if not field_numeric_details:
         return None
 
-    field.min_value = min_value
-    field.max_value = max_value
-    field.avg_value = avg_value
+    field_numeric_details.min_value = min_value
+    field_numeric_details.max_value = max_value
+    field_numeric_details.avg_value = avg_value
     await db_session.commit()
-    await db_session.refresh(field)
-    return field
+    await db_session.refresh(field_numeric_details)
+    return field_numeric_details
+
+
+async def get_field_stats(
+    db_session: AsyncSession, field_id: int
+) -> FieldNumericDetails | None:
+    """Get statistical information for a field."""
+    return await db_session.get(FieldNumericDetails, field_id)

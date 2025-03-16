@@ -11,8 +11,9 @@ import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from easyminer.crud.field import create_field
 from easyminer.crud.task import create_task
-from easyminer.models.data import DataSource, Field
+from easyminer.models.data import DataSource, FieldType
 from easyminer.storage import DiskStorage
 
 
@@ -31,20 +32,17 @@ async def test_data_source_with_task(db_session: AsyncSession):
     await db_session.refresh(data_source)
 
     # Create a numeric field for the task
-    field = Field(
+    field = await create_field(
+        db_session=db_session,
         name="score",
-        data_type="integer",
+        data_type=FieldType.numeric,
         data_source_id=data_source.id,
-        index=0,
-        min_value="0",
-        max_value="100",
+        min_value=0,
+        max_value=100,
         avg_value=50.0,
         unique_count=10,
-        has_nulls=False,
+        support=5,
     )
-    db_session.add(field)
-    await db_session.commit()
-    await db_session.refresh(field)
 
     # Create a task
     task_id = uuid4()

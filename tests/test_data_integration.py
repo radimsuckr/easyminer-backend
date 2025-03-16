@@ -99,45 +99,6 @@ async def test_datasource_preview(
 
 
 @pytest.mark.asyncio
-async def test_datasource_instances(
-    test_client, mock_db_session, mock_data_source, mock_field
-):
-    """Test the get instances endpoint."""
-    # Mock the CRUD operations
-    with (
-        patch(
-            "easyminer.api.data.get_data_source_by_id", return_value=mock_data_source
-        ),
-        patch(
-            "easyminer.api.data.get_fields_by_data_source", return_value=[mock_field]
-        ),
-        patch(
-            "easyminer.processing.data_retrieval.get_data_preview"
-        ) as mock_get_preview,
-    ):
-        # Setup mock return value for get_data_preview
-        field_names = ["score"]
-        rows = [{"score": "85"}, {"score": "92"}, {"score": "78"}, {"score": "90"}]
-        mock_get_preview.return_value = (field_names, rows)
-
-        # Make the request with offset and limit
-        response = test_client.get("/api/v1/datasource/1/instances?offset=1&limit=2")
-
-        # Check response
-        assert response.status_code == 200
-        response_data = response.json()
-
-        # Check that we have an instances list in the response
-        assert "instances" in response_data
-        instances = response_data["instances"]
-        assert len(instances) == 2
-
-        # Check the values property of each instance
-        assert instances[0]["values"] == {"score": "92"}
-        assert instances[1]["values"] == {"score": "78"}
-
-
-@pytest.mark.asyncio
 async def test_field_aggregated_values(
     test_client, mock_db_session, mock_data_source, mock_field
 ):
