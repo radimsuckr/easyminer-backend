@@ -1,7 +1,7 @@
 import logging
 import pathlib as pl
 from datetime import datetime
-from typing import Annotated, Any, cast
+from typing import Annotated, Any
 from uuid import UUID, uuid4
 
 from fastapi import (
@@ -43,7 +43,7 @@ from easyminer.crud.upload import (
     get_upload_by_uuid,
 )
 from easyminer.database import get_db_session, sessionmanager
-from easyminer.models import DataSource, Field
+from easyminer.models import Field
 from easyminer.models.data import FieldType
 from easyminer.models.task import TaskStatusEnum
 from easyminer.processing import CsvProcessor
@@ -168,8 +168,8 @@ async def upload_chunk(
                 chunk_path = pl.Path(
                     f"{data_source_id}/chunks/{datetime.now().strftime('%Y%m%d%H%M%S%f')}.chunk"
                 )
-                storage.save(chunk_path, chunk)
-                await create_chunk(db, upload_id_value, str(chunk_path.resolve()))
+                _ = storage.save(chunk_path, chunk)
+                _ = await create_chunk(db, upload_id_value, str(chunk_path.resolve()))
             else:
                 # The chunk with zero length indicates the end of the upload
                 pass
@@ -191,7 +191,7 @@ async def upload_chunk(
                 try:
                     # Create processor with settings
                     processor = CsvProcessor(
-                        cast(DataSource, data_source_record),
+                        data_source_record,
                         db,
                         data_source_id,
                         encoding=encoding,
@@ -299,7 +299,7 @@ async def upload_preview_chunk(
 
         # Store the chunk using DiskStorage
         try:
-            storage.save(
+            _ = storage.save(
                 Path(
                     f"{data_source_id}/preview_chunks/{datetime.now().strftime('%Y%m%d%H%M%S%f')}.chunk"
                 ),
@@ -336,7 +336,7 @@ async def upload_preview_chunk(
 
                 # Process the preview CSV data
                 processor = CsvProcessor(
-                    cast(DataSource, data_source_record),
+                    data_source_record,
                     db,
                     data_source_id,
                     encoding=encoding,
@@ -852,10 +852,10 @@ async def get_aggregated_values(
                     return
 
                 # Update task status to in_progress
-                await update_task_status(
+                _ = await update_task_status(
                     session,
                     task_id,
-                    TaskStatus.started,
+                    TaskStatusEnum.started,
                     "Generating histogram data",
                 )
 
@@ -864,10 +864,10 @@ async def get_aggregated_values(
                 field_record = await get_field_by_id(session, fieldId, id)
 
                 if not data_source_record or not field_record:
-                    await update_task_status(
+                    _ = await update_task_status(
                         session,
                         task_id,
-                        "failed",
+                        TaskStatusEnum.failure,
                         "Data source or field no longer exists",
                     )
                     return
@@ -886,20 +886,20 @@ async def get_aggregated_values(
                     )
 
                     # Update task status
-                    await update_task_status(
+                    _ = await update_task_status(
                         session,
                         task_id,
-                        TaskStatus.success,
+                        TaskStatusEnum.success,
                         "Histogram generation completed",
                         result_location=result_path,
                     )
 
                 except Exception as e:
                     logger.error(f"Error generating histogram: {str(e)}", exc_info=True)
-                    await update_task_status(
+                    _ = await update_task_status(
                         session,
                         task_id,
-                        "failed",
+                        TaskStatusEnum.failure,
                         f"Error generating histogram: {str(e)}",
                     )
         except Exception as e:

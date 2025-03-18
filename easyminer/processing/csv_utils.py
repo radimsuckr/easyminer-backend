@@ -6,7 +6,7 @@ from easyminer.schemas.field_values import Value
 
 
 def extract_field_values_from_csv(
-    csv_text: str, field, encoding="utf-8", separator=",", quote_char='"'
+    csv_text: str, field: Any, encoding="utf-8", separator=",", quote_char='"'
 ) -> list[Value]:
     """Extract unique field values and their frequencies from CSV content.
 
