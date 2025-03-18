@@ -1,6 +1,7 @@
 import logging
 import logging.config
 from contextlib import asynccontextmanager
+from typing import Any
 
 import sqlalchemy.exc
 import uvicorn
@@ -10,6 +11,7 @@ from easyminer.api.data import router as data_router
 from easyminer.api.preprocessing import router as preprocessing_router
 from easyminer.config import settings
 from easyminer.database import sessionmanager
+from easyminer.schemas import BaseSchema
 
 LOGGING_CONFIG = {
     "version": 1,
@@ -58,6 +60,38 @@ app = FastAPI(
 )
 app.include_router(data_router)
 app.include_router(preprocessing_router)
+
+
+@app.get("/")
+async def root() -> dict[str, str]:
+    from .tasks import add
+
+    task = add.delay(1, 2)
+    return {"task_id": task.task_id}
+
+
+class TaskStatus(BaseSchema):
+    task_id: str
+    task_status: str
+    task_result: Any
+
+
+@app.get("/task/{taskId}")
+async def get_task(taskId: str) -> TaskStatus:
+    from .tasks import add
+
+    task = add.AsyncResult(taskId)
+    result = None
+    try:
+        result = task.result
+    except Exception:
+        pass
+    status = TaskStatus(
+        task_id=task.id,
+        task_status=task.status,
+        task_result=result,
+    )
+    return status
 
 
 @app.exception_handler(sqlalchemy.exc.OperationalError)

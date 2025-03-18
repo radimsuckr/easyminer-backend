@@ -21,4 +21,12 @@ class Settings(BaseSettings):
 database_url = os.getenv("DATABASE_URL")
 if not database_url:
     raise ValueError('Set "DATABASE_URL" environment variable')
+
+celery_broker = os.getenv("CELERY_BROKER")
+if not celery_broker:
+    raise ValueError('Set "CELERY_BROKER" environment variable')
+celery_backend = os.getenv("CELERY_BACKEND")
+if not celery_backend:
+    raise ValueError('Set "CELERY_BACKEND" environment variable')
+
 settings = Settings(database_url=database_url)

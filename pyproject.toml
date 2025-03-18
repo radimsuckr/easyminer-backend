@@ -6,7 +6,7 @@ authors = [{ name = "Radim Sückr", email = "sucr02@vse.cz" }]
 dependencies = [
     "aiomysql>=0.2.0",
     "alembic>=1.13.2",
-    "celery[redis]>=5.4.0",
+    "celery[redis,tblib]>=5.4.0",
     "cryptography>=43.0.0",
     "defusedxml>=0.7.1",
     "fastapi[standard]>=0.111.1",
@@ -24,6 +24,7 @@ requires-python = ">= 3.13"
 dev = [
     "aiosqlite>=0.20.0",
     "black>=24.4.2",
+    "celery-types>=0.23.0",
     "flake8>=7.1.0",
     "httpx>=0.27.0",
     "mypy>=1.11.0",
