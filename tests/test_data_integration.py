@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from easyminer.api.data import router as data_router
 from easyminer.models.data import DataSource, Field
-from easyminer.models.task import Task
+from easyminer.models.task import Task, TaskStatusEnum
 from easyminer.storage import DiskStorage
 
 
@@ -107,7 +107,7 @@ async def test_field_aggregated_values(
     task_id = uuid4()
     task = MagicMock(spec=Task)
     task.task_id = task_id
-    task.status = "pending"  # Add status field to the mock
+    task.status = TaskStatusEnum.pending  # Add status field to the mock
 
     with (
         patch(
@@ -130,7 +130,7 @@ async def test_field_aggregated_values(
         # Note: API returns taskId and resultLocation even though code uses task_id and result_location
         assert "taskId" in result
         assert "status" in result  # Check for status field
-        assert result["status"] == "pending"  # Check status value
+        assert result["status"] == TaskStatusEnum.pending.value  # Check status value
         assert result["statusMessage"] == "Histogram generation started"
         assert result["statusLocation"].startswith("/api/v1/task-status/")
         assert result["resultLocation"] is None
@@ -144,7 +144,7 @@ async def test_task_result(test_client, mock_db_session):
     task = MagicMock(spec=Task)
     task.task_id = task_id
     task.name = "aggregated_values"
-    task.status = "completed"
+    task.status = TaskStatusEnum.success
     task.result_location = "1/results/histogram_1_5.json"
 
     # Expected result data
@@ -180,7 +180,7 @@ async def test_task_result(test_client, mock_db_session):
         task_result = await mock_get_task(task_id)
         if not task_result:
             raise HTTPException(status_code=404, detail="Task not found")
-        if task_result.status != "completed":
+        if task_result.status != TaskStatusEnum.success:
             raise HTTPException(
                 status_code=400, detail=f"Task status is {task_result.status}"
             )

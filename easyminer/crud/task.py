@@ -4,7 +4,7 @@ from uuid import UUID
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from easyminer.models.task import Task
+from easyminer.models.task import Task, TaskStatusEnum
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +21,6 @@ async def create_task(
         task = Task(
             task_id=task_id,
             name=name,
-            status="pending",
             status_message="Task created and waiting to start",
             data_source_id=data_source_id,
         )
@@ -44,18 +43,18 @@ async def get_task_by_id(db: AsyncSession, task_id: UUID) -> Task | None:
 async def update_task_status(
     db: AsyncSession,
     task_id: UUID,
-    status: str,
+    status: TaskStatusEnum,
     status_message: str | None = None,
     result_location: str | None = None,
 ) -> Task | None:
     """Update a task status."""
-    update_values = {"status": status}
+    update_values: dict[str, str | TaskStatusEnum] = {"status": status}
     if status_message is not None:
         update_values["status_message"] = status_message
     if result_location is not None:
         update_values["result_location"] = result_location
 
-    await db.execute(
+    _ = await db.execute(
         update(Task).where(Task.task_id == task_id).values(**update_values)
     )
     await db.commit()

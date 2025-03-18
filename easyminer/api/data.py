@@ -45,6 +45,7 @@ from easyminer.crud.upload import (
 from easyminer.database import get_db_session, sessionmanager
 from easyminer.models import DataSource, Field
 from easyminer.models.data import FieldType
+from easyminer.models.task import TaskStatusEnum
 from easyminer.processing import CsvProcessor
 from easyminer.processing.csv_utils import extract_field_values_from_csv
 from easyminer.processing.data_retrieval import (
@@ -852,7 +853,10 @@ async def get_aggregated_values(
 
                 # Update task status to in_progress
                 await update_task_status(
-                    session, task_id, "in_progress", "Generating histogram data"
+                    session,
+                    task_id,
+                    TaskStatus.started,
+                    "Generating histogram data",
                 )
 
                 # Get data source and field again in this session
@@ -885,7 +889,7 @@ async def get_aggregated_values(
                     await update_task_status(
                         session,
                         task_id,
-                        "completed",
+                        TaskStatus.success,
                         "Histogram generation completed",
                         result_location=result_path,
                     )
@@ -908,7 +912,7 @@ async def get_aggregated_values(
     return TaskStatus(
         task_id=task_id,
         task_name="aggregated_values",
-        status="pending",
+        status=TaskStatusEnum.pending,
         status_message="Histogram generation started",
         status_location=request.url_for("get_task_status", taskId=task_id).path,
         result_location=None,
@@ -957,7 +961,7 @@ async def get_task_result(
         )
 
     # Check if the task is completed
-    if task.status != "completed":
+    if task.status != TaskStatusEnum.success:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Task is not completed yet (current status: {task.status})",

@@ -5,6 +5,7 @@ from uuid import UUID
 
 from pydantic import ConfigDict, Field
 
+from easyminer.models.task import TaskStatusEnum
 from easyminer.schemas import BaseSchema
 
 
@@ -13,7 +14,7 @@ class TaskStatus(BaseSchema):
 
     task_id: UUID
     task_name: str
-    status: str
+    status: TaskStatusEnum
     status_message: str | None = None
     status_location: str | None = None
     result_location: str | None = None

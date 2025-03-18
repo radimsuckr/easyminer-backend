@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from easyminer.crud.field import create_field
 from easyminer.crud.task import create_task
 from easyminer.models.data import DataSource, FieldType
+from easyminer.models.task import TaskStatusEnum
 from easyminer.storage import DiskStorage
 
 
@@ -71,7 +72,7 @@ async def completed_task(db_session: AsyncSession, test_data_source_with_task):
     with patch("easyminer.storage.DiskStorage", return_value=storage):
         try:
             # Update the task status to completed
-            task.status = "completed"
+            task.status = TaskStatusEnum.success
             task.status_message = "Histogram generation completed"
 
             # Create the results directory
@@ -129,7 +130,7 @@ async def test_get_task_status(client, test_data_source_with_task):
     assert "taskId" in task_status
     assert task_status["taskId"] == str(task.task_id)
     assert task_status["taskName"] == "aggregated_values"
-    assert task_status["status"] == "pending"  # Initial status
+    assert task_status["status"] == TaskStatusEnum.pending.value  # Initial status
     assert task_status["statusLocation"].endswith(f"/task-status/{task.task_id}")
     assert task_status["resultLocation"] is None  # No result yet
 

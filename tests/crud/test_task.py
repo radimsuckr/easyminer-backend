@@ -11,7 +11,7 @@ from easyminer.crud.task import (
     get_task_by_id,
     update_task_status,
 )
-from easyminer.models.task import Task
+from easyminer.models.task import Task, TaskStatusEnum
 
 
 @pytest.mark.asyncio
@@ -32,7 +32,7 @@ async def test_create_task(db_session: AsyncSession):
     assert task.id is not None
     assert task.task_id == task_id
     assert task.name == "test_task"
-    assert task.status == "pending"
+    assert task.status == TaskStatusEnum.pending
     assert task.status_message == "Task created and waiting to start"
     assert task.data_source_id == 42
     assert task.result_location is None
@@ -43,7 +43,7 @@ async def test_create_task(db_session: AsyncSession):
     assert db_task.id == task.id
     assert db_task.task_id == task_id
     assert db_task.name == "test_task"
-    assert db_task.status == "pending"
+    assert db_task.status == TaskStatusEnum.pending
     assert db_task.data_source_id == 42
 
 
@@ -77,7 +77,7 @@ async def test_get_task_by_id(db_session: AsyncSession):
     assert task.id == created_task.id
     assert task.task_id == task_id
     assert task.name == "get_task_test"
-    assert task.status == "pending"
+    assert task.status == TaskStatusEnum.pending
 
 
 @pytest.mark.asyncio
@@ -117,39 +117,39 @@ async def test_update_task_status(db_session: AsyncSession):
     updated_task = await update_task_status(
         db_session,
         task_id,
-        "in_progress",
+        TaskStatusEnum.started,
         "Task is currently processing",
         None,
     )
     assert updated_task is not None
     assert updated_task.task_id == task_id
-    assert updated_task.status == "in_progress"
+    assert updated_task.status == TaskStatusEnum.started
     assert updated_task.status_message == "Task is currently processing"
     assert updated_task.result_location is None
 
     # Check that the status was updated in the database
     result = await db_session.execute(select(Task).where(Task.task_id == task_id))
     db_task = result.scalar_one()
-    assert db_task.status == "in_progress"
+    assert db_task.status == TaskStatusEnum.started
     assert db_task.status_message == "Task is currently processing"
 
     # Update with result location
     updated_task = await update_task_status(
         db_session,
         task_id,
-        "completed",
+        TaskStatusEnum.success,
         "Task completed successfully",
         "/path/to/result.json",
     )
     assert updated_task is not None
-    assert updated_task.status == "completed"
+    assert updated_task.status == TaskStatusEnum.success
     assert updated_task.status_message == "Task completed successfully"
     assert updated_task.result_location == "/path/to/result.json"
 
     # Verify the update in the database
     result = await db_session.execute(select(Task).where(Task.task_id == task_id))
     db_task = result.scalar_one()
-    assert db_task.status == "completed"
+    assert db_task.status == TaskStatusEnum.success
     assert db_task.result_location == "/path/to/result.json"
 
 
@@ -161,7 +161,7 @@ async def test_update_task_status_nonexistent(db_session: AsyncSession):
     updated_task = await update_task_status(
         db_session,
         non_existent_id,
-        "completed",
+        TaskStatusEnum.success,
         "This should not update anything",
     )
     assert updated_task is None
