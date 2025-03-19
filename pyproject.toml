@@ -36,7 +36,6 @@ dev = [
 
 [tool.pyright]
 extraPaths = ["./.venv/lib/python3.13/site-packages/"]
-reportAny = "none"
 
 [tool.ruff]
 target-version = "py313"
