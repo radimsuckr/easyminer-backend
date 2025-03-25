@@ -6,7 +6,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from easyminer.crud.upload import (
-    create_preview_upload,
     create_upload,
     get_upload_by_id,
     get_upload_by_uuid,
@@ -58,43 +57,6 @@ async def test_create_upload(db_session: AsyncSession):
         assert db_upload.id == upload.id
         assert db_upload.uuid == str(test_uuid)
         assert db_upload.name == "Test Upload"
-
-
-@pytest.mark.asyncio
-async def test_create_preview_upload(db_session: AsyncSession):
-    """Test creating a new preview upload with SQLite."""
-    # Mock the UUID generation for deterministic testing
-    test_uuid = uuid.UUID("87654321-4321-8765-4321-876543210987")
-    with patch("easyminer.crud.upload.uuid4", return_value=test_uuid):
-        # Create a new preview upload
-        upload = await create_preview_upload(
-            db_session=db_session,
-            max_lines=100,
-            compression="gzip",
-        )
-
-        # Check that the preview upload was created correctly
-        assert upload.id is not None
-        assert upload.uuid == str(test_uuid)
-        assert upload.name == f"preview_{test_uuid}"
-        assert upload.media_type == "csv"
-        assert upload.db_type == "limited"
-        assert upload.separator == ","
-        assert upload.encoding == "utf-8"
-        assert upload.quotes_char == '"'
-        assert upload.escape_char == "\\"
-        assert upload.locale == "en_US"
-        assert upload.compression == "gzip"
-        assert upload.format == "csv"
-        assert upload.preview_max_lines == 100
-
-        # Check that the upload is in the database
-        result = await db_session.execute(select(Upload).where(Upload.id == upload.id))
-        db_upload = result.scalar_one()
-        assert db_upload.id == upload.id
-        assert db_upload.uuid == str(test_uuid)
-        assert db_upload.name == f"preview_{test_uuid}"
-        assert db_upload.preview_max_lines == 100
 
 
 @pytest.mark.asyncio

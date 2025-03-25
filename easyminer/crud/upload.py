@@ -29,31 +29,6 @@ async def create_upload(db_session: AsyncSession, settings: UploadSettings) -> U
     return upload
 
 
-async def create_preview_upload(
-    db_session: AsyncSession, max_lines: int, compression: str | None = None
-) -> Upload:
-    """Create a new preview upload entry in the database."""
-    upload_id = uuid4()
-    upload = Upload(
-        uuid=str(upload_id),
-        name=f"preview_{upload_id}",  # Using UUID as name for preview uploads
-        media_type="csv",  # Default to CSV for preview
-        db_type="limited",
-        separator=",",  # Default separator
-        encoding="utf-8",  # Default encoding
-        quotes_char='"',
-        escape_char="\\",
-        locale="en_US",
-        compression=compression,
-        format="csv",
-        preview_max_lines=max_lines,
-    )
-    db_session.add(upload)
-    await db_session.commit()
-    await db_session.refresh(upload)
-    return upload
-
-
 async def get_upload_by_uuid(
     db_session: AsyncSession, upload_uuid: str
 ) -> Upload | None:

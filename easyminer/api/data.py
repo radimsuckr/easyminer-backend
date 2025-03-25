@@ -37,7 +37,6 @@ from easyminer.crud.field import (
 from easyminer.crud.task import create_task, get_task_by_id, update_task_status
 from easyminer.crud.upload import (
     create_chunk,
-    create_preview_upload,
     create_upload,
     get_upload_by_id,
     get_upload_by_uuid,
@@ -46,7 +45,6 @@ from easyminer.database import get_db_session, sessionmanager
 from easyminer.models import Field
 from easyminer.models.data import FieldType
 from easyminer.models.task import TaskStatusEnum
-from easyminer.processing import CsvProcessor
 from easyminer.processing.csv_utils import extract_field_values_from_csv
 from easyminer.processing.data_retrieval import (
     generate_histogram_for_field,
@@ -214,154 +212,36 @@ async def upload_chunk(
         )
 
 
-@router.post("/upload/preview/start")
+@router.post(
+    "/upload/preview/start",
+    deprecated=True,
+    description="**This endpoint is deprecated and unimplemented.**",
+)
 async def start_preview_upload(
     settings: PreviewUpload,
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> UUID:
-    """Start a new preview upload process."""
-    # Create a new upload with preview flag
-    upload = await create_preview_upload(
-        db,
-        settings.max_lines,
-        settings.compression.value if settings.compression else None,
+    raise HTTPException(
+        status_code=status.HTTP_501_NOT_IMPLEMENTED,
+        detail="Preview upload not implemented",
     )
-    return UUID(upload.uuid)
 
 
-@router.post("/upload/preview/{upload_id}", status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "/upload/preview/{upload_id}",
+    deprecated=True,
+    description="**This endpoint is deprecated and unimplemented.**",
+)
 async def upload_preview_chunk(
-    upload_id: str,
+    upload_id: UUID,
     request: Request,
     db: Annotated[AsyncSession, Depends(get_db_session)],
     max_lines: Annotated[int, Query(gt=0, le=1000)] = 100,
 ) -> Response:
-    """Upload a chunk of preview data.
-
-    Args:
-        upload_id: The UUID of the upload
-        request: Request containing the chunk data
-        db: Database session
-        max_lines: Maximum number of lines to process for preview
-
-    Returns:
-        Response with 202 Accepted status code
-    """
-    storage = DiskStorage(Path("../../var/data"))
-
-    try:
-        # Retrieve the upload by UUID
-        upload_record = await get_upload_by_uuid(db, upload_id)
-
-        if not upload_record:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Upload not found"
-            )
-
-        # Read raw body data
-        chunk = await request.body()
-        if len(chunk) > MAX_PREVIEW_CHUNK_SIZE:
-            raise HTTPException(
-                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                detail=f"Chunk too large. Maximum size is {MAX_PREVIEW_CHUNK_SIZE} bytes",
-            )
-
-        # Get the associated data source
-        data_source_record = await get_data_source_by_upload_id(db, upload_record.id)
-
-        # Create a data source if it doesn't exist
-        if not data_source_record:
-            data_source_record = await create_data_source(
-                db_session=db,
-                name=upload_record.name,
-                type=upload_record.media_type,
-                size_bytes=len(chunk),
-            )
-            data_source_id = data_source_record.id
-        else:
-            data_source_id = data_source_record.id
-
-        # Store the chunk using DiskStorage
-        try:
-            _ = storage.save(
-                Path(
-                    f"{data_source_id}/preview_chunks/{datetime.now().strftime('%Y%m%d%H%M%S%f')}.chunk"
-                ),
-                chunk,
-            )
-        except ValueError as e:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Error saving chunk: {str(e)}",
-            )
-
-        # Process the preview data
-        if upload_record.media_type == "csv":
-            try:
-                # Get upload settings
-                encoding = "utf-8"
-                separator = ","
-                quote_char = '"'
-
-                # Try to get these values from the database
-                try:
-                    if hasattr(upload_record, "encoding") and upload_record.encoding:
-                        encoding = upload_record.encoding
-                    if hasattr(upload_record, "separator") and upload_record.separator:
-                        separator = upload_record.separator
-                    if (
-                        hasattr(upload_record, "quotes_char")
-                        and upload_record.quotes_char
-                    ):
-                        quote_char = upload_record.quotes_char
-                except Exception:
-                    # Use defaults if there's an error
-                    pass
-
-                # Process the preview CSV data
-                processor = CsvProcessor(
-                    data_source_record,
-                    db,
-                    data_source_id,
-                    encoding=encoding,
-                    separator=separator,
-                    quote_char=quote_char,
-                )
-                storage_dir = pl.Path(f"../../var/data/{data_source_id}/preview_chunks")
-                await processor.process_chunks(storage_dir)
-
-                # Update the data source with the max_lines limit for preview
-                if max_lines and data_source_record.row_count > max_lines:
-                    # For preview, limit the number of rows to max_lines
-                    data_source_record.row_count = max_lines
-                    await db.commit()
-
-            except Exception as e:
-                logging.error(f"Error processing preview CSV: {str(e)}", exc_info=True)
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail=f"Error processing preview CSV data: {str(e)}",
-                )
-
-        # Return 202 Accepted
-        return Response(status_code=status.HTTP_202_ACCEPTED)
-
-    except HTTPException:
-        # Re-raise HTTP exceptions
-        raise
-    except Exception as e:
-        # Ensure we rollback on any error
-        try:
-            await db.rollback()
-        except Exception:
-            pass  # Ignore rollback errors
-
-        logging.error(f"Error in upload_preview_chunk: {str(e)}", exc_info=True)
-
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error processing preview chunk: {str(e)}",
-        )
+    raise HTTPException(
+        status_code=status.HTTP_501_NOT_IMPLEMENTED,
+        detail="Preview upload not implemented",
+    )
 
 
 @router.get("/datasource")
