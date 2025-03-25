@@ -1,5 +1,5 @@
 from sqlalchemy import Column, ForeignKey, Integer, String, Table
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, Relationship, mapped_column, relationship
 
 from easyminer.database import Base
 
@@ -66,7 +66,7 @@ class Upload(Base):
 
     data_source = relationship("DataSource", back_populates="upload", uselist=False)
 
-    chunks = relationship("Chunk", back_populates="upload")
+    chunks: Relationship[list["Chunk"]] = relationship("Chunk", back_populates="upload")
 
 
 class Chunk(Base):
@@ -76,4 +76,4 @@ class Chunk(Base):
     upload_id: Mapped[int] = mapped_column(ForeignKey("upload.id"))
     path: Mapped[str] = mapped_column(String(255))
 
-    upload = relationship("Upload", back_populates="chunks")
+    upload: Relationship["Upload"] = relationship("Upload", back_populates="chunks")

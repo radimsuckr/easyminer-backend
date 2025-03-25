@@ -1,14 +1,15 @@
 import contextlib
-from collections.abc import AsyncGenerator, AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator, Generator
 from typing import Any
 
+from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import (
     AsyncConnection,
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
-from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from easyminer.config import settings
 
@@ -65,3 +66,16 @@ sessionmanager = DatabaseSessionManager(
 async def get_db_session() -> AsyncGenerator[AsyncSession]:
     async with sessionmanager.session() as session:
         yield session
+
+
+@contextlib.contextmanager
+def get_sync_db_session() -> Generator[Session]:
+    sync_engine = create_engine(settings.database_url, echo=settings.echo_sql)
+    session = sessionmaker(sync_engine, expire_on_commit=False)()
+    try:
+        yield session
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()

@@ -1,11 +1,12 @@
 import enum
 from datetime import UTC, datetime
 
-from sqlalchemy import Enum, ForeignKey, String, Double
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import Double, Enum, ForeignKey, String
+from sqlalchemy.orm import Mapped, Relationship, mapped_column, relationship
 
 from easyminer.database import Base
 from easyminer.models.task import Task
+from easyminer.models.upload import Upload
 
 
 class DataSource(Base):
@@ -28,7 +29,7 @@ class DataSource(Base):
     fields: Mapped[list["Field"]] = relationship(
         back_populates="data_source", cascade="all, delete-orphan"
     )
-    upload = relationship("Upload", back_populates="data_source")
+    upload: Relationship[Upload] = relationship("Upload", back_populates="data_source")
     tasks: Mapped[list["Task"]] = relationship(
         back_populates="data_source", cascade="all, delete-orphan"
     )

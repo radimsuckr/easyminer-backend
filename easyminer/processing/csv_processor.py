@@ -4,10 +4,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import insert
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from easyminer.models.data import DataSource, Field, FieldType
+from easyminer.models.data import DataSource, FieldType
 from easyminer.schemas import BaseSchema
 from easyminer.storage import DiskStorage
 
@@ -27,7 +24,6 @@ class CsvProcessor:
     def __init__(
         self,
         data_source: DataSource,
-        db: AsyncSession,
         data_source_id: int,
         encoding: str = "utf-8",
         separator: str = ",",
@@ -43,16 +39,20 @@ class CsvProcessor:
             separator: The separator character for CSV parsing
             quote_char: The quote character for CSV parsing
         """
-        self.data_source = data_source
-        self.data_source_id = data_source_id
-        self.db = db
-        self.logger = logging.getLogger(__name__)
-        self.encoding = encoding
-        self.separator = separator
-        self.quote_char = quote_char
-        self.storage = DiskStorage(Path("../../var/data"))
+        self.data_source: DataSource = data_source
+        self.data_source_id: int = data_source_id
+        self.logger: logging.Logger = logging.getLogger(__name__)
+        self.encoding: str = encoding
+        self.separator: str = separator
+        self.quote_char: str = quote_char
+        self.storage: DiskStorage = DiskStorage(Path("../../var/data"))
 
-    async def process_chunks(self, storage_dir: Path) -> None:
+    def process_chunks(
+        self, storage_dir: Path
+    ) -> (
+        tuple[int, list[tuple[str, str, dict[str, Any]]]]
+        | None  # TODO: Better return type
+    ):
         """Process all chunks for a data source.
 
         Args:
@@ -78,30 +78,10 @@ class CsvProcessor:
 
         # Parse the combined data
         row_count, fields = self._parse_csv(combined_data)
-
-        # Update the data source with row count
-        self.data_source.row_count = row_count
-
-        # Create fields for the data source
-        await self.db.execute(
-            insert(Field),
-            [
-                {
-                    "name": name,
-                    "data_type": field_type,
-                    "data_source_id": self.data_source_id,
-                    "index": idx,
-                    **stats,
-                }
-                for idx, (name, field_type, stats) in enumerate(fields)
-            ],
-        )
-
-        # Commit changes
-        await self.db.commit()
         self.logger.info(
             f"Processed {row_count} rows for data source {self.data_source_id}"
         )
+        return row_count, fields
 
     def _parse_csv(
         self, data: bytes

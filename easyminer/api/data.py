@@ -65,6 +65,7 @@ from easyminer.schemas.data import (
 from easyminer.schemas.field_values import Value
 from easyminer.schemas.task import TaskResult, TaskStatus
 from easyminer.storage import DiskStorage
+from easyminer.tasks import process_csv
 
 # Maximum chunk size for preview uploads (100KB)
 MAX_PREVIEW_CHUNK_SIZE = 100 * 1024
@@ -181,33 +182,16 @@ async def upload_chunk(
 
         # If this is the last chunk (empty chunk), process the data
         if len(chunk) == 0:
-            # Process the uploaded chunks
-            logging.info(
+            logger.info(
                 f"Upload complete for data source {data_source_id}. Processing data..."
             )
-
-            # Process the CSV data
-            if upload_media_type == "csv":
-                try:
-                    # Create processor with settings
-                    processor = CsvProcessor(
-                        data_source_record,
-                        db,
-                        data_source_id,
-                        encoding=encoding,
-                        separator=separator,
-                        quote_char=quote_char,
-                    )
-                    storage_dir = pl.Path(f"../../var/data/{data_source_id}/chunks")
-                    await processor.process_chunks(storage_dir)
-                except Exception as e:
-                    logging.error(f"Error processing CSV: {str(e)}", exc_info=True)
-                    raise HTTPException(
-                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                        detail=f"Error processing CSV data: {str(e)}",
-                    )
-            else:
-                logging.warning(f"Unsupported media type: {upload_media_type}")
+            task = process_csv.delay(
+                data_source_id=data_source_id,
+                upload_media_type=upload_media_type,
+                encoding=encoding,
+                separator=separator,
+                quote_char=quote_char,
+            )
 
         # Return 202 Accepted
         return Response(status_code=status.HTTP_202_ACCEPTED)
