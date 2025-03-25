@@ -20,3 +20,6 @@ fake_server:
 
 test:
 	uv run pytest
+
+celery:
+	uv run celery -A easyminer.worker worker -l INFO -O fair
