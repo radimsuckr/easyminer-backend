@@ -440,10 +440,10 @@ async def get_fields_api(
     return [FieldRead.model_validate(field) for field in fields]
 
 
-@router.get("/datasource/{id}/field/{fieldId}")
+@router.get("/datasource/{id}/field/{field_id}")
 async def get_field_api(
     id: Annotated[int, Path()],
-    fieldId: Annotated[int, Path()],
+    field_id: Annotated[int, Path()],
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> FieldRead:
     """Get metadata for a specific field.
@@ -464,7 +464,7 @@ async def get_field_api(
         )
 
     # Get the field
-    field = await get_field_by_id(db, fieldId, id)
+    field = await get_field_by_id(db, field_id, id)
     if not field:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Field not found"
@@ -473,10 +473,10 @@ async def get_field_api(
     return FieldRead.model_validate(field)
 
 
-@router.get("/datasource/{id}/field/{fieldId}/stats")
+@router.get("/datasource/{id}/field/{field_id}/stats")
 async def get_field_stats_api(
     id: Annotated[int, Path()],
-    fieldId: Annotated[int, Path()],
+    field_id: Annotated[int, Path()],
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> Stats:
     """Get statistical information about a field."""
@@ -488,7 +488,7 @@ async def get_field_stats_api(
         )
 
     # Check if field exists and belongs to the data source
-    field = await get_field_by_id(db, fieldId, id)
+    field = await get_field_by_id(db, field_id, id)
     if not field:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Field not found"
@@ -518,10 +518,10 @@ async def get_field_stats_api(
     return Stats(min=stats.min_value, max=stats.max_value, avg=stats.avg_value)
 
 
-@router.get("/datasource/{id}/field/{fieldId}/values")
+@router.get("/datasource/{id}/field/{field_id}/values")
 async def get_field_values(
     id: Annotated[int, Path()],
-    fieldId: Annotated[int, Path()],
+    field_id: Annotated[int, Path()],
     db: Annotated[AsyncSession, Depends(get_db_session)],
     offset: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(gt=0, le=100)] = 20,
@@ -549,7 +549,7 @@ async def get_field_values(
         )
 
     # Then check field
-    field = await get_field_by_id(db, fieldId, id)
+    field = await get_field_by_id(db, field_id, id)
     if not field:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Field not found"
@@ -638,13 +638,13 @@ async def get_field_values(
 
 
 @router.get(
-    "/datasource/{id}/field/{fieldId}/aggregated-values",
+    "/datasource/{id}/field/{field_id}/aggregated-values",
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def get_aggregated_values(
     request: Request,
     id: Annotated[int, Path()],
-    fieldId: Annotated[int, Path()],
+    field_id: Annotated[int, Path()],
     db: Annotated[AsyncSession, Depends(get_db_session)],
     bins: Annotated[int, Query(gt=0, le=1000)] = 10,
     min_value: float | None = None,
@@ -680,7 +680,7 @@ async def get_aggregated_values(
         )
 
     # Check if field exists and belongs to the data source
-    field = await get_field_by_id(db, fieldId, id)
+    field = await get_field_by_id(db, field_id, id)
     if not field:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Field not found"
@@ -725,7 +725,7 @@ async def get_aggregated_values(
 
                 # Get data source and field again in this session
                 data_source_record = await get_data_source_by_id(session, id)
-                field_record = await get_field_by_id(session, fieldId, id)
+                field_record = await get_field_by_id(session, field_id, id)
 
                 if not data_source_record or not field_record:
                     _ = await update_task_status(
@@ -778,20 +778,20 @@ async def get_aggregated_values(
         task_name="aggregated_values",
         status=TaskStatusEnum.pending,
         status_message="Histogram generation started",
-        status_location=request.url_for("get_task_status", taskId=task_id).path,
+        status_location=request.url_for("get_task_status", task_id=task_id).path,
         result_location=None,
     )
 
 
-@router.get("/task-status/{taskId}", name="get_task_status")
+@router.get("/task-status/{task_id}", name="get_task_status")
 async def get_task_status(
     request: Request,
-    taskId: Annotated[UUID, Path()],
+    task_id: Annotated[UUID, Path()],
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> TaskStatus:
     """Get status of a task."""
     # Look up the task by ID
-    task = await get_task_by_id(db, taskId)
+    task = await get_task_by_id(db, task_id)
 
     # Check if the task exists
     if not task:
@@ -804,19 +804,19 @@ async def get_task_status(
         task_name=task.name,
         status=task.status,
         status_message=task.status_message,
-        status_location=request.url_for("get_task_status", taskId=task.task_id).path,
+        status_location=request.url_for("get_task_status", task_id=task.task_id).path,
         result_location=task.result_location if task.result_location else None,
     )
 
 
-@router.get("/task-result/{taskId}")
+@router.get("/task-result/{task_id}")
 async def get_task_result(
-    taskId: Annotated[UUID, Path()],
+    task_id: Annotated[UUID, Path()],
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> TaskResult:
     """Get the result of a completed task."""
     # Look up the task by ID
-    task = await get_task_by_id(db, taskId)
+    task = await get_task_by_id(db, task_id)
 
     # Check if the task exists
     if not task:

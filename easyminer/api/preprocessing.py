@@ -6,6 +6,7 @@ from fastapi import (
     BackgroundTasks,
     Body,
     Depends,
+    HTTPException,
     Path,
     Query,
     Request,
@@ -34,7 +35,7 @@ async def list_datasets(
 ):
     """Display a list of all datasets within the user data space."""
     # TODO: Implement this endpoint
-    pass
+    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED)
 
 
 @router.post(
@@ -49,7 +50,7 @@ async def create_dataset(
 ):
     """Create a task for the dataset creation from a data source."""
     # TODO: Implement this endpoint
-    pass
+    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED)
 
 
 @router.get("/dataset/{id}", response_model=DatasetRead)
@@ -59,7 +60,7 @@ async def get_dataset(
 ):
     """Get detail information about a dataset."""
     # TODO: Implement this endpoint
-    pass
+    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED)
 
 
 @router.delete("/dataset/{id}")
@@ -69,7 +70,7 @@ async def delete_dataset(
 ):
     """Delete this dataset."""
     # TODO: Implement this endpoint
-    pass
+    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED)
 
 
 @router.put("/dataset/{id}")
@@ -80,106 +81,84 @@ async def rename_dataset(
 ):
     """Rename this dataset."""
     # TODO: Implement this endpoint
-    pass
+    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED)
 
 
 # Attribute endpoints
-@router.get("/dataset/{datasetId}/attribute", response_model=list[AttributeRead])
+@router.get("/dataset/{dataset_id}/attribute", response_model=list[AttributeRead])
 async def list_attributes(
-    datasetId: Annotated[int, Path()],
+    dataset_id: Annotated[int, Path()],
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ):
     """Display a list of all attributes/columns for a specific dataset."""
     # TODO: Implement this endpoint
-    pass
+    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED)
 
 
 @router.post(
-    "/dataset/{datasetId}/attribute",
+    "/dataset/{dataset_id}/attribute",
     response_model=TaskStatus,
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def create_attribute(
-    datasetId: Annotated[int, Path()],
+    dataset_id: Annotated[int, Path()],
     body: Annotated[str, Body()],
     db: Annotated[AsyncSession, Depends(get_db_session)],
     background_tasks: BackgroundTasks,
 ):
     """Create a task for the attribute creation from a data source field."""
     # TODO: Implement this endpoint
-    pass
+    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED)
 
 
 @router.get(
-    "/dataset/{datasetId}/attribute/{attributeId}", response_model=AttributeRead
+    "/dataset/{dataset_id}/attribute/{attribute_id}", response_model=AttributeRead
 )
 async def get_attribute(
-    datasetId: Annotated[int, Path()],
-    attributeId: Annotated[int, Path()],
+    dataset_id: Annotated[int, Path()],
+    attribute_id: Annotated[int, Path()],
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ):
     """Get detail information about an attribute of a specific dataset."""
     # TODO: Implement this endpoint
-    pass
+    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED)
 
 
-@router.delete("/dataset/{datasetId}/attribute/{attributeId}")
+@router.delete("/dataset/{dataset_id}/attribute/{attribute_id}")
 async def delete_attribute(
-    datasetId: Annotated[int, Path()],
-    attributeId: Annotated[int, Path()],
+    dataset_id: Annotated[int, Path()],
+    attribute_id: Annotated[int, Path()],
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ):
     """Delete this attribute of a specific dataset."""
     # TODO: Implement this endpoint
-    pass
+    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED)
 
 
-@router.put("/dataset/{datasetId}/attribute/{attributeId}")
+@router.put("/dataset/{dataset_id}/attribute/{attribute_id}")
 async def rename_attribute(
-    datasetId: Annotated[int, Path()],
-    attributeId: Annotated[int, Path()],
+    dataset_id: Annotated[int, Path()],
+    attribute_id: Annotated[int, Path()],
     name: Annotated[str, Body()],
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ):
     """Rename this attribute of a specific dataset."""
     # TODO: Implement this endpoint
-    pass
+    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED)
 
 
 # Value endpoints
 @router.get(
-    "/dataset/{datasetId}/attribute/{attributeId}/values",
+    "/dataset/{dataset_id}/attribute/{attribute_id}/values",
     response_model=list[AttributeValueRead],
 )
 async def list_values(
-    datasetId: Annotated[int, Path()],
-    attributeId: Annotated[int, Path()],
+    dataset_id: Annotated[int, Path()],
+    attribute_id: Annotated[int, Path()],
     offset: Annotated[int, Query(ge=0)],
     limit: Annotated[int, Query(gt=0, le=1000)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ):
     """Display a list of all unique values for a specific attribute and dataset."""
     # TODO: Implement this endpoint
-    pass
-
-
-# Background task endpoints
-@router.get("/task-status/{taskId}", response_model=TaskStatus)
-async def get_task_status(
-    request: Request,
-    taskId: Annotated[UUID, Path()],
-    db: Annotated[AsyncSession, Depends(get_db_session)],
-):
-    """Display the status of a specific task."""
-    # TODO: Implement this endpoint
-    pass
-
-
-@router.get("/task-result/{taskId}", response_model=TaskResult)
-async def get_task_result(
-    taskId: Annotated[UUID, Path()],
-    db: Annotated[AsyncSession, Depends(get_db_session)],
-):
-    """Return a result of a specific successfully completed task."""
-    # TODO: Implement this endpoint
-    pass
+    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED)
