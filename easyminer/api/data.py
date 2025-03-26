@@ -16,6 +16,7 @@ from fastapi import (
     Response,
     status,
 )
+from sqlalchemy import Update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from easyminer.config import API_V1_PREFIX
@@ -46,7 +47,7 @@ from easyminer.crud.aio.upload import (
 )
 from easyminer.database import get_db_session, sessionmanager
 from easyminer.models import Field
-from easyminer.models.data import FieldType
+from easyminer.models.data import DataSource, FieldType
 from easyminer.models.task import TaskStatusEnum
 from easyminer.processing.csv_utils import extract_field_values_from_csv
 from easyminer.processing.data_retrieval import (
@@ -101,11 +102,19 @@ async def upload_preview_start(
     return upload.uuid
 
 
-@router.post("/upload/{upload_id}", status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "/upload/{upload_id}",
+    responses={
+        status.HTTP_200_OK: {"description": "Upload successful and closed"},
+        status.HTTP_202_ACCEPTED: {},
+        status.HTTP_403_FORBIDDEN: {"description": "Upload already closed"},
+        status.HTTP_429_TOO_MANY_REQUESTS: {"description": "Uploading chunks too fast"},
+    },
+)
 async def upload_chunk(
-    upload_id: str,
-    body: str,
     db: Annotated[AsyncSession, Depends(get_db_session)],
+    upload_id: str,
+    body: str = "",
 ) -> Response:
     # TODO: add is_finished toggle that will be set to True when the last empty chunk is uploaded. Do this also for preview.
     """Upload a chunk of data for an upload."""
@@ -121,6 +130,11 @@ async def upload_chunk(
         if not upload_record:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Upload not found"
+            )
+
+        if upload_record.data_source.is_finished:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail="Upload already closed"
             )
 
         # Get upload attributes we'll need later
@@ -160,28 +174,24 @@ async def upload_chunk(
             data_source_record = updated_ds
 
         # For empty chunks (signaling end of upload), don't write to disk
-        try:
-            if len(chunk) > 0:
-                # Use the storage service to save the chunk
-                chunk_path = pl.Path(
-                    f"{data_source_id}/chunks/{datetime.now().strftime('%Y%m%d%H%M%S%f')}.chunk"
-                )
-                _, path = storage.save(chunk_path, bytes(chunk, upload_record.encoding))
-                _ = await create_chunk(db, upload_id_value, str(path))
-            else:
-                # The chunk with zero length indicates the end of the upload
-                pass
-        except Exception as e:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Error saving chunk: {str(e)}",
+        if len(chunk) > 0:
+            # Use the storage service to save the chunk
+            chunk_path = pl.Path(
+                f"{data_source_id}/chunks/{datetime.now().strftime('%Y%m%d%H%M%S%f')}.chunk"
             )
-
+            _, path = storage.save(chunk_path, bytes(chunk, encoding))
+            _ = await create_chunk(db, upload_id_value, str(path))
         # If this is the last chunk (empty chunk), process the data
-        if len(chunk) == 0:
+        elif len(chunk) == 0:
             logger.info(
                 f"Upload complete for data source {data_source_id}. Processing data..."
             )
+            _ = await db.execute(
+                Update(DataSource)
+                .where(DataSource.id == data_source_id)
+                .values(is_finished=True)
+            )
+            await db.commit()
             _ = process_csv.delay(
                 data_source_id=data_source_id,
                 upload_media_type=upload_media_type,
@@ -189,13 +199,9 @@ async def upload_chunk(
                 separator=separator,
                 quote_char=quote_char,
             )
+            return Response(status_code=status.HTTP_200_OK)
 
-        # Return 202 Accepted
         return Response(status_code=status.HTTP_202_ACCEPTED)
-
-    except HTTPException:
-        # Re-raise HTTP exceptions
-        raise
     except Exception as e:
         # Ensure we rollback on any error
         try:
@@ -211,11 +217,19 @@ async def upload_chunk(
         )
 
 
-@router.post("/upload/preview/{upload_id}", status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "/upload/preview/{upload_id}",
+    responses={
+        status.HTTP_200_OK: {"description": "Upload successful and closed"},
+        status.HTTP_202_ACCEPTED: {},
+        status.HTTP_403_FORBIDDEN: {"description": "Upload already closed"},
+        status.HTTP_429_TOO_MANY_REQUESTS: {"description": "Uploading chunks too fast"},
+    },
+)
 async def upload_preview_chunk(
-    upload_id: UUID,
-    body: str,
     db: Annotated[AsyncSession, Depends(get_db_session)],
+    upload_id: UUID,
+    body: str = "",
 ) -> Response:
     # TODO: check that the upload is not bigger than the set max_lines.
     """Upload a chunk of data for an upload."""
@@ -231,6 +245,11 @@ async def upload_preview_chunk(
         if not upload_record:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Upload not found"
+            )
+
+        if upload_record.data_source.is_finished:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail="Upload already closed"
             )
 
         # Get upload attributes we'll need later
@@ -255,28 +274,30 @@ async def upload_preview_chunk(
             data_source_record = updated_ds
 
         # For empty chunks (signaling end of upload), don't write to disk
-        try:
-            if len(chunk) > 0:
+        if len(chunk) > 0:
+            try:
                 # Use the storage service to save the chunk
                 chunk_path = pl.Path(
                     f"{data_source_id}/chunks/{datetime.now().strftime('%Y%m%d%H%M%S%f')}.chunk"
                 )
                 _, path = storage.save(chunk_path, bytes(chunk, "utf-8"))
                 _ = await create_chunk(db, upload_id_value, str(path))
-            else:
-                # The chunk with zero length indicates the end of the upload
-                pass
-        except Exception as e:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Error saving chunk: {str(e)}",
-            )
-
+            except Exception as e:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Error saving chunk: {str(e)}",
+                )
         # If this is the last chunk (empty chunk), process the data
-        if len(chunk) == 0:
+        elif len(chunk) == 0:
             logger.info(
                 f"Upload complete for data source {data_source_id}. Processing data..."
             )
+            _ = await db.execute(
+                Update(DataSource)
+                .where(DataSource.id == data_source_id)
+                .values(is_finished=True)
+            )
+            await db.commit()
             _ = process_csv.delay(
                 data_source_id=data_source_id,
                 upload_media_type="csv",
@@ -284,13 +305,11 @@ async def upload_preview_chunk(
                 separator=separator,
                 quote_char=quote_char,
             )
+            return Response(status_code=status.HTTP_200_OK)
 
         # Return 202 Accepted
         return Response(status_code=status.HTTP_202_ACCEPTED)
 
-    except HTTPException:
-        # Re-raise HTTP exceptions
-        raise
     except Exception as e:
         # Ensure we rollback on any error
         try:

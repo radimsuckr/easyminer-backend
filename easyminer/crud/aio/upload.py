@@ -2,6 +2,7 @@ from uuid import UUID, uuid4
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
 
 from easyminer.models.data import DataSource
 from easyminer.models.upload import Chunk, PreviewUpload, Upload
@@ -63,7 +64,11 @@ async def get_upload_by_uuid(
     db_session: AsyncSession, upload_uuid: str
 ) -> Upload | None:
     """Get an upload by its UUID."""
-    result = await db_session.execute(select(Upload).where(Upload.uuid == upload_uuid))
+    result = await db_session.execute(
+        select(Upload)
+        .options(joinedload(Upload.data_source))
+        .where(Upload.uuid == upload_uuid)
+    )
     return result.scalar_one_or_none()
 
 
@@ -73,7 +78,9 @@ async def get_preview_upload_by_uuid(
 ) -> PreviewUpload | None:
     """Get an upload by its UUID."""
     result = await db_session.execute(
-        select(PreviewUpload).where(PreviewUpload.uuid == uuid)
+        select(PreviewUpload)
+        .options(joinedload(PreviewUpload.data_source))
+        .where(PreviewUpload.uuid == uuid)
     )
     return result.scalar_one_or_none()
 

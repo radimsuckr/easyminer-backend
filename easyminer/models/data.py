@@ -2,7 +2,7 @@ import enum
 from datetime import UTC, datetime
 
 from sqlalchemy import Double, Enum, ForeignKey, String
-from sqlalchemy.orm import Mapped, Relationship, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from easyminer.database import Base
 from easyminer.models.task import Task
@@ -23,6 +23,7 @@ class DataSource(Base):
     )
     row_count: Mapped[int] = mapped_column(default=0)
     size_bytes: Mapped[int] = mapped_column(default=0)
+    is_finished: Mapped[bool] = mapped_column(default=False)
 
     # Relationships
     fields: Mapped[list["Field"]] = relationship(
