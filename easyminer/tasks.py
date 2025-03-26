@@ -18,6 +18,9 @@ def process_csv(
     separator: str,
     quote_char: str,
 ):
+    if upload_media_type != "csv":
+        raise ValueError("Only CSV data sources are supported")
+
     with get_sync_db_session() as session:
         data_source_record = session.execute(
             select(DataSource).filter(DataSource.id == data_source_id)

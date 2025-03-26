@@ -79,6 +79,12 @@ async def start_upload(
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> UUID:
     """Start a new upload process."""
+    if settings.media_type != "csv":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only CSV uploads are supported",
+        )
+
     upload = await create_upload(db, settings)
     return UUID(upload.uuid)
 
