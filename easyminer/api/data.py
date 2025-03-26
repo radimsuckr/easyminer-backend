@@ -23,6 +23,7 @@ from easyminer.crud.aio.data_source import (
     create_data_source,
     delete_data_source,
     get_data_source_by_id,
+    get_data_source_by_preview_upload_id,
     get_data_source_by_upload_id,
     get_data_sources_by_user,
     update_data_source_name,
@@ -37,7 +38,9 @@ from easyminer.crud.aio.field import (
 from easyminer.crud.aio.task import create_task, get_task_by_id, update_task_status
 from easyminer.crud.aio.upload import (
     create_chunk,
+    create_preview_upload,
     create_upload,
+    get_preview_upload_by_uuid,
     get_upload_by_id,
     get_upload_by_uuid,
 )
@@ -56,7 +59,7 @@ from easyminer.schemas.data import (
     DataSourceRead,
     FieldRead,
     PreviewResponse,
-    PreviewUpload,
+    PreviewUploadSchema,
     Stats,
     UploadSettings,
 )
@@ -89,30 +92,27 @@ async def start_upload(
     return UUID(upload.uuid)
 
 
+@router.post("/upload/preview/start")
+async def upload_preview_start(
+    settings: PreviewUploadSchema,
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+) -> UUID:
+    upload = await create_preview_upload(db, settings)
+    return upload.uuid
+
+
 @router.post("/upload/{upload_id}", status_code=status.HTTP_202_ACCEPTED)
 async def upload_chunk(
     upload_id: str,
-    request: Request,
+    body: str,
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> Response:
-    """Upload a chunk of data for an upload.
-
-    Args:
-        upload_id: The UUID of the upload.
-        request: The request object containing the chunk data.
-        db: Database session.
-
-    Returns:
-        Response with 202 Accepted status code.
-
-    Raises:
-        HTTPException: If the upload is not found, or there's an error processing the chunk.
-    """
+    """Upload a chunk of data for an upload."""
     storage = DiskStorage(pl.Path("../../var/data"))
 
     try:
         # Read the chunk data from the request body
-        chunk = await request.body()
+        chunk = body
 
         # Retrieve the upload by UUID
         upload_record = await get_upload_by_uuid(db, upload_id)
@@ -124,7 +124,6 @@ async def upload_chunk(
 
         # Get upload attributes we'll need later
         upload_id_value = upload_record.id
-        upload_name = upload_record.name
         upload_media_type = upload_record.media_type
 
         # Get upload settings
@@ -147,24 +146,13 @@ async def upload_chunk(
         # Get the associated data source
         data_source_record = await get_data_source_by_upload_id(db, upload_id_value)
 
-        # Create a data source if it doesn't exist
-        if not data_source_record:
-            data_source_record = await create_data_source(
-                db_session=db,
-                name=upload_name,
-                type=upload_media_type,
-                size_bytes=len(chunk),
-                upload_id=upload_id_value,
-            )
-            data_source_id = data_source_record.id
-        else:
-            # Store data source ID before updating
-            data_source_id = data_source_record.id
+        # Store data source ID before updating
+        data_source_id = data_source_record.id
 
-            # Update data source size
-            updated_ds = await update_data_source_size(db, data_source_id, len(chunk))
-            if updated_ds:
-                data_source_record = updated_ds
+        # Update data source size
+        updated_ds = await update_data_source_size(db, data_source_id, len(chunk))
+        if updated_ds:
+            data_source_record = updated_ds
 
         # For empty chunks (signaling end of upload), don't write to disk
         try:
@@ -173,8 +161,8 @@ async def upload_chunk(
                 chunk_path = pl.Path(
                     f"{data_source_id}/chunks/{datetime.now().strftime('%Y%m%d%H%M%S%f')}.chunk"
                 )
-                _ = storage.save(chunk_path, chunk)
-                _ = await create_chunk(db, upload_id_value, str(chunk_path.resolve()))
+                _, path = storage.save(chunk_path, bytes(chunk, upload_record.encoding))
+                _ = await create_chunk(db, upload_id_value, str(path))
             else:
                 # The chunk with zero length indicates the end of the upload
                 pass
@@ -218,36 +206,98 @@ async def upload_chunk(
         )
 
 
-@router.post(
-    "/upload/preview/start",
-    deprecated=True,
-    description="**This endpoint is deprecated and unimplemented.**",
-)
-async def start_preview_upload(
-    settings: PreviewUpload,
-    db: Annotated[AsyncSession, Depends(get_db_session)],
-) -> UUID:
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Preview upload not implemented",
-    )
-
-
-@router.post(
-    "/upload/preview/{upload_id}",
-    deprecated=True,
-    description="**This endpoint is deprecated and unimplemented.**",
-)
+@router.post("/upload/preview/{upload_id}", status_code=status.HTTP_202_ACCEPTED)
 async def upload_preview_chunk(
     upload_id: UUID,
-    request: Request,
+    body: str,
     db: Annotated[AsyncSession, Depends(get_db_session)],
-    max_lines: Annotated[int, Query(gt=0, le=1000)] = 100,
 ) -> Response:
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Preview upload not implemented",
-    )
+    """Upload a chunk of data for an upload."""
+    storage = DiskStorage(pl.Path("../../var/data"))
+
+    try:
+        # Read the chunk data from the request body
+        chunk = body
+
+        # Retrieve the upload by UUID
+        upload_record = await get_preview_upload_by_uuid(db, upload_id)
+
+        if not upload_record:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Upload not found"
+            )
+
+        # Get upload attributes we'll need later
+        upload_id_value = upload_record.id
+
+        # Get upload settings
+        encoding = "utf-8"
+        separator = ","
+        quote_char = '"'
+
+        # Get the associated data source
+        data_source_record = await get_data_source_by_preview_upload_id(
+            db, upload_id_value
+        )
+
+        # Store data source ID before updating
+        data_source_id = data_source_record.id
+
+        # Update data source size
+        updated_ds = await update_data_source_size(db, data_source_id, len(chunk))
+        if updated_ds:
+            data_source_record = updated_ds
+
+        # For empty chunks (signaling end of upload), don't write to disk
+        try:
+            if len(chunk) > 0:
+                # Use the storage service to save the chunk
+                chunk_path = pl.Path(
+                    f"{data_source_id}/chunks/{datetime.now().strftime('%Y%m%d%H%M%S%f')}.chunk"
+                )
+                _, path = storage.save(chunk_path, bytes(chunk, "utf-8"))
+                _ = await create_chunk(db, upload_id_value, str(path))
+            else:
+                # The chunk with zero length indicates the end of the upload
+                pass
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error saving chunk: {str(e)}",
+            )
+
+        # If this is the last chunk (empty chunk), process the data
+        if len(chunk) == 0:
+            logger.info(
+                f"Upload complete for data source {data_source_id}. Processing data..."
+            )
+            _ = process_csv.delay(
+                data_source_id=data_source_id,
+                upload_media_type="csv",
+                encoding=encoding,
+                separator=separator,
+                quote_char=quote_char,
+            )
+
+        # Return 202 Accepted
+        return Response(status_code=status.HTTP_202_ACCEPTED)
+
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
+    except Exception as e:
+        # Ensure we rollback on any error
+        try:
+            await db.rollback()
+        except Exception:
+            pass  # Ignore rollback errors
+
+        logging.error(f"Error in upload_chunk: {str(e)}", exc_info=True)
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error processing chunk: {str(e)}",
+        )
 
 
 @router.get("/datasource")

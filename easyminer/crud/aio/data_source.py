@@ -1,18 +1,28 @@
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
 
 from easyminer.models.data import DataSource
+from easyminer.models.upload import PreviewUpload, Upload
 
 
 async def get_data_source_by_id(db: AsyncSession, id: int) -> DataSource | None:
     """Get a data source by ID."""
-    result = await db.execute(select(DataSource).where(DataSource.id == id))
+    result = await db.execute(
+        select(DataSource)
+        .options(joinedload(DataSource.upload), joinedload(DataSource.preview_upload))
+        .where(DataSource.id == id)
+    )
     return result.scalars().first()
 
 
 async def get_data_sources_by_user(db: AsyncSession) -> list[DataSource]:
     """Get all data sources."""
-    result = await db.execute(select(DataSource))
+    result = await db.execute(
+        select(DataSource).options(
+            joinedload(DataSource.upload), joinedload(DataSource.preview_upload)
+        )
+    )
     return list(result.scalars().all())
 
 
@@ -38,14 +48,26 @@ async def create_data_source(
     return data_source
 
 
-async def get_data_source_by_upload_id(
-    db: AsyncSession, upload_id: int
-) -> DataSource | None:
+async def get_data_source_by_upload_id(db: AsyncSession, upload_id: int) -> DataSource:
     """Get a data source by upload ID."""
+    upload = (
+        await db.execute(select(Upload).where(Upload.id == upload_id))
+    ).scalar_one()
     result = await db.execute(
-        select(DataSource).where(DataSource.upload_id == upload_id)
+        select(DataSource).where(DataSource.id == upload.data_source_id)
     )
-    return result.scalars().first()
+    return result.scalar_one()
+
+
+async def get_data_source_by_preview_upload_id(db: AsyncSession, id: int) -> DataSource:
+    """Get a data source by upload ID."""
+    upload = (
+        await db.execute(select(PreviewUpload).where(PreviewUpload.id == id))
+    ).scalar_one()
+    result = await db.execute(
+        select(DataSource).where(DataSource.id == upload.data_source_id)
+    )
+    return result.scalar_one()
 
 
 async def update_data_source_name(

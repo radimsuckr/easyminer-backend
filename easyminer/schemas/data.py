@@ -1,9 +1,9 @@
 from datetime import datetime
 from enum import Enum
 from typing import Any
+from uuid import UUID
 
-from easyminer.models.data import FieldType
-from pydantic import ConfigDict, Field
+from pydantic import ConfigDict, Field, model_validator
 
 from easyminer.schemas import BaseSchema
 
@@ -16,12 +16,12 @@ class CompressionType(str, Enum):
     bzip2 = "bzip2"
 
 
-class PreviewUpload(BaseSchema):
+class PreviewUploadSchema(BaseSchema):
     """Settings for preview upload."""
 
     max_lines: int = Field(..., description="Maximum number of lines to preview")
     compression: CompressionType | None = Field(
-        None, description="Compression type (none, gzip, etc.)"
+        ..., description="Compression type (none, gzip, etc.)"
     )
 
 
@@ -71,8 +71,26 @@ class DataSourceRead(DataSourceBase):
     updated_at: datetime
     row_count: int
     size_bytes: int
-    upload_id: int | None = None
-    model_config = ConfigDict(from_attributes=True)
+    upload_id: UUID | None = Field(
+        None, description="UUID from either Upload or PreviewUpload relationship"
+    )
+    model_config = ConfigDict(from_attributes=True, json_encoders={UUID: str})
+
+    @model_validator(mode="before")
+    @classmethod
+    def set_upload_id(cls, data: Any) -> Any:
+        """Set the upload_id from either Upload or PreviewUpload relationship."""
+        try:
+            if hasattr(data, "upload") and data.upload:
+                # Upload.uuid is a string, convert it to UUID
+                data.upload_id = UUID(data.upload.uuid)
+            elif hasattr(data, "preview_upload") and data.preview_upload:
+                # PreviewUpload.uuid is already a UUID
+                data.upload_id = data.preview_upload.uuid
+        except Exception:
+            # If we can't access the relationships, just keep upload_id as None
+            pass
+        return data
 
 
 class FieldBase(BaseSchema):

@@ -4,7 +4,7 @@ from pathlib import Path
 
 class Storage(abc.ABC):
     @abc.abstractmethod
-    def save(self, path: Path, content: bytes) -> int: ...
+    def save(self, path: Path, content: bytes) -> tuple[int, Path]: ...
 
     @abc.abstractmethod
     def read(self, path: Path) -> bytes: ...
@@ -26,7 +26,8 @@ class DiskStorage(Storage):
         path = self._root / path
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("wb") as f:
-            return f.write(content)
+            written = f.write(content)
+        return written, path
 
     def read(self, path: Path) -> bytes:
         """Read content from a file.

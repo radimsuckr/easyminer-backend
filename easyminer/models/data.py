@@ -6,7 +6,7 @@ from sqlalchemy.orm import Mapped, Relationship, mapped_column, relationship
 
 from easyminer.database import Base
 from easyminer.models.task import Task
-from easyminer.models.upload import Upload
+from easyminer.models.upload import PreviewUpload, Upload
 
 
 class DataSource(Base):
@@ -21,7 +21,6 @@ class DataSource(Base):
     updated_at: Mapped[datetime] = mapped_column(
         default=datetime.now(UTC), onupdate=datetime.now(UTC)
     )
-    upload_id: Mapped[int | None] = mapped_column(ForeignKey("upload.id"))
     row_count: Mapped[int] = mapped_column(default=0)
     size_bytes: Mapped[int] = mapped_column(default=0)
 
@@ -29,7 +28,9 @@ class DataSource(Base):
     fields: Mapped[list["Field"]] = relationship(
         back_populates="data_source", cascade="all, delete-orphan"
     )
-    upload: Relationship[Upload] = relationship("Upload", back_populates="data_source")
+
+    upload: Mapped["Upload"] = relationship("Upload", back_populates="data_source")
+    preview_upload: Mapped["PreviewUpload"] = relationship(back_populates="data_source")
     tasks: Mapped[list["Task"]] = relationship(
         back_populates="data_source", cascade="all, delete-orphan"
     )
@@ -47,12 +48,12 @@ class Field(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, index=True)
     name: Mapped[str] = mapped_column(String(255))
-    data_type: Mapped[FieldType] = mapped_column(Enum(FieldType))
+    data_type: Mapped["FieldType"] = mapped_column(Enum(FieldType))
     data_source_id: Mapped[int] = mapped_column(ForeignKey("data_source.id"))
     unique_count: Mapped[int] = mapped_column()
     support: Mapped[int] = mapped_column()
 
-    data_source: Mapped[DataSource] = relationship(
+    data_source: Mapped["DataSource"] = relationship(
         "DataSource", back_populates="fields"
     )
 

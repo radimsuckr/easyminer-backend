@@ -1,11 +1,11 @@
 services:
-  mysql:
+  mariadb:
     environment:
       MYSQL_DATABASE: easyminer
       MYSQL_PASSWORD: easyminer
       MYSQL_ROOT_PASSWORD: toortoor
       MYSQL_USER: easyminer
-    image: mysql:9
+    image: mariadb:latest
     ports:
       - 3306:3306
 

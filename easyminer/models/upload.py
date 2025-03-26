@@ -1,7 +1,21 @@
-from sqlalchemy import Column, ForeignKey, Integer, String, Table
+from uuid import UUID as pyUUID
+
+from sqlalchemy import (
+    UUID,
+    Column,
+    Enum,
+    ForeignKey,
+    Integer,
+    String,
+    Table,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, Relationship, mapped_column, relationship
 
 from easyminer.database import Base
+
+# from easyminer.models.data import DataSource
+from easyminer.schemas.data import CompressionType
 
 
 def create_association_table(name: str, target_table: str) -> Table:
@@ -43,8 +57,9 @@ class UploadDataType(Base):
 
 class Upload(Base):
     __tablename__: str = "upload"
+    __table_args__ = (UniqueConstraint("data_source_id"),)
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, index=True)
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     uuid: Mapped[str] = mapped_column(String(36))
     name: Mapped[str] = mapped_column(String(100))
     media_type: Mapped[str] = mapped_column(String(20))
@@ -55,18 +70,36 @@ class Upload(Base):
     escape_char: Mapped[str] = mapped_column(String(1))
     locale: Mapped[str] = mapped_column(String(20))
     compression: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    null_values = relationship(
+    null_values: Relationship[list["UploadNullValue"]] = relationship(
         "UploadNullValue", secondary=UploadNullValueTable, back_populates="uploads"
     )
-    data_types = relationship(
+    data_types: Relationship[list["UploadDataType"]] = relationship(
         "UploadDataType", secondary=UploadDataTypeTable, back_populates="uploads"
     )
     format: Mapped[str] = mapped_column(String(20))
     preview_max_lines: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
-    data_source = relationship("DataSource", back_populates="upload", uselist=False)
+    data_source_id: Mapped[int] = mapped_column(ForeignKey("data_source.id"))
+    data_source: Mapped["DataSource"] = relationship(
+        "DataSource", back_populates="upload", single_parent=True
+    )
 
     chunks: Relationship[list["Chunk"]] = relationship("Chunk", back_populates="upload")
+
+
+class PreviewUpload(Base):
+    __tablename__: str = "preview_upload"
+    __table_args__ = (UniqueConstraint("data_source_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    uuid: Mapped[pyUUID] = mapped_column(UUID(), unique=True)
+    max_lines: Mapped[int] = mapped_column(Integer())
+    compression: Mapped[CompressionType | None] = mapped_column(Enum(CompressionType))
+
+    data_source_id: Mapped[int] = mapped_column(ForeignKey("data_source.id"))
+    data_source: Mapped["DataSource"] = relationship(
+        "DataSource", back_populates="preview_upload", single_parent=True
+    )
 
 
 class Chunk(Base):

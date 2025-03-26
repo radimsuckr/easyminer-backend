@@ -33,6 +33,10 @@ LOGGING_CONFIG = {
             "level": "DEBUG" if settings.debug_logs else "INFO",
             "propagate": True,
         },
+        "sqlalchemy": {
+            "handlers": ["default"],
+            "propagate": False,
+        },
     },
 }
 logging.config.dictConfig(LOGGING_CONFIG)
