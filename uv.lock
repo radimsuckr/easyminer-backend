@@ -329,6 +329,7 @@ dependencies = [
     { name = "numpy" },
     { name = "pydantic-settings" },
     { name = "pyhumps" },
+    { name = "pymysql" },
     { name = "sqlalchemy", extra = ["asyncio"] },
     { name = "uvicorn", extra = ["standard"] },
 ]
@@ -359,6 +360,7 @@ requires-dist = [
     { name = "numpy", specifier = ">=2.2.3" },
     { name = "pydantic-settings", specifier = ">=2.4.0" },
     { name = "pyhumps", specifier = ">=3.8.0" },
+    { name = "pymysql", specifier = ">=1.1.1" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.31" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.30.3" },
 ]

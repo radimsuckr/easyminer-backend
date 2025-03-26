@@ -24,11 +24,11 @@ def process_csv(
     with get_sync_db_session() as session:
         data_source_record = session.execute(
             select(DataSource).filter(DataSource.id == data_source_id)
-        ).scalar()
-    if not data_source_record:
-        raise ValueError(f"Data source with ID {data_source_id} not found")
+        ).scalar_one_or_none()
+        if not data_source_record:
+            raise ValueError(f"Data source with ID {data_source_id} not found")
 
-    chunks = data_source_record.upload.chunks
+        chunks = data_source_record.upload.chunks
     tasks: list[str] = []
     for chunk in chunks:
         task = process_csv_chunk.delay(
@@ -48,4 +48,5 @@ def process_csv_chunk(
     quote_char: str,
 ) -> int:
     # Process the CSV chunk
-    return 42
+    print(chunk_id)
+    return chunk_id
