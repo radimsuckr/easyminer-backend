@@ -1,4 +1,6 @@
-from sqlalchemy import delete, select, update
+from collections.abc import Sequence
+
+from sqlalchemy import delete, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
@@ -6,24 +8,30 @@ from easyminer.models.data import DataSource
 from easyminer.models.upload import PreviewUpload, Upload
 
 
-async def get_data_source_by_id(db: AsyncSession, id: int) -> DataSource | None:
+async def get_data_source_by_id(
+    db: AsyncSession, id: int, eager: bool = False
+) -> DataSource | None:
     """Get a data source by ID."""
-    result = await db.execute(
-        select(DataSource)
-        .options(joinedload(DataSource.upload), joinedload(DataSource.preview_upload))
-        .where(DataSource.id == id)
-    )
+    query = select(DataSource).where(DataSource.id == id)
+    if eager:
+        query = query.options(
+            joinedload(DataSource.upload), joinedload(DataSource.preview_upload)
+        )
+    result = await db.execute(query)
     return result.scalars().first()
 
 
-async def get_data_sources_by_user(db: AsyncSession) -> list[DataSource]:
+async def get_data_sources(
+    db: AsyncSession, eager: bool = False
+) -> Sequence[DataSource]:
     """Get all data sources."""
-    result = await db.execute(
-        select(DataSource).options(
+    query = select(DataSource)
+    if eager:
+        query = query.options(
             joinedload(DataSource.upload), joinedload(DataSource.preview_upload)
         )
-    )
-    return list(result.scalars().all())
+    result = await db.execute(query)
+    return result.scalars().all()
 
 
 async def create_data_source(
@@ -32,31 +40,47 @@ async def create_data_source(
     type: str,
     size_bytes: int = 0,
     row_count: int = 0,
-    upload_id: int | None = None,
 ) -> DataSource:
     """Create a new data source."""
-    data_source = DataSource(
-        name=name,
-        type=type,
-        size_bytes=size_bytes,
-        row_count=row_count,
-        upload_id=upload_id,
+    query = (
+        insert(DataSource)
+        .values(
+            name=name,
+            type=type,
+            size_bytes=size_bytes,
+            row_count=row_count,
+        )
+        .returning(DataSource.id)
     )
-    db_session.add(data_source)
-    await db_session.commit()
-    await db_session.refresh(data_source)
-    return data_source
+    id = (await db_session.execute(query)).scalar_one()
+    return (
+        await db_session.execute(
+            select(DataSource)
+            .options(
+                joinedload(DataSource.upload), joinedload(DataSource.preview_upload)
+            )
+            .where(DataSource.id == id)
+        )
+    ).scalar_one()
 
 
-async def get_data_source_by_upload_id(db: AsyncSession, upload_id: int) -> DataSource:
+async def get_data_source_by_upload_id(
+    db: AsyncSession, upload_id: int, eager: bool = False
+) -> DataSource | None:
     """Get a data source by upload ID."""
     upload = (
         await db.execute(select(Upload).where(Upload.id == upload_id))
-    ).scalar_one()
-    result = await db.execute(
-        select(DataSource).where(DataSource.id == upload.data_source_id)
-    )
-    return result.scalar_one()
+    ).scalar_one_or_none()
+    if not upload:
+        return None
+
+    query = select(DataSource).where(DataSource.id == upload.data_source_id)
+    if eager:
+        query = query.options(
+            joinedload(DataSource.upload), joinedload(DataSource.preview_upload)
+        )
+    result = await db.execute(query)
+    return result.scalar_one_or_none()
 
 
 async def get_data_source_by_preview_upload_id(db: AsyncSession, id: int) -> DataSource:

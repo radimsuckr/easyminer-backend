@@ -11,26 +11,23 @@ from easyminer.crud.aio.data_source import (
     update_data_source_size,
 )
 from easyminer.models import DataSource
+from easyminer.models.upload import Upload
 
 
 @pytest.mark.asyncio
-async def test_create_data_source(db_session: AsyncSession):
+async def test_create_data_source(
+    db_session: AsyncSession, test_data_source: DataSource
+):
     """Test creating a new data source with SQLite."""
     # Create a new data source
-    data_source = await create_data_source(
-        db_session=db_session,
-        name="Test Data Source",
-        type="csv",
-        upload_id=1,
-        size_bytes=1000,
-        row_count=20,
-    )
+    data_source = test_data_source
 
     # Check that the data source was created correctly
     assert data_source.id is not None
     assert data_source.name == "Test Data Source"
     assert data_source.type == "csv"
-    assert data_source.upload_id == 1
+    assert data_source.upload is None
+    assert data_source.preview_upload is None
     assert data_source.size_bytes == 1000
     assert data_source.row_count == 20
 
@@ -44,14 +41,12 @@ async def test_create_data_source(db_session: AsyncSession):
 
 
 @pytest.mark.asyncio
-async def test_get_data_source_by_id(db_session: AsyncSession):
+async def test_get_data_source_by_id(
+    db_session: AsyncSession, test_data_source: DataSource
+):
     """Test getting a data source by ID."""
     # Create a new data source
-    created_ds = await create_data_source(
-        db_session=db_session,
-        name="Test Data Source",
-        type="csv",
-    )
+    created_ds = test_data_source
 
     # Get the data source by ID
     data_source = await get_data_source_by_id(db_session, created_ds.id)
@@ -65,21 +60,18 @@ async def test_get_data_source_by_id(db_session: AsyncSession):
 
 
 @pytest.mark.asyncio
-async def test_get_data_source_by_upload_id(db_session: AsyncSession):
+async def test_get_data_source_by_upload_id(
+    db_session: AsyncSession, test_upload: Upload
+):
     """Test getting a data source by upload ID."""
     # Create a new data source with upload_id
-    await create_data_source(
-        db_session=db_session,
-        name="Test Data Source",
-        type="csv",
-        upload_id=42,
-    )
+    upload = test_upload
 
     # Get the data source by upload ID
-    data_source = await get_data_source_by_upload_id(db_session, 42)
+    data_source = await get_data_source_by_upload_id(db_session, upload.id, eager=True)
     assert data_source is not None
-    assert data_source.upload_id == 42
-    assert data_source.name == "Test Data Source"
+    assert data_source.upload is not None
+    assert data_source.name == "Test Upload"
 
     # Test getting data source with wrong upload_id
     data_source = await get_data_source_by_upload_id(db_session, 999)
@@ -87,14 +79,12 @@ async def test_get_data_source_by_upload_id(db_session: AsyncSession):
 
 
 @pytest.mark.asyncio
-async def test_update_data_source_name(db_session: AsyncSession):
+async def test_update_data_source_name(
+    db_session: AsyncSession, test_data_source: DataSource
+):
     """Test updating a data source name."""
     # Create a new data source
-    data_source = await create_data_source(
-        db_session=db_session,
-        name="Original Name",
-        type="csv",
-    )
+    data_source = test_data_source
 
     # Update the name
     updated_ds = await update_data_source_name(db_session, data_source.id, "New Name")
@@ -115,15 +105,12 @@ async def test_update_data_source_name(db_session: AsyncSession):
 
 
 @pytest.mark.asyncio
-async def test_update_data_source_size(db_session: AsyncSession):
+async def test_update_data_source_size(
+    db_session: AsyncSession, test_data_source: DataSource
+):
     """Test updating a data source size."""
     # Create a new data source with initial size
-    data_source = await create_data_source(
-        db_session=db_session,
-        name="Test Data Source",
-        type="csv",
-        size_bytes=1000,
-    )
+    data_source = test_data_source
 
     # Update the size
     updated_ds = await update_data_source_size(db_session, data_source.id, 500)
@@ -144,14 +131,12 @@ async def test_update_data_source_size(db_session: AsyncSession):
 
 
 @pytest.mark.asyncio
-async def test_delete_data_source(db_session: AsyncSession):
+async def test_delete_data_source(
+    db_session: AsyncSession, test_data_source: DataSource
+):
     """Test deleting a data source successfully."""
     # Create a new data source
-    data_source = await create_data_source(
-        db_session=db_session,
-        name="Test Data Source",
-        type="csv",
-    )
+    data_source = test_data_source
 
     # Verify it exists
     result = await db_session.execute(

@@ -25,7 +25,7 @@ from easyminer.crud.aio.data_source import (
     get_data_source_by_id,
     get_data_source_by_preview_upload_id,
     get_data_source_by_upload_id,
-    get_data_sources_by_user,
+    get_data_sources,
     update_data_source_name,
     update_data_source_size,
 )
@@ -107,6 +107,7 @@ async def upload_chunk(
     body: str,
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> Response:
+    # TODO: add is_finished toggle that will be set to True when the last empty chunk is uploaded. Do this also for preview.
     """Upload a chunk of data for an upload."""
     storage = DiskStorage(pl.Path("../../var/data"))
 
@@ -145,6 +146,10 @@ async def upload_chunk(
 
         # Get the associated data source
         data_source_record = await get_data_source_by_upload_id(db, upload_id_value)
+        if not data_source_record:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found"
+            )
 
         # Store data source ID before updating
         data_source_id = data_source_record.id
@@ -212,6 +217,7 @@ async def upload_preview_chunk(
     body: str,
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> Response:
+    # TODO: check that the upload is not bigger than the set max_lines.
     """Upload a chunk of data for an upload."""
     storage = DiskStorage(pl.Path("../../var/data"))
 
@@ -305,7 +311,7 @@ async def list_data_sources(
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> list[DataSourceRead]:
     """List all data sources for the current user."""
-    data_sources = await get_data_sources_by_user(db)
+    data_sources = await get_data_sources(db, eager=True)
     return [DataSourceRead.model_validate(ds) for ds in data_sources]
 
 
@@ -331,7 +337,7 @@ async def get_data_source_api(
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> DataSourceRead:
     """Get a specific data source."""
-    data_source = await get_data_source_by_id(db, id)
+    data_source = await get_data_source_by_id(db, id, eager=True)
     if not data_source:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found"
@@ -598,7 +604,7 @@ async def get_field_values(
         HTTPException: If the data source or field is not found
     """
     # First check data source
-    data_source = await get_data_source_by_id(db, id)
+    data_source = await get_data_source_by_id(db, id, eager=True)
     if not data_source:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found"
@@ -620,16 +626,15 @@ async def get_field_values(
         quote_char = '"'
 
         # Get encoding and CSV settings from upload if available
-        if data_source.upload_id is not None:
-            upload = await get_upload_by_id(db, data_source.upload_id)
+        upload = await get_upload_by_id(db, data_source.upload.id)
 
-            if upload:
-                if hasattr(upload, "encoding") and upload.encoding:
-                    encoding = upload.encoding
-                if hasattr(upload, "separator") and upload.separator:
-                    separator = upload.separator
-                if hasattr(upload, "quotes_char") and upload.quotes_char:
-                    quote_char = upload.quotes_char
+        if upload:
+            if hasattr(upload, "encoding") and upload.encoding:
+                encoding = upload.encoding
+            if hasattr(upload, "separator") and upload.separator:
+                separator = upload.separator
+            if hasattr(upload, "quotes_char") and upload.quotes_char:
+                quote_char = upload.quotes_char
 
         # Find all chunk files
         chunk_paths = list(storage_dir.glob("*.chunk"))

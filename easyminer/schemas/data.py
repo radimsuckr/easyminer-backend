@@ -45,7 +45,9 @@ class UploadSettings(BaseSchema):
     quotes_char: str = Field('"', description="Quote character")
     escape_char: str = Field("\\", description="Escape character")
     locale: str = Field("en_US", description="Locale for number formatting")
-    compression: str = Field("none", description="Compression type (none, gzip, etc.)")
+    compression: CompressionType | None = Field(
+        None, description="Compression type (none, gzip, etc.)"
+    )
     format: str = Field("csv", description="File format")
 
 

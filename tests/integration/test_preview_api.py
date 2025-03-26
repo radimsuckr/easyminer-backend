@@ -1,111 +1,15 @@
 """Integration tests for data preview API endpoints."""
 
-import csv
-import io
-import shutil
-import tempfile
-from pathlib import Path
-from unittest.mock import patch
-
 import pytest
-import pytest_asyncio
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi.testclient import TestClient
 
-from easyminer.crud.aio.field import create_field
-from easyminer.models.data import DataSource, FieldType
-from easyminer.storage import DiskStorage
-
-
-@pytest_asyncio.fixture
-async def test_data_source_with_chunks(db_session: AsyncSession):
-    """Create a test data source with actual chunks for testing."""
-    # Create a temporary directory for storage
-    temp_dir = tempfile.mkdtemp()
-
-    # Create a patched DiskStorage that uses the temp directory
-    storage = DiskStorage(Path(temp_dir))
-
-    # Use patch to override the DiskStorage constructor
-    with patch("easyminer.storage.DiskStorage", return_value=storage):
-        try:
-            # Create the data source
-            data_source = DataSource(
-                name="Preview Test Data Source",
-                type="csv",
-                size_bytes=1000,
-                row_count=5,
-            )
-            db_session.add(data_source)
-            await db_session.commit()
-            await db_session.refresh(data_source)
-
-            # Create fields
-            fields = [
-                await create_field(
-                    db_session=db_session,
-                    name="name",
-                    data_type=FieldType.nominal,
-                    data_source_id=data_source.id,
-                    unique_count=10,
-                    support=5,
-                ),
-                await create_field(
-                    db_session=db_session,
-                    name="age",
-                    data_type=FieldType.numeric,
-                    data_source_id=data_source.id,
-                    unique_count=10,
-                    support=5,
-                    min_value=25,
-                    max_value=40,
-                    avg_value=32.5,
-                ),
-                await create_field(
-                    db_session=db_session,
-                    name="score",
-                    data_type=FieldType.numeric,
-                    data_source_id=data_source.id,
-                    unique_count=10,
-                    support=5,
-                    min_value=70.0,
-                    max_value=95.0,
-                    avg_value=85.0,
-                ),
-            ]
-
-            # Create the chunks directory for the data source
-            chunk_dir = Path(f"{data_source.id}/chunks")
-            storage_dir = Path(temp_dir) / chunk_dir
-            storage_dir.mkdir(parents=True, exist_ok=True)
-
-            # Write a CSV file
-            csv_data = [
-                ["name", "age", "score"],
-                ["Alice", "30", "85.5"],
-                ["Bob", "25", "92.0"],
-                ["Charlie", "35", "78.5"],
-                ["Dave", "40", "90.0"],
-                ["Eve", "32", "88.5"],
-            ]
-
-            csv_output = io.StringIO()
-            writer = csv.writer(csv_output)
-            writer.writerows(csv_data)
-
-            # Save the chunk file
-            chunk_file = storage_dir / "test_chunk.chunk"
-            chunk_file.write_text(csv_output.getvalue())
-
-            # Yield the data source and fields
-            yield data_source, fields
-
-        finally:
-            # Clean up the temporary directory
-            shutil.rmtree(temp_dir, ignore_errors=True)
+from easyminer.models.data import DataSource, Field
 
 
 @pytest.mark.asyncio
-async def test_preview_data_source(client, test_data_source_with_chunks):
+async def test_preview_data_source(
+    client: TestClient, test_data_source_with_chunks: tuple[DataSource, list[Field]]
+):
     """Test retrieving preview data from a data source."""
     data_source, _ = test_data_source_with_chunks
 
@@ -139,9 +43,9 @@ async def test_preview_data_source(client, test_data_source_with_chunks):
 
 
 @pytest.mark.asyncio
-async def test_get_instances(client, test_data_source_with_chunks):
+async def test_get_instances(client, test_data_source_with_chunks: DataSource):
     """Test retrieving data instances from a data source."""
-    data_source, fields = test_data_source_with_chunks
+    data_source, _ = test_data_source_with_chunks
 
     # Make the API request with pagination
     response = client.get(

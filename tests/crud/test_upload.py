@@ -27,7 +27,7 @@ async def test_create_upload(db_session: AsyncSession):
         quotes_char='"',
         escape_char="\\",
         locale="en_US",
-        compression="",
+        compression=None,
         format="csv",
     )
 
@@ -48,7 +48,7 @@ async def test_create_upload(db_session: AsyncSession):
         assert upload.quotes_char == '"'
         assert upload.escape_char == "\\"
         assert upload.locale == "en_US"
-        assert upload.compression == ""
+        assert upload.compression is None
         assert upload.format == "csv"
 
         # Check that the upload is in the database
@@ -60,32 +60,16 @@ async def test_create_upload(db_session: AsyncSession):
 
 
 @pytest.mark.asyncio
-async def test_get_upload_by_uuid(db_session: AsyncSession):
+async def test_get_upload_by_uuid(db_session: AsyncSession, test_upload: Upload):
     """Test getting an upload by UUID successfully."""
     # Create a new upload with a known UUID
-    test_uuid = "test-uuid-123"
-    upload = Upload(
-        uuid=test_uuid,
-        name="Test Upload",
-        media_type="csv",
-        db_type="limited",
-        separator=",",
-        encoding="utf-8",
-        quotes_char='"',
-        escape_char="\\",
-        locale="en_US",
-        compression="",
-        format="csv",
-    )
-    db_session.add(upload)
-    await db_session.commit()
-    await db_session.refresh(upload)
+    upload = test_upload
 
     # Get the upload by UUID
-    retrieved_upload = await get_upload_by_uuid(db_session, test_uuid)
+    retrieved_upload = await get_upload_by_uuid(db_session, upload.uuid)
     assert retrieved_upload is not None
     assert retrieved_upload.id == upload.id
-    assert retrieved_upload.uuid == test_uuid
+    assert retrieved_upload.uuid == upload.uuid
     assert retrieved_upload.name == "Test Upload"
 
 
@@ -98,31 +82,15 @@ async def test_get_upload_by_uuid_nonexistent(db_session: AsyncSession):
 
 
 @pytest.mark.asyncio
-async def test_get_upload_by_id(db_session: AsyncSession):
+async def test_get_upload_by_id(db_session: AsyncSession, test_upload: Upload):
     """Test getting an upload by ID successfully."""
     # Create a new upload
-    upload = Upload(
-        uuid="test-uuid-456",
-        name="Test Upload",
-        media_type="csv",
-        db_type="limited",
-        separator=",",
-        encoding="utf-8",
-        quotes_char='"',
-        escape_char="\\",
-        locale="en_US",
-        compression="",
-        format="csv",
-    )
-    db_session.add(upload)
-    await db_session.commit()
-    await db_session.refresh(upload)
+    upload = test_upload
 
-    # Get the upload by ID
     retrieved_upload = await get_upload_by_id(db_session, upload.id)
     assert retrieved_upload is not None
     assert retrieved_upload.id == upload.id
-    assert retrieved_upload.uuid == "test-uuid-456"
+    assert retrieved_upload.uuid == upload.uuid
     assert retrieved_upload.name == "Test Upload"
 
 

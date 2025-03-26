@@ -5,12 +5,12 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from easyminer.crud.aio.data_source import create_data_source
 from easyminer.crud.aio.task import (
     create_task,
     get_task_by_id,
     update_task_status,
 )
+from easyminer.models.data import DataSource
 from easyminer.models.task import Task, TaskStatusEnum
 
 
@@ -48,17 +48,10 @@ async def test_create_task(db_session: AsyncSession):
 
 
 @pytest.mark.asyncio
-async def test_get_task_by_id(db_session: AsyncSession):
+async def test_get_task_by_id(db_session: AsyncSession, test_data_source: DataSource):
     """Test getting a task by ID successfully."""
     # Create a data source
-    data_source = await create_data_source(
-        db_session=db_session,
-        name="Test Data Source",
-        type="csv",
-        upload_id=1,
-        size_bytes=1000,
-        row_count=20,
-    )
+    data_source = test_data_source
 
     # Create a UUID for the task
     task_id = UUID("12345678-1234-5678-1234-567812345678")
@@ -90,23 +83,18 @@ async def test_get_task_by_id_nonexistent(db_session: AsyncSession):
 
 
 @pytest.mark.asyncio
-async def test_update_task_status(db_session: AsyncSession):
+async def test_update_task_status(
+    db_session: AsyncSession, test_data_source: DataSource
+):
     """Test updating a task status."""
     # Create a data source
-    data_source = await create_data_source(
-        db_session=db_session,
-        name="Test Data Source",
-        type="csv",
-        upload_id=1,
-        size_bytes=1000,
-        row_count=20,
-    )
+    data_source = test_data_source
 
     # Create a UUID for the task
     task_id = UUID("87654321-4321-8765-4321-876543210987")
 
     # Create a task
-    await create_task(
+    _ = await create_task(
         db_session=db_session,
         task_id=task_id,
         name="update_status_test",
