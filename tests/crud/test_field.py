@@ -2,8 +2,8 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from easyminer.crud.data_source import create_data_source
-from easyminer.crud.field import (
+from easyminer.crud.aio.data_source import create_data_source
+from easyminer.crud.aio.field import (
     create_field,
     get_field_by_id,
     get_fields_by_data_source,

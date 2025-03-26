@@ -12,7 +12,7 @@ from easyminer.models.upload import Upload
 class DataSource(Base):
     """Data source model representing a data set."""
 
-    __tablename__ = "data_source"
+    __tablename__: str = "data_source"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, index=True)
     name: Mapped[str] = mapped_column(String(255))
@@ -43,7 +43,7 @@ class FieldType(str, enum.Enum):
 class Field(Base):
     """Field model representing a column in a data source."""
 
-    __tablename__ = "field"
+    __tablename__: str = "field"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, index=True)
     name: Mapped[str] = mapped_column(String(255))
@@ -60,7 +60,7 @@ class Field(Base):
 class FieldNumericDetails(Base):
     """Field details model for numeric fields."""
 
-    __tablename__ = "field_numeric_details"
+    __tablename__: str = "field_numeric_details"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     min_value: Mapped[float] = mapped_column(Double())

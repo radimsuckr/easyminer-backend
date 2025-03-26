@@ -19,7 +19,7 @@ from fastapi import (
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from easyminer.config import API_V1_PREFIX
-from easyminer.crud.data_source import (
+from easyminer.crud.aio.data_source import (
     create_data_source,
     delete_data_source,
     get_data_source_by_id,
@@ -28,14 +28,14 @@ from easyminer.crud.data_source import (
     update_data_source_name,
     update_data_source_size,
 )
-from easyminer.crud.field import (
+from easyminer.crud.aio.field import (
     get_field_by_id,
     get_field_stats,
     get_fields_by_data_source,
     get_fields_by_ids,
 )
-from easyminer.crud.task import create_task, get_task_by_id, update_task_status
-from easyminer.crud.upload import (
+from easyminer.crud.aio.task import create_task, get_task_by_id, update_task_status
+from easyminer.crud.aio.upload import (
     create_chunk,
     create_upload,
     get_upload_by_id,
@@ -183,7 +183,7 @@ async def upload_chunk(
             logger.info(
                 f"Upload complete for data source {data_source_id}. Processing data..."
             )
-            task = process_csv.delay(
+            _ = process_csv.delay(
                 data_source_id=data_source_id,
                 upload_media_type=upload_media_type,
                 encoding=encoding,

@@ -420,7 +420,7 @@ async def get_data_preview(
             # Get field names to include
             included_fields = []
             for field_id in field_ids:
-                from easyminer.crud.field import get_field_by_id
+                from easyminer.crud.aio.field import get_field_by_id
 
                 field = await get_field_by_id(db, field_id, data_source.id)
                 if field:

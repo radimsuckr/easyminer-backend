@@ -2,7 +2,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from easyminer.crud.data_source import (
+from easyminer.crud.aio.data_source import (
     create_data_source,
     delete_data_source,
     get_data_source_by_id,

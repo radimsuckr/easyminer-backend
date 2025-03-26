@@ -5,7 +5,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from easyminer.crud.upload import (
+from easyminer.crud.aio.upload import (
     create_upload,
     get_upload_by_id,
     get_upload_by_uuid,
@@ -33,7 +33,7 @@ async def test_create_upload(db_session: AsyncSession):
 
     # Mock the UUID generation for deterministic testing
     test_uuid = uuid.UUID("12345678-1234-5678-1234-567812345678")
-    with patch("easyminer.crud.upload.uuid4", return_value=test_uuid):
+    with patch("easyminer.crud.aio.upload.uuid4", return_value=test_uuid):
         # Create a new upload
         upload = await create_upload(db_session=db_session, settings=settings)
 

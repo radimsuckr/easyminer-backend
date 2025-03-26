@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from easyminer.models.data import DataSource, Field, FieldType
 from easyminer.storage import DiskStorage
-from easyminer.crud.field import create_field
+from easyminer.crud.aio.field import create_field
 
 
 @pytest_asyncio.fixture

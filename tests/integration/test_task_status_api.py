@@ -11,8 +11,8 @@ import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from easyminer.crud.field import create_field
-from easyminer.crud.task import create_task
+from easyminer.crud.aio.field import create_field
+from easyminer.crud.aio.task import create_task
 from easyminer.models.data import DataSource, FieldType
 from easyminer.models.task import TaskStatusEnum
 from easyminer.storage import DiskStorage
