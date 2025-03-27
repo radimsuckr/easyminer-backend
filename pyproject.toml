@@ -4,7 +4,6 @@ version = "0.1.0"
 description = "Easyminer backend"
 authors = [{ name = "Radim Sückr", email = "sucr02@vse.cz" }]
 dependencies = [
-	"aiomysql>=0.2.0",
 	"alembic>=1.13.2",
 	"celery[redis,tblib]>=5.4.0",
 	"cryptography>=43.0.0",
@@ -12,10 +11,10 @@ dependencies = [
 	"fastapi[standard]>=0.111.1",
 	"httpx>=0.28.1",
 	"numpy>=2.2.3",
+	"psycopg>=3.2.6",
 	"pydantic-settings>=2.4.0",
 	"pyhumps>=3.8.0",
-	"pymysql>=1.1.1",
-	"sqlalchemy[asyncio]>=2.0.31",
+	"sqlalchemy[asyncio,postgresql-psycopg]>=2.0.31",
 	"uvicorn[standard]>=0.30.3",
 ]
 readme = "readme.md"

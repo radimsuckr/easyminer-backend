@@ -3,18 +3,6 @@ revision = 1
 requires-python = ">=3.13"
 
 [[package]]
-name = "aiomysql"
-version = "0.2.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "pymysql" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/67/76/2c5b55e4406a1957ffdfd933a94c2517455291c97d2b81cec6813754791a/aiomysql-0.2.0.tar.gz", hash = "sha256:558b9c26d580d08b8c5fd1be23c5231ce3aeff2dadad989540fee740253deb67", size = 114706 }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/42/87/c982ee8b333c85b8ae16306387d703a1fcdfc81a2f3f15a24820ab1a512d/aiomysql-0.2.0-py3-none-any.whl", hash = "sha256:b7c26da0daf23a5ec5e0b133c03d20657276e4eae9b73e040b72787f6f6ade0a", size = 44215 },
-]
-
-[[package]]
 name = "aiosqlite"
 version = "0.21.0"
 source = { registry = "https://pypi.org/simple" }
@@ -319,7 +307,6 @@ name = "easyminer-backend"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
-    { name = "aiomysql" },
     { name = "alembic" },
     { name = "celery", extra = ["redis", "tblib"] },
     { name = "cryptography" },
@@ -327,10 +314,10 @@ dependencies = [
     { name = "fastapi", extra = ["standard"] },
     { name = "httpx" },
     { name = "numpy" },
+    { name = "psycopg" },
     { name = "pydantic-settings" },
     { name = "pyhumps" },
-    { name = "pymysql" },
-    { name = "sqlalchemy", extra = ["asyncio"] },
+    { name = "sqlalchemy", extra = ["asyncio", "postgresql-psycopg"] },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -350,7 +337,6 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "aiomysql", specifier = ">=0.2.0" },
     { name = "alembic", specifier = ">=1.13.2" },
     { name = "celery", extras = ["redis", "tblib"], specifier = ">=5.4.0" },
     { name = "cryptography", specifier = ">=43.0.0" },
@@ -358,10 +344,10 @@ requires-dist = [
     { name = "fastapi", extras = ["standard"], specifier = ">=0.111.1" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "numpy", specifier = ">=2.2.3" },
+    { name = "psycopg", specifier = ">=3.2.6" },
     { name = "pydantic-settings", specifier = ">=2.4.0" },
     { name = "pyhumps", specifier = ">=3.8.0" },
-    { name = "pymysql", specifier = ">=1.1.1" },
-    { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.31" },
+    { name = "sqlalchemy", extras = ["asyncio", "postgresql-psycopg"], specifier = ">=2.0.31" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.30.3" },
 ]
 
@@ -744,6 +730,18 @@ wheels = [
 ]
 
 [[package]]
+name = "psycopg"
+version = "3.2.6"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "tzdata", marker = "sys_platform == 'win32'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/67/97/eea08f74f1c6dd2a02ee81b4ebfe5b558beb468ebbd11031adbf58d31be0/psycopg-3.2.6.tar.gz", hash = "sha256:16fa094efa2698f260f2af74f3710f781e4a6f226efe9d1fd0c37f384639ed8a", size = 156322 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d7/7d/0ba52deff71f65df8ec8038adad86ba09368c945424a9bd8145d679a2c6a/psycopg-3.2.6-py3-none-any.whl", hash = "sha256:f3ff5488525890abb0566c429146add66b329e20d6d4835662b920cbbf90ac58", size = 199077 },
+]
+
+[[package]]
 name = "pycodestyle"
 version = "2.12.1"
 source = { registry = "https://pypi.org/simple" }
@@ -838,15 +836,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/c4/83/fa6f8fb7accb21f39e8f2b6a18f76f6d90626bdb0a5e5448e5cc9b8ab014/pyhumps-3.8.0.tar.gz", hash = "sha256:498026258f7ee1a8e447c2e28526c0bea9407f9a59c03260aee4bd6c04d681a3", size = 9018 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/9e/11/a1938340ecb32d71e47ad4914843775011e6e9da59ba1229f181fef3119e/pyhumps-3.8.0-py3-none-any.whl", hash = "sha256:060e1954d9069f428232a1adda165db0b9d8dfdce1d265d36df7fbff540acfd6", size = 6095 },
-]
-
-[[package]]
-name = "pymysql"
-version = "1.1.1"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/b3/8f/ce59b5e5ed4ce8512f879ff1fa5ab699d211ae2495f1adaa5fbba2a1eada/pymysql-1.1.1.tar.gz", hash = "sha256:e127611aaf2b417403c60bf4dc570124aeb4a57f5f37b8e95ae399a42f904cd0", size = 47678 }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/0c/94/e4181a1f6286f545507528c78016e00065ea913276888db2262507693ce5/PyMySQL-1.1.1-py3-none-any.whl", hash = "sha256:4de15da4c61dc132f4fb9ab763063e693d521a80fd0e87943b9a453dd4c19d6c", size = 44972 },
 ]
 
 [[package]]
@@ -1048,6 +1037,9 @@ wheels = [
 [package.optional-dependencies]
 asyncio = [
     { name = "greenlet" },
+]
+postgresql-psycopg = [
+    { name = "psycopg" },
 ]
 
 [[package]]

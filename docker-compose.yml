@@ -1,13 +1,12 @@
 services:
-  mariadb:
+  postgres:
     environment:
-      MYSQL_DATABASE: easyminer
-      MYSQL_PASSWORD: easyminer
-      MYSQL_ROOT_PASSWORD: toortoor
-      MYSQL_USER: easyminer
-    image: mariadb:latest
+      POSTGRES_DB: easyminer
+      POSTGRES_PASSWORD: easyminer
+      POSTGRES_USER: easyminer
+    image: postgres:latest
     ports:
-      - 3306:3306
+      - 5432:5432
 
   redis:
     image: redis:latest

@@ -1,9 +1,8 @@
 import asyncio
 from logging.config import fileConfig
 
-from aiomysql import Connection
 from alembic import context
-from sqlalchemy import pool
+from sqlalchemy import Connection, pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from easyminer.config import settings
