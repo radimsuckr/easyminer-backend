@@ -8,36 +8,10 @@ from fastapi import FastAPI, HTTPException, Request, status
 
 from easyminer.api.data import router as data_router
 from easyminer.api.preprocessing import router as preprocessing_router
-from easyminer.config import settings
+from easyminer.config import logging_config, settings
 from easyminer.database import sessionmanager
 
-LOGGING_CONFIG = {
-    "version": 1,
-    "disable_existing_loggers": False,
-    "formatters": {
-        "standard": {"format": "%(asctime)s [%(levelname)s] %(name)s: %(message)s"},
-    },
-    "handlers": {
-        "default": {
-            "level": "DEBUG" if settings.debug_logs else "INFO",
-            "formatter": "standard",
-            "class": "logging.StreamHandler",
-            "stream": "ext://sys.stdout",  # Use standard output
-        },
-    },
-    "loggers": {
-        "": {
-            "handlers": ["default"],
-            "level": "DEBUG" if settings.debug_logs else "INFO",
-            "propagate": True,
-        },
-        "sqlalchemy": {
-            "handlers": ["default"],
-            "propagate": False,
-        },
-    },
-}
-logging.config.dictConfig(LOGGING_CONFIG)
+logging.config.dictConfig(logging_config)
 
 
 @asynccontextmanager

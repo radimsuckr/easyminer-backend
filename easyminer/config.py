@@ -37,3 +37,42 @@ settings = Settings(
     database_url=database_url,
     database_url_sync=database_url_sync,
 )
+
+logging_config = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "standard": {"format": "%(asctime)s [%(levelname)s] %(name)s: %(message)s"},
+    },
+    "handlers": {
+        "default": {
+            "level": "DEBUG" if settings.debug_logs else "INFO",
+            "formatter": "standard",
+            "class": "logging.StreamHandler",
+            "stream": "ext://sys.stdout",  # Use standard output
+        },
+        "sqlalchemy": {"class": "logging.NullHandler"},
+    },
+    "loggers": {
+        "": {
+            "handlers": ["default"],
+            "level": "DEBUG" if settings.debug_logs else "INFO",
+            "propagate": True,
+        },
+        "sqlalchemy": {
+            "handlers": ["sqlalchemy"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+        "sqlalchemy.engine": {
+            "handlers": ["sqlalchemy"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+        "sqlalchemy.pool": {
+            "handlers": ["sqlalchemy"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+    },
+}

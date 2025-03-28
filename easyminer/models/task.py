@@ -9,6 +9,7 @@ from easyminer.database import Base
 
 class TaskStatusEnum(enum.Enum):
     pending = "pending"
+    scheduled = "scheduled"
     started = "started"
     success = "success"
     failure = "failure"
