@@ -9,11 +9,17 @@ from easyminer.schemas import BaseSchema
 
 
 class CompressionType(str, Enum):
-    """Compression type for file uploads."""
-
     zip = "zip"
     gzip = "gzip"
     bzip2 = "bzip2"
+
+
+class MediaType(str, Enum):
+    csv = "csv"
+
+
+class DbType(str, Enum):
+    limited = "limited"
 
 
 class PreviewUploadSchema(BaseSchema):
@@ -37,9 +43,9 @@ class PreviewResponse(BaseSchema):
 class UploadSettings(BaseSchema):
     """Settings for file upload."""
 
-    name: str = Field(..., description="Name of the file")
-    media_type: str = Field(..., description="Media type (e.g., text/csv)")
-    db_type: str = Field(..., description="Database type (e.g., mysql)")
+    name: str = Field("upload", description="Name of the file")
+    media_type: MediaType = Field(MediaType.csv, description="Media type")
+    db_type: DbType = Field(DbType.limited, description="Database type")
     separator: str = Field(",", description="CSV separator character")
     encoding: str = Field("utf-8", description="File encoding")
     quotes_char: str = Field('"', description="Quote character")

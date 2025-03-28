@@ -1,8 +1,8 @@
 """init
 
-Revision ID: 4e985fe85307
+Revision ID: 41c995dad6cf
 Revises:
-Create Date: 2025-03-26 15:05:15.751104+01:00
+Create Date: 2025-03-28 08:44:18.595469+01:00
 
 """
 
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = "4e985fe85307"
+revision: str = "41c995dad6cf"
 down_revision: str | None = None
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
@@ -29,6 +29,7 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(), nullable=False),
         sa.Column("row_count", sa.Integer(), nullable=False),
         sa.Column("size_bytes", sa.Integer(), nullable=False),
+        sa.Column("is_finished", sa.Boolean(), nullable=False),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index(op.f("ix_data_source_id"), "data_source", ["id"], unique=False)
@@ -126,14 +127,18 @@ def upgrade() -> None:
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
         sa.Column("uuid", sa.String(length=36), nullable=False),
         sa.Column("name", sa.String(length=100), nullable=False),
-        sa.Column("media_type", sa.String(length=20), nullable=False),
-        sa.Column("db_type", sa.String(length=20), nullable=False),
+        sa.Column("media_type", sa.Enum("csv", name="mediatype"), nullable=False),
+        sa.Column("db_type", sa.Enum("limited", name="dbtype"), nullable=False),
         sa.Column("separator", sa.String(length=1), nullable=False),
         sa.Column("encoding", sa.String(length=40), nullable=False),
         sa.Column("quotes_char", sa.String(length=1), nullable=False),
         sa.Column("escape_char", sa.String(length=1), nullable=False),
         sa.Column("locale", sa.String(length=20), nullable=False),
-        sa.Column("compression", sa.String(length=20), nullable=True),
+        sa.Column(
+            "compression",
+            sa.Enum("zip", "gzip", "bzip2", name="compressiontype"),
+            nullable=True,
+        ),
         sa.Column("format", sa.String(length=20), nullable=False),
         sa.Column("preview_max_lines", sa.Integer(), nullable=True),
         sa.Column("data_source_id", sa.Integer(), nullable=False),
