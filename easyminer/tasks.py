@@ -6,11 +6,6 @@ from easyminer.worker import app
 
 
 @app.task
-def add(x: int, y: int) -> int:
-    return x + y
-
-
-@app.task
 def process_csv(
     data_source_id: int,
     upload_media_type: str,
