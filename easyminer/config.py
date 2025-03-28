@@ -1,4 +1,5 @@
 import os
+from enum import Enum
 
 from dotenv import load_dotenv
 from pydantic_settings import BaseSettings
@@ -32,6 +33,25 @@ if not celery_broker:
 celery_backend = os.getenv("CELERY_BACKEND")
 if not celery_backend:
     raise ValueError('Set "CELERY_BACKEND" environment variable')
+
+
+class EasyMinerModules(str, Enum):
+    data = "data"
+    preprocessing = "preprocessing"
+    mining = "mining"
+
+
+_allowed_modules = {module.value for module in EasyMinerModules}
+easyminer_modules = set(
+    os.environ.get("EASYMINER_MODULES", "data,preprocessing,mining").split(",")
+)
+if len(easyminer_modules) == 0:
+    raise ValueError('"EASYMINER_MODULES" cannot be empty')
+if not easyminer_modules.issubset(_allowed_modules):
+    raise ValueError(
+        f'Invalid module in "EASYMINER_MODULES". Choose from {_allowed_modules}'
+    )
+
 
 settings = Settings(
     database_url=database_url,

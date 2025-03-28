@@ -8,7 +8,12 @@ from fastapi import FastAPI, HTTPException, Request, status
 
 from easyminer.api.data import router as data_router
 from easyminer.api.preprocessing import router as preprocessing_router
-from easyminer.config import logging_config, settings
+from easyminer.config import (
+    EasyMinerModules,
+    easyminer_modules,
+    logging_config,
+    settings,
+)
 from easyminer.database import sessionmanager
 
 logging.config.dictConfig(logging_config)
@@ -34,8 +39,11 @@ app = FastAPI(
     description="API for the EasyMiner Backend modules Data, Preprocessing and Mining",
     summary="EasyMiner Backend API",
 )
-app.include_router(data_router)
-app.include_router(preprocessing_router)
+
+if EasyMinerModules.data in easyminer_modules:
+    app.include_router(data_router)
+if EasyMinerModules.preprocessing in easyminer_modules:
+    app.include_router(preprocessing_router)
 
 
 @app.exception_handler(sqlalchemy.exc.OperationalError)
