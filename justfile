@@ -23,3 +23,19 @@ test:
 
 celery:
 	uv run celery -A easyminer.worker worker -l INFO -O fair
+
+reinit-db:
+	docker compose kill postgres
+	docker compose rm -f postgres
+	docker compose up -d postgres
+
+	rm -r easyminer/alembic/versions/*
+
+	# check if postgres is up
+	@while ! docker compose exec postgres pg_isready -U postgres; do sleep 0.25s; done
+
+	uv run alembic upgrade head
+	uv run alembic revision --autogenerate -m "init"
+
+migrate-head:
+	uv run alembic upgrade head
