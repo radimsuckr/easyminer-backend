@@ -37,8 +37,9 @@ def configure_logging(*args, **kwargs):
 
 @before_task_publish.connect()
 def before_task_publish_handler(body, exchange, routing_key, *args, **kwargs):
+    logger = logging.getLogger(__name__)
     header_id: str = kwargs["headers"]["id"]
-    print(f"Task {header_id} published")
+    logger.debug(f"Task {header_id} published")
 
     with get_sync_db_session() as session:
         query = (
@@ -50,17 +51,16 @@ def before_task_publish_handler(body, exchange, routing_key, *args, **kwargs):
         session.commit()
 
     if not task_id:
-        print(f"Task {task_id} not saved")
-    else:
-        print(f"Task {task_id} saved")
+        logger.error(f"Task {task_id} not saved")
 
 
 @after_task_publish.connect()
 def after_task_publish_handler(
     body, exchange: str | Exchange, routing_key, *args, **kwargs
 ):
-    header_id: str = kwargs["headers"]["id"]
-    print(f"Task {header_id} published")
+    logger = logging.getLogger(__name__)
+    header_id: UUID = kwargs["headers"]["id"]
+    logger.debug(f"Task {header_id} published")
 
     with get_sync_db_session() as session:
         # TODO: we should probably also check Redis if the task exists there
@@ -74,13 +74,12 @@ def after_task_publish_handler(
         session.commit()
 
     if not task_id:
-        print(f"Task {task_id} not saved")
-    else:
-        print(f"Task {task_id} saved")
+        logger.error(f"Task {header_id} not found")
 
 
 @task_prerun.connect()
 def task_prerun_handler(task_id: UUID, task, *args, **kwargs):
+    logger = logging.getLogger(__name__)
     with get_sync_db_session() as session:
         update_query = (
             update(Task)
@@ -92,13 +91,12 @@ def task_prerun_handler(task_id: UUID, task, *args, **kwargs):
         session.commit()
 
     if not t_id:
-        print(f"Task with ID {t_id} not found")
-    else:
-        print(f"Task {t_id} started")
+        logger.error(f"Task with ID {t_id} not found")
 
 
 @task_postrun.connect()
 def task_postrun_handler(task_id: UUID, task, retval, state, *args, **kwargs):
+    logger = logging.getLogger(__name__)
     with get_sync_db_session() as session:
         update_query = (
             update(Task)
@@ -110,6 +108,4 @@ def task_postrun_handler(task_id: UUID, task, retval, state, *args, **kwargs):
         session.commit()
 
     if not t_id:
-        print(f"Task with ID {t_id} not found")
-    else:
-        print(f"Task {t_id} finished")
+        logger.error(f"Task with ID {t_id} not found")
