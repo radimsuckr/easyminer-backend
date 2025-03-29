@@ -15,7 +15,6 @@ dependencies = [
 	"pydantic-settings>=2.4.0",
 	"pyhumps>=3.8.0",
 	"sqlalchemy[asyncio,postgresql-psycopg]>=2.0.31",
-	"uvicorn[standard]>=0.30.3",
 ]
 readme = "readme.md"
 requires-python = ">= 3.13"

@@ -3,7 +3,6 @@ import logging.config
 from contextlib import asynccontextmanager
 
 import sqlalchemy.exc
-import uvicorn
 from fastapi import FastAPI, HTTPException, Request, status
 
 from easyminer.api.data import router as data_router
@@ -54,7 +53,3 @@ async def database_exception_handler(_: Request, exc: sqlalchemy.exc.Operational
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         detail="Database error",
     )
-
-
-if __name__ == "__main__":
-    uvicorn.run("easyminer.app:app", host="0.0.0.0", reload=True, port=8000)

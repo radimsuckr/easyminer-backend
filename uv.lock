@@ -318,7 +318,6 @@ dependencies = [
     { name = "pydantic-settings" },
     { name = "pyhumps" },
     { name = "sqlalchemy", extra = ["asyncio", "postgresql-psycopg"] },
-    { name = "uvicorn", extra = ["standard"] },
 ]
 
 [package.dev-dependencies]
@@ -348,7 +347,6 @@ requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.4.0" },
     { name = "pyhumps", specifier = ">=3.8.0" },
     { name = "sqlalchemy", extras = ["asyncio", "postgresql-psycopg"], specifier = ">=2.0.31" },
-    { name = "uvicorn", extras = ["standard"], specifier = ">=0.30.3" },
 ]
 
 [package.metadata.requires-dev]
