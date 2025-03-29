@@ -1,12 +1,15 @@
 import enum
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Double, Enum, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from easyminer.database import Base
-from easyminer.models.task import Task
-from easyminer.models.upload import PreviewUpload, Upload
+
+if TYPE_CHECKING:
+    from easyminer.models.task import Task
+    from easyminer.models.upload import PreviewUpload, Upload
 
 
 class DataSource(Base):
@@ -14,7 +17,7 @@ class DataSource(Base):
 
     __tablename__: str = "data_source"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, index=True)
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(255))
     type: Mapped[str] = mapped_column(String(50))
     created_at: Mapped[datetime] = mapped_column(default=datetime.now(UTC))
@@ -27,13 +30,24 @@ class DataSource(Base):
 
     # Relationships
     fields: Mapped[list["Field"]] = relationship(
-        back_populates="data_source", cascade="all, delete-orphan"
+        "Field", back_populates="data_source", cascade="all, delete-orphan"
     )
-
-    upload: Mapped["Upload"] = relationship("Upload", back_populates="data_source")
-    preview_upload: Mapped["PreviewUpload"] = relationship(back_populates="data_source")
+    upload: Mapped["Upload"] = relationship(
+        "Upload",
+        back_populates="data_source",
+        cascade="all, delete-orphan",
+        single_parent=True,
+        uselist=False,  # This makes it a one-to-one relationship
+    )
+    preview_upload: Mapped["PreviewUpload"] = relationship(
+        "PreviewUpload",
+        back_populates="data_source",
+        cascade="all, delete-orphan",
+        single_parent=True,
+        uselist=False,  # This makes it a one-to-one relationship
+    )
     tasks: Mapped[list["Task"]] = relationship(
-        back_populates="data_source", cascade="all, delete-orphan"
+        "Task", back_populates="data_source", cascade="all, delete-orphan"
     )
 
 
@@ -47,13 +61,15 @@ class Field(Base):
 
     __tablename__: str = "field"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, index=True)
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(255))
     data_type: Mapped["FieldType"] = mapped_column(Enum(FieldType))
-    data_source_id: Mapped[int] = mapped_column(ForeignKey("data_source.id"))
     unique_count: Mapped[int] = mapped_column(Integer())
     support: Mapped[int] = mapped_column(Integer())
 
+    data_source_id: Mapped[int] = mapped_column(
+        ForeignKey("data_source.id", ondelete="CASCADE")
+    )
     data_source: Mapped["DataSource"] = relationship(
         "DataSource", back_populates="fields"
     )
@@ -64,7 +80,7 @@ class FieldNumericDetails(Base):
 
     __tablename__: str = "field_numeric_details"
 
-    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    id: Mapped[int] = mapped_column(primary_key=True)
     min_value: Mapped[float] = mapped_column(Double())
     max_value: Mapped[float] = mapped_column(Double())
     avg_value: Mapped[float] = mapped_column(Double())

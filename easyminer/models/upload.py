@@ -1,5 +1,6 @@
 from collections.abc import Sequence
-from datetime import UTC, datetime
+from datetime import datetime
+from typing import TYPE_CHECKING
 from uuid import UUID as pyUUID
 
 from sqlalchemy import (
@@ -17,9 +18,10 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, Relationship, mapped_column, relationship
 
 from easyminer.database import Base
-
-# from easyminer.models.data import DataSource
 from easyminer.schemas.data import CompressionType, DbType, MediaType
+
+if TYPE_CHECKING:
+    from easyminer.models.data import DataSource
 
 
 def create_association_table(name: str, target_table: str) -> Table:
@@ -27,9 +29,11 @@ def create_association_table(name: str, target_table: str) -> Table:
     return Table(
         f"{name}_table",
         Base.metadata,
-        Column("id", Integer, primary_key=True, autoincrement=True, index=True),
-        Column("upload_id", Integer, ForeignKey("upload.id")),
-        Column(f"{name}_id", Integer, ForeignKey(f"{target_table}.id")),
+        Column("id", Integer, primary_key=True, autoincrement=True),
+        Column("upload_id", Integer, ForeignKey("upload.id", ondelete="CASCADE")),
+        Column(
+            f"{name}_id", Integer, ForeignKey(f"{target_table}.id", ondelete="CASCADE")
+        ),
     )
 
 
@@ -42,9 +46,10 @@ UploadDataTypeTable = create_association_table("upload_data_type", "upload_data_
 class UploadNullValue(Base):
     __tablename__: str = "upload_null_value"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, index=True)
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     value: Mapped[str] = mapped_column(String(100))
-    uploads = relationship(
+
+    uploads: Mapped[list["Upload"]] = relationship(
         "Upload", secondary=UploadNullValueTable, back_populates="null_values"
     )
 
@@ -52,9 +57,10 @@ class UploadNullValue(Base):
 class UploadDataType(Base):
     __tablename__: str = "upload_data_types"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, index=True)
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(100))
-    uploads = relationship(
+
+    uploads: Mapped[list["Upload"]] = relationship(
         "Upload", secondary=UploadDataTypeTable, back_populates="data_types"
     )
 
@@ -76,22 +82,26 @@ class Upload(Base):
     compression: Mapped["CompressionType | None"] = mapped_column(
         Enum(CompressionType), nullable=True
     )
+    format: Mapped[str] = mapped_column(String(20))
+    preview_max_lines: Mapped[int | None] = mapped_column(Integer(), nullable=True)
+
     null_values: Relationship[list["UploadNullValue"]] = relationship(
         "UploadNullValue", secondary=UploadNullValueTable, back_populates="uploads"
     )
     data_types: Relationship[list["UploadDataType"]] = relationship(
         "UploadDataType", secondary=UploadDataTypeTable, back_populates="uploads"
     )
-    format: Mapped[str] = mapped_column(String(20))
-    preview_max_lines: Mapped[int | None] = mapped_column(Integer, nullable=True)
-
-    data_source_id: Mapped[int] = mapped_column(ForeignKey("data_source.id"))
-    data_source: Mapped["DataSource"] = relationship(
-        "DataSource", back_populates="upload", single_parent=True
+    data_source_id: Mapped[int] = mapped_column(
+        ForeignKey("data_source.id", ondelete="CASCADE")
     )
-
-    chunks: Relationship[list["Chunk"]] = relationship(
-        "Chunk", back_populates="upload", order_by="Chunk.uploaded_at"
+    data_source: Mapped["DataSource"] = relationship(
+        "DataSource", back_populates="upload"
+    )
+    chunks: Mapped[list["Chunk"]] = relationship(
+        "Chunk",
+        back_populates="upload",
+        order_by="Chunk.uploaded_at",
+        cascade="all, delete-orphan",
     )
 
 
@@ -104,7 +114,9 @@ class PreviewUpload(Base):
     max_lines: Mapped[int] = mapped_column(Integer())
     compression: Mapped[CompressionType | None] = mapped_column(Enum(CompressionType))
 
-    data_source_id: Mapped[int] = mapped_column(ForeignKey("data_source.id"))
+    data_source_id: Mapped[int] = mapped_column(
+        ForeignKey("data_source.id", ondelete="CASCADE")
+    )
     data_source: Mapped["DataSource"] = relationship(
         "DataSource", back_populates="preview_upload", single_parent=True
     )
@@ -113,9 +125,9 @@ class PreviewUpload(Base):
 class Chunk(Base):
     __tablename__: str = "chunk"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, index=True)
-    upload_id: Mapped[int] = mapped_column(ForeignKey("upload.id"))
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     uploaded_at: Mapped[datetime] = mapped_column(DateTime(), default=datetime.now)
     path: Mapped[str] = mapped_column(String(255))
 
-    upload: Relationship["Upload"] = relationship("Upload", back_populates="chunks")
+    upload_id: Mapped[int] = mapped_column(ForeignKey("upload.id", ondelete="CASCADE"))
+    upload: Mapped["Upload"] = relationship("Upload", back_populates="chunks")

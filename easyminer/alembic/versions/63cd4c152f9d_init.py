@@ -1,8 +1,8 @@
 """init
 
-Revision ID: ad7080abc396
+Revision ID: 63cd4c152f9d
 Revises:
-Create Date: 2025-03-29 19:10:43.618620+01:00
+Create Date: 2025-03-29 22:25:15.608852+01:00
 
 """
 
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = "ad7080abc396"
+revision: str = "63cd4c152f9d"
 down_revision: str | None = None
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
@@ -32,7 +32,6 @@ def upgrade() -> None:
         sa.Column("is_finished", sa.Boolean(), nullable=False),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index(op.f("ix_data_source_id"), "data_source", ["id"], unique=False)
     op.create_table(
         "field_numeric_details",
         sa.Column("id", sa.Integer(), nullable=False),
@@ -41,11 +40,11 @@ def upgrade() -> None:
         sa.Column("avg_value", sa.Double(), nullable=False),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index(
-        op.f("ix_field_numeric_details_id"),
-        "field_numeric_details",
-        ["id"],
-        unique=False,
+    op.create_table(
+        "task_result",
+        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
+        sa.Column("value", sa.JSON(), nullable=False),
+        sa.PrimaryKeyConstraint("id"),
     )
     op.create_table(
         "upload_data_types",
@@ -53,17 +52,11 @@ def upgrade() -> None:
         sa.Column("name", sa.String(length=100), nullable=False),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index(
-        op.f("ix_upload_data_types_id"), "upload_data_types", ["id"], unique=False
-    )
     op.create_table(
         "upload_null_value",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
         sa.Column("value", sa.String(length=100), nullable=False),
         sa.PrimaryKeyConstraint("id"),
-    )
-    op.create_index(
-        op.f("ix_upload_null_value_id"), "upload_null_value", ["id"], unique=False
     )
     op.create_table(
         "field",
@@ -72,16 +65,14 @@ def upgrade() -> None:
         sa.Column(
             "data_type", sa.Enum("nominal", "numeric", name="fieldtype"), nullable=False
         ),
-        sa.Column("data_source_id", sa.Integer(), nullable=False),
         sa.Column("unique_count", sa.Integer(), nullable=False),
         sa.Column("support", sa.Integer(), nullable=False),
+        sa.Column("data_source_id", sa.Integer(), nullable=False),
         sa.ForeignKeyConstraint(
-            ["data_source_id"],
-            ["data_source.id"],
+            ["data_source_id"], ["data_source.id"], ondelete="CASCADE"
         ),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index(op.f("ix_field_id"), "field", ["id"], unique=False)
     op.create_table(
         "preview_upload",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
@@ -94,8 +85,7 @@ def upgrade() -> None:
         ),
         sa.Column("data_source_id", sa.Integer(), nullable=False),
         sa.ForeignKeyConstraint(
-            ["data_source_id"],
-            ["data_source.id"],
+            ["data_source_id"], ["data_source.id"], ondelete="CASCADE"
         ),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("data_source_id"),
@@ -120,13 +110,13 @@ def upgrade() -> None:
         ),
         sa.Column("status_message", sa.String(length=255), nullable=True),
         sa.Column("data_source_id", sa.Integer(), nullable=True),
+        sa.Column("result_id", sa.Integer(), nullable=True),
         sa.ForeignKeyConstraint(
-            ["data_source_id"],
-            ["data_source.id"],
+            ["data_source_id"], ["data_source.id"], ondelete="CASCADE"
         ),
+        sa.ForeignKeyConstraint(["result_id"], ["task_result.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index(op.f("ix_task_id"), "task", ["id"], unique=False)
     op.create_index(op.f("ix_task_task_id"), "task", ["task_id"], unique=True)
     op.create_table(
         "upload",
@@ -149,8 +139,7 @@ def upgrade() -> None:
         sa.Column("preview_max_lines", sa.Integer(), nullable=True),
         sa.Column("data_source_id", sa.Integer(), nullable=False),
         sa.ForeignKeyConstraint(
-            ["data_source_id"],
-            ["data_source.id"],
+            ["data_source_id"], ["data_source.id"], ondelete="CASCADE"
         ),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("data_source_id"),
@@ -158,25 +147,10 @@ def upgrade() -> None:
     op.create_table(
         "chunk",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
-        sa.Column("upload_id", sa.Integer(), nullable=False),
         sa.Column("uploaded_at", sa.DateTime(), nullable=False),
         sa.Column("path", sa.String(length=255), nullable=False),
-        sa.ForeignKeyConstraint(
-            ["upload_id"],
-            ["upload.id"],
-        ),
-        sa.PrimaryKeyConstraint("id"),
-    )
-    op.create_index(op.f("ix_chunk_id"), "chunk", ["id"], unique=False)
-    op.create_table(
-        "task_result",
-        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
-        sa.Column("task_id", sa.Integer(), nullable=False),
-        sa.Column("value", sa.JSON(), nullable=False),
-        sa.ForeignKeyConstraint(
-            ["task_id"],
-            ["task.id"],
-        ),
+        sa.Column("upload_id", sa.Integer(), nullable=False),
+        sa.ForeignKeyConstraint(["upload_id"], ["upload.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_table(
@@ -185,73 +159,38 @@ def upgrade() -> None:
         sa.Column("upload_id", sa.Integer(), nullable=True),
         sa.Column("upload_data_type_id", sa.Integer(), nullable=True),
         sa.ForeignKeyConstraint(
-            ["upload_data_type_id"],
-            ["upload_data_types.id"],
+            ["upload_data_type_id"], ["upload_data_types.id"], ondelete="CASCADE"
         ),
-        sa.ForeignKeyConstraint(
-            ["upload_id"],
-            ["upload.id"],
-        ),
+        sa.ForeignKeyConstraint(["upload_id"], ["upload.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
-    )
-    op.create_index(
-        op.f("ix_upload_data_type_table_id"),
-        "upload_data_type_table",
-        ["id"],
-        unique=False,
     )
     op.create_table(
         "upload_null_value_table",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
         sa.Column("upload_id", sa.Integer(), nullable=True),
         sa.Column("upload_null_value_id", sa.Integer(), nullable=True),
+        sa.ForeignKeyConstraint(["upload_id"], ["upload.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(
-            ["upload_id"],
-            ["upload.id"],
-        ),
-        sa.ForeignKeyConstraint(
-            ["upload_null_value_id"],
-            ["upload_null_value.id"],
+            ["upload_null_value_id"], ["upload_null_value.id"], ondelete="CASCADE"
         ),
         sa.PrimaryKeyConstraint("id"),
-    )
-    op.create_index(
-        op.f("ix_upload_null_value_table_id"),
-        "upload_null_value_table",
-        ["id"],
-        unique=False,
     )
     # ### end Alembic commands ###
 
 
 def downgrade() -> None:
     # ### commands auto generated by Alembic - please adjust! ###
-    op.drop_index(
-        op.f("ix_upload_null_value_table_id"), table_name="upload_null_value_table"
-    )
     op.drop_table("upload_null_value_table")
-    op.drop_index(
-        op.f("ix_upload_data_type_table_id"), table_name="upload_data_type_table"
-    )
     op.drop_table("upload_data_type_table")
-    op.drop_table("task_result")
-    op.drop_index(op.f("ix_chunk_id"), table_name="chunk")
     op.drop_table("chunk")
     op.drop_table("upload")
     op.drop_index(op.f("ix_task_task_id"), table_name="task")
-    op.drop_index(op.f("ix_task_id"), table_name="task")
     op.drop_table("task")
     op.drop_table("preview_upload")
-    op.drop_index(op.f("ix_field_id"), table_name="field")
     op.drop_table("field")
-    op.drop_index(op.f("ix_upload_null_value_id"), table_name="upload_null_value")
     op.drop_table("upload_null_value")
-    op.drop_index(op.f("ix_upload_data_types_id"), table_name="upload_data_types")
     op.drop_table("upload_data_types")
-    op.drop_index(
-        op.f("ix_field_numeric_details_id"), table_name="field_numeric_details"
-    )
+    op.drop_table("task_result")
     op.drop_table("field_numeric_details")
-    op.drop_index(op.f("ix_data_source_id"), table_name="data_source")
     op.drop_table("data_source")
     # ### end Alembic commands ###
