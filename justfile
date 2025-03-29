@@ -29,7 +29,7 @@ reinit-db:
 	docker compose rm -f postgres
 	docker compose up -d postgres
 
-	rm -r easyminer/alembic/versions/*
+	rm -r easyminer/alembic/versions/* || true
 
 	# check if postgres is up
 	@while ! docker compose exec postgres pg_isready -U postgres; do sleep 0.25s; done
