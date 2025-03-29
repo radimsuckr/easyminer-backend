@@ -1,8 +1,11 @@
-FROM python:slim
+FROM python:3.13-slim
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 WORKDIR /app
-COPY requirements.lock ./
-RUN PYTHONDONTWRITEBYTECODE=1 pip install --no-cache-dir -r requirements.lock
 
-COPY src .
-CMD python main.py
+COPY . ./
+
+RUN uv sync
+
+CMD ["uv", "run", "uvicorn", "easyminer.app:app", "--host", "0.0.0.0", "--port", "8000"]

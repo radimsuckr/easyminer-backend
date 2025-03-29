@@ -1,0 +1,7 @@
+.*
+Dockerfile
+coverage.xml
+docker-compose.yml
+justfile
+readme.md
+tools/
