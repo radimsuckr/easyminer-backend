@@ -14,7 +14,7 @@ from fastapi import (
     Response,
     status,
 )
-from sqlalchemy import Update, update
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from easyminer.config import API_V1_PREFIX
@@ -172,7 +172,7 @@ async def upload_chunk(
                 f"Upload complete for data source {data_source_id}. Processing data..."
             )
             _ = await db.execute(
-                Update(DataSource)
+                update(DataSource)
                 .where(DataSource.id == data_source_id)
                 .values(is_finished=True)
             )
@@ -278,7 +278,7 @@ async def upload_preview_chunk(
                 f"Upload complete for data source {data_source_id}. Processing data..."
             )
             _ = await db.execute(
-                Update(DataSource)
+                update(DataSource)
                 .where(DataSource.id == data_source_id)
                 .values(is_finished=True)
             )
