@@ -1,10 +1,12 @@
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from uuid import UUID as pyUUID
 
 from sqlalchemy import (
     UUID,
     Column,
     Constraint,
+    DateTime,
     Enum,
     ForeignKey,
     Integer,
@@ -88,7 +90,9 @@ class Upload(Base):
         "DataSource", back_populates="upload", single_parent=True
     )
 
-    chunks: Relationship[list["Chunk"]] = relationship("Chunk", back_populates="upload")
+    chunks: Relationship[list["Chunk"]] = relationship(
+        "Chunk", back_populates="upload", order_by="Chunk.uploaded_at"
+    )
 
 
 class PreviewUpload(Base):
@@ -111,6 +115,7 @@ class Chunk(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, index=True)
     upload_id: Mapped[int] = mapped_column(ForeignKey("upload.id"))
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime(), default=datetime.now)
     path: Mapped[str] = mapped_column(String(255))
 
     upload: Relationship["Upload"] = relationship("Upload", back_populates="chunks")

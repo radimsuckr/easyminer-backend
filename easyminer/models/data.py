@@ -1,7 +1,7 @@
 import enum
 from datetime import UTC, datetime
 
-from sqlalchemy import Double, Enum, ForeignKey, String
+from sqlalchemy import Double, Enum, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from easyminer.database import Base
@@ -51,8 +51,8 @@ class Field(Base):
     name: Mapped[str] = mapped_column(String(255))
     data_type: Mapped["FieldType"] = mapped_column(Enum(FieldType))
     data_source_id: Mapped[int] = mapped_column(ForeignKey("data_source.id"))
-    unique_count: Mapped[int] = mapped_column()
-    support: Mapped[int] = mapped_column()
+    unique_count: Mapped[int] = mapped_column(Integer())
+    support: Mapped[int] = mapped_column(Integer())
 
     data_source: Mapped["DataSource"] = relationship(
         "DataSource", back_populates="fields"

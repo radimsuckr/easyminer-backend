@@ -1,9 +1,10 @@
+import csv
 import logging
 
-from sqlalchemy import select
+from sqlalchemy import insert, select
 
 from easyminer.database import get_sync_db_session
-from easyminer.models.data import DataSource
+from easyminer.models.data import DataSource, Field, FieldType
 from easyminer.schemas.data import MediaType
 from easyminer.worker import app
 
@@ -28,5 +29,49 @@ def process_csv(
             raise ValueError(f"Data source with ID {data_source_id} not found")
         chunks = data_source_record.upload.chunks
 
-    for chunk in chunks:
+    headers: list[str] = []
+    str_chunks: list[str] = []
+    for ix, chunk in enumerate(chunks):
         logger.info(f"Processing chunk {chunk.id} of data source {data_source_id}")
+        with open(chunk.path, encoding=encoding) as f:
+            reader = csv.reader(f, delimiter=separator, quotechar=quote_char)
+            # Get headers row
+            if ix == 0:
+                headers = next(reader)
+                str_chunks.append(str(headers))
+            for row in reader:
+                str_chunks.append(str(row))
+
+    # Determine field types
+    # TODO: For now, all fields are nominal
+
+    # Create fields in database
+    with get_sync_db_session() as session:
+        for header in headers:
+            logger.info(f"Header: {header}")
+            # Check if field already exists
+            existing_field = session.execute(
+                select(Field).filter(
+                    Field.name == header, Field.data_source_id == data_source_id
+                )
+            ).scalar_one_or_none()
+            if existing_field:
+                logger.warning(f"Field {header} already exists, skipping.")
+                continue
+            query = (
+                insert(Field)
+                .values(
+                    name=header,
+                    data_type=FieldType.nominal,
+                    data_source_id=data_source_id,
+                    unique_count=0,
+                    support=0,
+                )
+                .returning(Field.id)
+            )
+            id = session.execute(query).scalar_one()
+            session.commit()
+            if not id:
+                logger.error(f"Failed to insert field {header}")
+                continue
+            logger.info(f"Inserted field {header} with ID {id}")
