@@ -1,8 +1,8 @@
 """init
 
-Revision ID: 5706dfcd993a
+Revision ID: ad7080abc396
 Revises:
-Create Date: 2025-03-29 18:34:35.844283+01:00
+Create Date: 2025-03-29 19:10:43.618620+01:00
 
 """
 
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = "5706dfcd993a"
+revision: str = "ad7080abc396"
 down_revision: str | None = None
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
@@ -119,7 +119,6 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.Column("status_message", sa.String(length=255), nullable=True),
-        sa.Column("result_location", sa.String(length=255), nullable=True),
         sa.Column("data_source_id", sa.Integer(), nullable=True),
         sa.ForeignKeyConstraint(
             ["data_source_id"],
@@ -169,6 +168,17 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index(op.f("ix_chunk_id"), "chunk", ["id"], unique=False)
+    op.create_table(
+        "task_result",
+        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
+        sa.Column("task_id", sa.Integer(), nullable=False),
+        sa.Column("value", sa.JSON(), nullable=False),
+        sa.ForeignKeyConstraint(
+            ["task_id"],
+            ["task.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+    )
     op.create_table(
         "upload_data_type_table",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
@@ -224,6 +234,7 @@ def downgrade() -> None:
         op.f("ix_upload_data_type_table_id"), table_name="upload_data_type_table"
     )
     op.drop_table("upload_data_type_table")
+    op.drop_table("task_result")
     op.drop_index(op.f("ix_chunk_id"), table_name="chunk")
     op.drop_table("chunk")
     op.drop_table("upload")

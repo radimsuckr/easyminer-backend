@@ -24,7 +24,7 @@ from easyminer.schemas.preprocessing import (
     TaskStatus,
 )
 
-router = APIRouter(prefix=API_V1_PREFIX, tags=["Preprocessing API"])
+router = APIRouter(prefix=API_V1_PREFIX, tags=["Preprocessing"])
 
 
 # Dataset endpoints

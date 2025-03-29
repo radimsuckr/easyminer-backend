@@ -497,28 +497,3 @@ async def generate_histogram_for_field(
     )
 
     return histogram_data, result_path
-
-
-async def read_task_result(result_path: str) -> dict[str, Any]:
-    """Read a task result file.
-
-    Args:
-        result_path: Path to the result file
-
-    Returns:
-        The file contents parsed as JSON
-    """
-    storage = DiskStorage(Path("../../var/data"))
-
-    try:
-        content = storage.read(Path(result_path))
-        return json.loads(content.decode("utf-8"))
-    except FileNotFoundError:
-        logger.error(f"Result file {result_path} not found")
-        raise
-    except json.JSONDecodeError as e:
-        logger.error(f"Error decoding JSON in result file {result_path}: {e}")
-        raise ValueError(f"Invalid JSON format in result file: {e}")
-    except Exception as e:
-        logger.error(f"Error reading result file {result_path}: {e}")
-        raise

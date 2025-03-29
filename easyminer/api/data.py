@@ -53,7 +53,6 @@ from easyminer.processing.csv_utils import extract_field_values_from_csv
 from easyminer.processing.data_retrieval import (
     generate_histogram_for_field,
     get_data_preview,
-    read_task_result,
 )
 from easyminer.schemas.data import (
     DataSourceCreate,
@@ -65,14 +64,13 @@ from easyminer.schemas.data import (
     UploadSettings,
 )
 from easyminer.schemas.field_values import Value
-from easyminer.schemas.task import TaskResult, TaskStatus
 from easyminer.storage import DiskStorage
 from easyminer.tasks import process_csv
 
 # Maximum chunk size for preview uploads (100KB)
 MAX_PREVIEW_CHUNK_SIZE = 100 * 1024
 
-router = APIRouter(prefix=API_V1_PREFIX, tags=["Data API"])
+router = APIRouter(prefix=API_V1_PREFIX, tags=["Data"])
 
 logger = logging.getLogger(__name__)
 
@@ -731,8 +729,8 @@ async def get_aggregated_values(
     max_value: float | None = None,
     min_inclusive: bool = True,
     max_inclusive: bool = True,
-    background_tasks: BackgroundTasks = BackgroundTasks(),
-) -> TaskStatus:
+    background_tasks: BackgroundTasks = BackgroundTasks(),  # TODO : Use celery
+) -> dict[str, str | None]:
     """Get aggregated values for a field.
 
     This operation creates a task for generating a histogram of a numeric field
@@ -853,87 +851,10 @@ async def get_aggregated_values(
     background_tasks.add_task(process_histogram_task)
 
     # Return task ID and status location
-    return TaskStatus(
-        task_id=task_id,
-        task_name="aggregated_values",
-        status=TaskStatusEnum.pending,
-        status_message="Histogram generation started",
-        status_location=request.url_for("get_task_status", task_id=task_id).path,
-        result_location=None,
-    )
-
-
-@router.get("/task-status/{task_id}", name="get_task_status")
-async def get_task_status(
-    request: Request,
-    task_id: Annotated[UUID, Path()],
-    db: Annotated[AsyncSession, Depends(get_db_session)],
-) -> TaskStatus:
-    """Get status of a task."""
-    # Look up the task by ID
-    task = await get_task_by_id(db, task_id)
-
-    # Check if the task exists
-    if not task:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Task not found"
-        )
-
-    return TaskStatus(
-        task_id=task.task_id,
-        task_name=task.name,
-        status=task.status,
-        status_message=task.status_message,
-        status_location=request.url_for("get_task_status", task_id=task.task_id).path,
-        result_location=task.result_location if task.result_location else None,
-    )
-
-
-@router.get("/task-result/{task_id}")
-async def get_task_result(
-    task_id: Annotated[UUID, Path()],
-    db: Annotated[AsyncSession, Depends(get_db_session)],
-) -> TaskResult:
-    """Get the result of a completed task."""
-    # Look up the task by ID
-    task = await get_task_by_id(db, task_id)
-
-    # Check if the task exists
-    if not task:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Task not found"
-        )
-
-    # Check if the task is completed
-    if task.status != TaskStatusEnum.success:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Task is not completed yet (current status: {task.status})",
-        )
-
-    # Check if there's a result location
-    if not task.result_location:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No result available for this task",
-        )
-
-    # Return the actual result
-    try:
-        # Read the task result
-        result_data = await read_task_result(task.result_location)
-        return TaskResult(
-            message="Task result retrieved successfully",
-            result_location=task.result_location,
-            result=result_data,
-        )
-    except FileNotFoundError:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Result file not found",
-        )
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error reading result file: {str(e)}",
-        )
+    return {
+        "task_id": task_id,
+        "task_name": "aggregated_values",
+        "status_message": "Histogram generation started",
+        "status_location": request.url_for("get_task_status", task_id=task_id).path,
+        "result_location": None,
+    }

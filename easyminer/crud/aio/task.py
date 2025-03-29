@@ -3,6 +3,7 @@ from uuid import UUID
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
 
 from easyminer.models.task import Task, TaskStatusEnum
 
@@ -34,10 +35,15 @@ async def create_task(
         raise
 
 
-async def get_task_by_id(db: AsyncSession, task_id: UUID) -> Task | None:
+async def get_task_by_id(
+    db: AsyncSession, task_id: UUID, eager: bool = False
+) -> Task | None:
     """Get a task by ID."""
-    result = await db.execute(select(Task).where(Task.task_id == task_id))
-    return result.scalars().first()
+    query = select(Task).where(Task.task_id == task_id)
+    if eager:
+        query = query.options(joinedload(Task.result))
+    result = await db.execute(query)
+    return result.scalar_one_or_none()
 
 
 async def update_task_status(
