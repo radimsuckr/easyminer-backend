@@ -98,22 +98,28 @@ async def update_data_source_name(
     db: AsyncSession, id: int, name: str
 ) -> DataSource | None:
     """Update a data source name."""
-    await db.execute(update(DataSource).where(DataSource.id == id).values(name=name))
+    datasource = await db.execute(
+        update(DataSource)
+        .where(DataSource.id == id)
+        .values(name=name)
+        .returning(DataSource)
+    )
     await db.commit()
-    return await get_data_source_by_id(db, id)
+    return datasource.scalar_one_or_none()
 
 
 async def update_data_source_size(
     db: AsyncSession, id: int, size_bytes: int
 ) -> DataSource | None:
     """Update a data source size in bytes."""
-    await db.execute(
+    datasource = await db.execute(
         update(DataSource)
         .where(DataSource.id == id)
         .values(size_bytes=DataSource.size_bytes + size_bytes)
+        .returning(DataSource)
     )
     await db.commit()
-    return await get_data_source_by_id(db, id)
+    return datasource.scalar_one_or_none()
 
 
 async def delete_data_source(db: AsyncSession, id: int) -> bool:

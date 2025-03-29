@@ -2,26 +2,23 @@ import logging
 import pathlib as pl
 from datetime import datetime
 from typing import Annotated, Any
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from fastapi import (
     APIRouter,
-    BackgroundTasks,
     Body,
     Depends,
     HTTPException,
     Path,
     Query,
-    Request,
     Response,
     status,
 )
-from sqlalchemy import Update
+from sqlalchemy import Update, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from easyminer.config import API_V1_PREFIX
 from easyminer.crud.aio.data_source import (
-    create_data_source,
     delete_data_source,
     get_data_source_by_id,
     get_data_source_by_preview_upload_id,
@@ -32,38 +29,28 @@ from easyminer.crud.aio.data_source import (
 )
 from easyminer.crud.aio.field import (
     get_field_by_id,
-    get_field_stats,
     get_fields_by_data_source,
     get_fields_by_ids,
 )
-from easyminer.crud.aio.task import create_task, get_task_by_id, update_task_status
 from easyminer.crud.aio.upload import (
     create_chunk,
     create_preview_upload,
     create_upload,
     get_preview_upload_by_uuid,
-    get_upload_by_id,
     get_upload_by_uuid,
 )
-from easyminer.database import get_db_session, sessionmanager
+from easyminer.database import get_db_session
 from easyminer.models import Field
 from easyminer.models.data import DataSource, FieldType
-from easyminer.models.task import TaskStatusEnum
-from easyminer.processing.csv_utils import extract_field_values_from_csv
 from easyminer.processing.data_retrieval import (
-    generate_histogram_for_field,
     get_data_preview,
 )
 from easyminer.schemas.data import (
-    DataSourceCreate,
     DataSourceRead,
     FieldRead,
-    PreviewResponse,
     PreviewUploadSchema,
-    Stats,
     UploadSettings,
 )
-from easyminer.schemas.field_values import Value
 from easyminer.storage import DiskStorage
 from easyminer.tasks import process_csv
 
@@ -332,70 +319,6 @@ async def list_data_sources(
     return [DataSourceRead.model_validate(ds) for ds in data_sources]
 
 
-@router.post("/datasource")
-async def create_datasource(
-    data: DataSourceCreate,
-    db: Annotated[AsyncSession, Depends(get_db_session)],
-) -> DataSourceRead:
-    """Create a new data source."""
-    data_source = await create_data_source(
-        db_session=db,
-        name=data.name,
-        type=data.type,
-        size_bytes=data.size_bytes if hasattr(data, "size_bytes") else 0,
-        row_count=data.row_count if hasattr(data, "row_count") else 0,
-    )
-    return DataSourceRead.model_validate(data_source)
-
-
-@router.get("/datasource/{id}")
-async def get_data_source_api(
-    id: Annotated[int, Path()],
-    db: Annotated[AsyncSession, Depends(get_db_session)],
-) -> DataSourceRead:
-    """Get a specific data source."""
-    data_source = await get_data_source_by_id(db, id, eager=True)
-    if not data_source:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found"
-        )
-    return DataSourceRead.model_validate(data_source)
-
-
-@router.get("/datasource/{id}/preview")
-async def preview_data_source(
-    id: Annotated[int, Path()],
-    db: Annotated[AsyncSession, Depends(get_db_session)],
-    limit: Annotated[int, Query(ge=1, le=100)] = 10,
-) -> PreviewResponse:
-    """Get a preview of data from a data source."""
-    # Get the data source
-    data_source = await get_data_source_by_id(db, id)
-    if not data_source:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found"
-        )
-
-    # Get fields for the data source
-    fields = await get_fields_by_data_source(db, id)
-
-    if not fields:
-        return PreviewResponse(field_names=[], rows=[])
-
-    # Retrieve actual data from storage
-    try:
-        field_names, rows = await get_data_preview(
-            db=db, data_source=data_source, limit=limit
-        )
-
-        return PreviewResponse(field_names=field_names, rows=rows)
-    except Exception as e:
-        logging.error(f"Error retrieving preview data: {str(e)}", exc_info=True)
-
-        # Return empty result if we can't get the actual data
-        return PreviewResponse(field_names=[field.name for field in fields], rows=[])
-
-
 @router.delete(
     "/datasource/{id}",
     status_code=status.HTTP_200_OK,  # TODO: This should return 204 to be Restful and also have better OAPI UI
@@ -412,6 +335,20 @@ async def delete_data_source_api(
         )
 
 
+@router.get("/datasource/{id}")
+async def get_data_source_api(
+    id: Annotated[int, Path()],
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+) -> DataSourceRead:
+    """Get a specific data source."""
+    data_source = await get_data_source_by_id(db, id, eager=True)
+    if not data_source:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found"
+        )
+    return DataSourceRead.model_validate(data_source)
+
+
 @router.put(
     "/datasource/{id}",
     status_code=status.HTTP_200_OK,  # TODO: This should return 204 to be Restful and also have better OAPI UI
@@ -419,9 +356,8 @@ async def delete_data_source_api(
 async def rename_data_source(
     id: Annotated[int, Path()],
     db: Annotated[AsyncSession, Depends(get_db_session)],
-    name: Annotated[str, Body(media_type="text/plain; charset=UTF-8")],
+    name: Annotated[str, Body(example="A New Exciting Name", media_type="text/plain")],
 ) -> None:
-    """Rename a data source."""
     data_source = await update_data_source_name(db, id, name)
     if not data_source:
         raise HTTPException(
@@ -519,6 +455,30 @@ async def get_fields_api(
     return [FieldRead.model_validate(field) for field in fields]
 
 
+@router.delete("/datasource/{id}/field/{field_id}")
+async def delete_field_api(
+    id: Annotated[int, Path()],
+    field_id: Annotated[int, Path()],
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+):
+    # Get the data source to validate access
+    data_source = await get_data_source_by_id(db, id)
+    if not data_source:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found"
+        )
+
+    # Get the field to validate access
+    field = await get_field_by_id(db, field_id, id)
+    if not field:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Field not found"
+        )
+
+    # Delete the field
+    await db.delete(field)
+
+
 @router.get("/datasource/{id}/field/{field_id}")
 async def get_field_api(
     id: Annotated[int, Path()],
@@ -552,309 +512,58 @@ async def get_field_api(
     return FieldRead.model_validate(field)
 
 
-@router.get("/datasource/{id}/field/{field_id}/stats")
-async def get_field_stats_api(
+@router.put("/datasource/{id}/field/{field_id}")
+async def rename_field(
     id: Annotated[int, Path()],
     field_id: Annotated[int, Path()],
     db: Annotated[AsyncSession, Depends(get_db_session)],
-) -> Stats:
-    """Get statistical information about a field."""
-    # Check if data source exists and belongs to the user
+    name: Annotated[str, Body(example="New Field Name", media_type="text/plain")],
+):  # Response status code should be 204
+    # Get the data source to validate access
     data_source = await get_data_source_by_id(db, id)
     if not data_source:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found"
         )
 
-    # Check if field exists and belongs to the data source
+    # Get the field
     field = await get_field_by_id(db, field_id, id)
     if not field:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Field not found"
         )
 
-    # Check if field is numeric
-    if field.data_type != FieldType.numeric:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Statistics are only available for numeric fields",
-        )
-
-    # Check if statistics are available
-    stats = await get_field_stats(db, field.id)
-    if not stats:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Statistics not available for this field",
-        )
-    if stats.min_value is None or stats.max_value is None or stats.avg_value is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Statistics not available for this field",
-        )
-
-    # Create and return Stats object
-    return Stats(min=stats.min_value, max=stats.max_value, avg=stats.avg_value)
+    # Rename the field
+    _ = await db.execute(update(Field).where(Field.id == field.id).values(name=name))
 
 
-@router.get("/datasource/{id}/field/{field_id}/values")
-async def get_field_values(
-    id: Annotated[int, Path()],
-    field_id: Annotated[int, Path()],
-    db: Annotated[AsyncSession, Depends(get_db_session)],
-    offset: Annotated[int, Query(ge=0)] = 0,
-    limit: Annotated[int, Query(gt=0, le=100)] = 20,
-) -> list[Value]:
-    """Get values for a specific field.
-
-    Args:
-        id: The ID of the data source
-        fieldId: The ID of the field
-        db: Database session
-        offset: Pagination offset
-        limit: Number of values to return
-
-    Returns:
-        List of unique values with their frequencies
-
-    Raises:
-        HTTPException: If the data source or field is not found
-    """
-    # First check data source
-    data_source = await get_data_source_by_id(db, id, eager=True)
-    if not data_source:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found"
-        )
-
-    # Then check field
-    field = await get_field_by_id(db, field_id, id)
-    if not field:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Field not found"
-        )
-
-    try:
-        # Initialize storage and settings
-        storage = DiskStorage(pl.Path("../../var/data"))
-        storage_dir = pl.Path(f"{id}/chunks")
-        encoding = "utf-8"
-        separator = ","
-        quote_char = '"'
-
-        # Get encoding and CSV settings from upload if available
-        upload = await get_upload_by_id(db, data_source.upload.id)
-
-        if upload:
-            if hasattr(upload, "encoding") and upload.encoding:
-                encoding = upload.encoding
-            if hasattr(upload, "separator") and upload.separator:
-                separator = upload.separator
-            if hasattr(upload, "quotes_char") and upload.quotes_char:
-                quote_char = upload.quotes_char
-
-        # Find all chunk files
-        chunk_paths = list(storage_dir.glob("*.chunk"))
-        if not chunk_paths:
-            return []  # No data available
-
-        # Process each chunk file and aggregate the results
-        all_values = []
-        for chunk_path in sorted(chunk_paths):
-            try:
-                # Read the chunk file
-                chunk_full_path = storage._root / chunk_path
-                if not chunk_full_path.exists():
-                    continue
-
-                chunk_data = chunk_full_path.read_bytes()
-                if not chunk_data:
-                    continue
-
-                # Decode the data
-                try:
-                    text_data = chunk_data.decode(encoding)
-                except UnicodeDecodeError:
-                    text_data = chunk_data.decode("utf-8", errors="replace")
-
-                # Process this chunk using our utility function
-                chunk_values = extract_field_values_from_csv(
-                    text_data, field, encoding, separator, quote_char
-                )
-
-                # Add to our collection
-                all_values.extend(chunk_values)
-
-            except Exception as e:
-                logging.error(f"Error processing chunk {chunk_path}: {str(e)}")
-                continue
-
-        # Consolidate values (sum up frequencies for the same values)
-        value_map: dict[Any, int] = {}
-        for val in all_values:
-            if val.value in value_map:
-                value_map[val.value] += val.frequency
-            else:
-                value_map[val.value] = val.frequency
-
-        # Create final result list
-        result = []
-        for i, (value, frequency) in enumerate(
-            sorted(value_map.items(), key=lambda x: x[1], reverse=True)
-        ):
-            result.append(Value(id=i, value=value, frequency=frequency))
-
-        # Apply pagination
-        return result[offset : offset + limit]
-
-    except Exception as e:
-        logging.error(f"Error retrieving field values: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error retrieving field values: {str(e)}",
-        )
-
-
-@router.get(
-    "/datasource/{id}/field/{field_id}/aggregated-values",
-    status_code=status.HTTP_202_ACCEPTED,
+@router.put(
+    "/datasource/{id}/field/{field_id}/change-type",
+    description="Toggle between nominal and numeric field types",
 )
-async def get_aggregated_values(
-    request: Request,
+async def toggle_field_type(
     id: Annotated[int, Path()],
     field_id: Annotated[int, Path()],
     db: Annotated[AsyncSession, Depends(get_db_session)],
-    bins: Annotated[int, Query(gt=0, le=1000)] = 10,
-    min_value: float | None = None,
-    max_value: float | None = None,
-    min_inclusive: bool = True,
-    max_inclusive: bool = True,
-    background_tasks: BackgroundTasks = BackgroundTasks(),  # TODO : Use celery
-) -> dict[str, str | None]:
-    """Get aggregated values for a field.
-
-    This operation creates a task for generating a histogram of a numeric field
-    with values aggregated into intervals by number of bins.
-
-    Args:
-        id: The ID of the data source
-        fieldId: The ID of the field
-        db: Database session
-        bins: Number of bins (2-1000)
-        min_value: Minimum value (optional)
-        max_value: Maximum value (optional)
-        min_inclusive: Whether the minimum value is inclusive (default: True)
-        max_inclusive: Whether the maximum value is inclusive (default: True)
-        background_tasks: Background tasks manager
-
-    Returns:
-        TaskStatus: Information about the created task
-    """
-    # Check if data source exists
+):  # Response status code should be 204
+    # Get the data source to validate access
     data_source = await get_data_source_by_id(db, id)
     if not data_source:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found"
         )
 
-    # Check if field exists and belongs to the data source
+    # Get the field
     field = await get_field_by_id(db, field_id, id)
     if not field:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Field not found"
         )
 
-    # Check if field is numeric
-    if field.data_type not in ["numeric", "integer", "float"]:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Field is not numeric"
-        )
-
-    # Create a task ID
-    task_id = uuid4()
-
-    # Store the task in the database
-    await create_task(
-        db_session=db,
-        task_id=task_id,
-        name="aggregated_values",
-        data_source_id=id,
+    # Toggle the field type
+    new_type = (
+        FieldType.nominal if field.data_type == FieldType.numeric else FieldType.numeric
     )
-
-    # Start a background task to process the histogram data
-    async def process_histogram_task():
-        try:
-            # Create a new DB session for background task
-
-            async with sessionmanager.session() as session:
-                # Get the task
-                task_record = await get_task_by_id(session, task_id)
-                if not task_record:
-                    logger.error(f"Task {task_id} not found")
-                    return
-
-                # Update task status to in_progress
-                _ = await update_task_status(
-                    session,
-                    task_id,
-                    TaskStatusEnum.started,
-                    "Generating histogram data",
-                )
-
-                # Get data source and field again in this session
-                data_source_record = await get_data_source_by_id(session, id)
-                field_record = await get_field_by_id(session, field_id, id)
-
-                if not data_source_record or not field_record:
-                    _ = await update_task_status(
-                        session,
-                        task_id,
-                        TaskStatusEnum.failure,
-                        "Data source or field no longer exists",
-                    )
-                    return
-
-                try:
-                    # Generate histogram
-                    _, result_path = await generate_histogram_for_field(
-                        db=session,
-                        field=field_record,
-                        data_source=data_source_record,
-                        bins=bins,
-                        min_value=min_value,
-                        max_value=max_value,
-                        min_inclusive=min_inclusive,
-                        max_inclusive=max_inclusive,
-                    )
-
-                    # Update task status
-                    _ = await update_task_status(
-                        session,
-                        task_id,
-                        TaskStatusEnum.success,
-                        "Histogram generation completed",
-                        result_location=result_path,
-                    )
-
-                except Exception as e:
-                    logger.error(f"Error generating histogram: {str(e)}", exc_info=True)
-                    _ = await update_task_status(
-                        session,
-                        task_id,
-                        TaskStatusEnum.failure,
-                        f"Error generating histogram: {str(e)}",
-                    )
-        except Exception as e:
-            logger.error(f"Background task error: {str(e)}", exc_info=True)
-
-    # Add task to background_tasks
-    background_tasks.add_task(process_histogram_task)
-
-    # Return task ID and status location
-    return {
-        "task_id": task_id,
-        "task_name": "aggregated_values",
-        "status_message": "Histogram generation started",
-        "status_location": request.url_for("get_task_status", task_id=task_id).path,
-        "result_location": None,
-    }
+    _ = await db.execute(
+        update(Field).where(Field.id == field.id).values(field_type=new_type)
+    )
