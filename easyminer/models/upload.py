@@ -82,7 +82,6 @@ class Upload(Base):
     compression: Mapped["CompressionType | None"] = mapped_column(
         Enum(CompressionType), nullable=True
     )
-    format: Mapped[str] = mapped_column(String(20))
     preview_max_lines: Mapped[int | None] = mapped_column(Integer(), nullable=True)
 
     null_values: Relationship[list["UploadNullValue"]] = relationship(

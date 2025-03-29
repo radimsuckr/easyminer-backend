@@ -11,7 +11,7 @@ from easyminer.crud.aio.upload import (
     get_upload_by_uuid,
 )
 from easyminer.models.upload import Upload
-from easyminer.schemas.data import UploadSettings
+from easyminer.schemas.data import DbType, MediaType, UploadSettings
 
 
 @pytest.mark.asyncio
@@ -20,15 +20,14 @@ async def test_create_upload(db_session: AsyncSession):
     # Create upload settings
     settings = UploadSettings(
         name="Test Upload",
-        media_type="csv",
-        db_type="limited",
+        media_type=MediaType.csv,
+        db_type=DbType.limited,
         separator=",",
         encoding="utf-8",
         quotes_char='"',
         escape_char="\\",
         locale="en_US",
         compression=None,
-        format="csv",
     )
 
     # Mock the UUID generation for deterministic testing
@@ -49,7 +48,6 @@ async def test_create_upload(db_session: AsyncSession):
         assert upload.escape_char == "\\"
         assert upload.locale == "en_US"
         assert upload.compression is None
-        assert upload.format == "csv"
 
         # Check that the upload is in the database
         result = await db_session.execute(select(Upload).where(Upload.id == upload.id))

@@ -1,8 +1,8 @@
 """init
 
-Revision ID: 63cd4c152f9d
+Revision ID: 5f863cf3ff7c
 Revises:
-Create Date: 2025-03-29 22:25:15.608852+01:00
+Create Date: 2025-03-29 22:47:09.646995+01:00
 
 """
 
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = "63cd4c152f9d"
+revision: str = "5f863cf3ff7c"
 down_revision: str | None = None
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
@@ -135,7 +135,6 @@ def upgrade() -> None:
             sa.Enum("zip", "gzip", "bzip2", name="compressiontype"),
             nullable=True,
         ),
-        sa.Column("format", sa.String(length=20), nullable=False),
         sa.Column("preview_max_lines", sa.Integer(), nullable=True),
         sa.Column("data_source_id", sa.Integer(), nullable=False),
         sa.ForeignKeyConstraint(

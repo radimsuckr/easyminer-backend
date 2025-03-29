@@ -54,7 +54,6 @@ class UploadSettings(BaseSchema):
     compression: CompressionType | None = Field(
         None, description="Compression type (none, gzip, etc.)"
     )
-    format: str = Field("csv", description="File format")
 
 
 class DataSourceBase(BaseSchema):

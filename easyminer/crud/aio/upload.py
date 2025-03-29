@@ -23,7 +23,6 @@ async def create_upload(db_session: AsyncSession, settings: UploadSettings) -> U
         escape_char=settings.escape_char,
         locale=settings.locale,
         compression=settings.compression,
-        format=settings.format,
     )
     db_session.add(upload)
     data_source = DataSource(
