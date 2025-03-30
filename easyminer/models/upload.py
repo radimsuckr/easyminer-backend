@@ -4,65 +4,23 @@ from typing import TYPE_CHECKING
 from uuid import UUID as pyUUID
 
 from sqlalchemy import (
+    ARRAY,
     UUID,
-    Column,
     Constraint,
     DateTime,
     Enum,
     ForeignKey,
     Integer,
     String,
-    Table,
     UniqueConstraint,
 )
-from sqlalchemy.orm import Mapped, Relationship, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from easyminer.database import Base
-from easyminer.schemas.data import CompressionType, DbType, MediaType
+from easyminer.schemas.data import CompressionType, DbType, FieldType, MediaType
 
 if TYPE_CHECKING:
     from easyminer.models.data import DataSource
-
-
-def create_association_table(name: str, target_table: str) -> Table:
-    """Create a many-to-many association table."""
-    return Table(
-        f"{name}_table",
-        Base.metadata,
-        Column("id", Integer, primary_key=True, autoincrement=True),
-        Column("upload_id", Integer, ForeignKey("upload.id", ondelete="CASCADE")),
-        Column(
-            f"{name}_id", Integer, ForeignKey(f"{target_table}.id", ondelete="CASCADE")
-        ),
-    )
-
-
-UploadNullValueTable = create_association_table(
-    "upload_null_value", "upload_null_value"
-)
-UploadDataTypeTable = create_association_table("upload_data_type", "upload_data_types")
-
-
-class UploadNullValue(Base):
-    __tablename__: str = "upload_null_value"
-
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    value: Mapped[str] = mapped_column(String(100))
-
-    uploads: Mapped[list["Upload"]] = relationship(
-        "Upload", secondary=UploadNullValueTable, back_populates="null_values"
-    )
-
-
-class UploadDataType(Base):
-    __tablename__: str = "upload_data_types"
-
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    name: Mapped[str] = mapped_column(String(100))
-
-    uploads: Mapped[list["Upload"]] = relationship(
-        "Upload", secondary=UploadDataTypeTable, back_populates="data_types"
-    )
 
 
 class Upload(Base):
@@ -83,13 +41,9 @@ class Upload(Base):
         Enum(CompressionType), nullable=True
     )
     preview_max_lines: Mapped[int | None] = mapped_column(Integer(), nullable=True)
+    null_values: Mapped[list[str]] = mapped_column(ARRAY(String(255)))
+    data_types: Mapped[list[FieldType]] = mapped_column(ARRAY(Enum(FieldType)))
 
-    null_values: Relationship[list["UploadNullValue"]] = relationship(
-        "UploadNullValue", secondary=UploadNullValueTable, back_populates="uploads"
-    )
-    data_types: Relationship[list["UploadDataType"]] = relationship(
-        "UploadDataType", secondary=UploadDataTypeTable, back_populates="uploads"
-    )
     data_source_id: Mapped[int] = mapped_column(
         ForeignKey("data_source.id", ondelete="CASCADE")
     )

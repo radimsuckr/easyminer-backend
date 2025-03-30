@@ -6,13 +6,20 @@ from sqlalchemy.orm import joinedload
 
 from easyminer.models.data import DataSource
 from easyminer.models.upload import Chunk, PreviewUpload, Upload
-from easyminer.schemas.data import PreviewUploadSchema, StartUploadSchema
+from easyminer.schemas.data import FieldType, PreviewUploadSchema, StartUploadSchema
 
 
 async def create_upload(
     db_session: AsyncSession, settings: StartUploadSchema
 ) -> Upload:
     """Create a new upload entry in the database with settings."""
+    if len(settings.data_types) == 0:
+        raise ValueError("data_types cannot be empty")
+    if len(settings.data_types) > len(FieldType):
+        raise ValueError(
+            f"data_types cannot have more than {len(FieldType)} values, got {len(settings.data_types)}"
+        )
+
     upload_id = uuid4()
     upload = Upload(
         uuid=upload_id,
@@ -25,6 +32,8 @@ async def create_upload(
         escape_char=settings.escape_char,
         locale=settings.locale,
         compression=settings.compression,
+        null_values=settings.null_values,
+        data_types=settings.data_types,
     )
     db_session.add(upload)
     data_source = DataSource(
