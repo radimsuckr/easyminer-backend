@@ -68,6 +68,16 @@ class Field(Base):
     data_source: Mapped["DataSource"] = relationship(
         "DataSource", back_populates="fields"
     )
+    nominal_values: Mapped[list["FieldNominalValue"]] = relationship(
+        "FieldNominalValue",
+        back_populates="field",
+        cascade="all, delete-orphan",
+    )
+    numeric_values: Mapped[list["FieldNumericValue"]] = relationship(
+        "FieldNumericValue",
+        back_populates="field",
+        cascade="all, delete-orphan",
+    )
 
 
 class FieldNumericDetails(Base):
@@ -79,3 +89,29 @@ class FieldNumericDetails(Base):
     min_value: Mapped[float] = mapped_column(Double())
     max_value: Mapped[float] = mapped_column(Double())
     avg_value: Mapped[float] = mapped_column(Double())
+
+
+class FieldNominalValue(Base):
+    """Field nominal value model."""
+
+    __tablename__: str = "field_nominal_value"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    field_id: Mapped[int] = mapped_column(ForeignKey("field.id", ondelete="CASCADE"))
+    value: Mapped[str] = mapped_column(String(255))
+    count: Mapped[int] = mapped_column(Integer())
+
+    field: Mapped["Field"] = relationship("Field", back_populates="nominal_values")
+
+
+class FieldNumericValue(Base):
+    """Field numeric value model."""
+
+    __tablename__: str = "field_numeric_value"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    field_id: Mapped[int] = mapped_column(ForeignKey("field.id", ondelete="CASCADE"))
+    value: Mapped[float] = mapped_column(Double())
+    count: Mapped[int] = mapped_column(Integer())
+
+    field: Mapped["Field"] = relationship("Field", back_populates="numeric_values")

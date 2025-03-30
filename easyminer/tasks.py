@@ -4,7 +4,7 @@ import logging
 from sqlalchemy import insert, select
 
 from easyminer.database import get_sync_db_session
-from easyminer.models.data import DataSource, Field, FieldType
+from easyminer.models import DataSource, Field, FieldType
 from easyminer.schemas.data import MediaType, UploadResponseSchema
 from easyminer.worker import app
 
@@ -82,3 +82,16 @@ def process_csv(
         type=data_source_record.type,
         size=data_source_record.row_count,
     )
+
+
+@app.task
+def aggregate_field_values(
+    data_source_id: int,
+    field_id: int,
+    bins: int,
+    min: float,
+    max: float,
+    min_inclusive: bool,
+    max_inclusive: bool,
+):
+    pass

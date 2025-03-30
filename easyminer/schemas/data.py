@@ -153,10 +153,17 @@ class FieldRead(FieldBase):
     model_config: ConfigDict = ConfigDict(from_attributes=True)
 
 
-class Stats(BaseSchema):
-    min: float
-    max: float
-    avg: float
+class FieldStatsSchema(BaseSchema):
+    id: int = Field(..., description="ID of the field")
+    min: float = Field(..., description="Minimum value of the field")
+    max: float = Field(..., description="Maximum value of the field")
+    avg: float = Field(..., description="Average value of the field")
+
+
+class FieldValueSchema(BaseSchema):
+    id: int = Field(..., description="ID of the field")
+    value: str | float = Field(..., description="Value of the field")
+    frequency: int = Field(..., description="Frequency of the value")
 
 
 class UploadResponseSchema(BaseSchema):

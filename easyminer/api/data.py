@@ -1,5 +1,6 @@
 import logging
 import pathlib as pl
+from collections.abc import Sequence
 from datetime import datetime
 from typing import Annotated
 from uuid import UUID
@@ -39,18 +40,27 @@ from easyminer.crud.aio.upload import (
     get_upload_by_uuid,
 )
 from easyminer.database import get_db_session
-from easyminer.models import Field
-from easyminer.models.data import DataSource, FieldType
+from easyminer.models import (
+    DataSource,
+    Field,
+    FieldNominalValue,
+    FieldNumericDetails,
+    FieldNumericValue,
+    FieldType,
+)
 from easyminer.schemas.data import (
     DataSourceRead,
     FieldRead,
+    FieldStatsSchema,
+    FieldValueSchema,
     MediaType,
     PreviewUploadSchema,
     StartUploadSchema,
     UploadResponseSchema,
 )
+from easyminer.schemas.task import TaskStatus
 from easyminer.storage import DiskStorage
-from easyminer.tasks import process_csv
+from easyminer.tasks import aggregate_field_values, process_csv
 
 # Maximum chunk size for preview uploads (100KB)
 MAX_PREVIEW_CHUNK_SIZE = 100 * 1024
@@ -563,5 +573,211 @@ async def toggle_field_type(
         FieldType.nominal if field.data_type == FieldType.numeric else FieldType.numeric
     )
     _ = await db.execute(
-        update(Field).where(Field.id == field.id).values(field_type=new_type)
+        update(Field).where(Field.id == field.id).values(data_type=new_type)
+    )
+    await db.commit()
+
+
+@router.get(
+    "/datasource/{id}/field/{field_id}/stats",
+    status_code=status.HTTP_200_OK,
+    responses={
+        status.HTTP_400_BAD_REQUEST: {},
+        status.HTTP_404_NOT_FOUND: {},
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {},
+    },
+)
+async def get_field_stats(
+    id: Annotated[int, Path()],
+    field_id: Annotated[int, Path()],
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+) -> FieldStatsSchema:
+    data_source = (
+        await db.execute(select(DataSource).where(DataSource.id == id))
+    ).scalar_one_or_none()
+    if not data_source:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found"
+        )
+
+    field = (
+        await db.execute(
+            select(Field).where(Field.data_source_id == id, Field.id == field_id)
+        )
+    ).scalar_one_or_none()
+    if not field:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Field not found"
+        )
+    if field.data_type != FieldType.numeric:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Field is not of numeric type",
+        )
+
+    field_numerical_details = (
+        await db.execute(
+            select(FieldNumericDetails).where(FieldNumericDetails.id == field_id)
+        )
+    ).scalar_one_or_none()
+    if not field_numerical_details:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Field details not found"
+        )
+
+    return FieldStatsSchema(
+        id=field.id,
+        min=field_numerical_details.min_value,
+        max=field_numerical_details.max_value,
+        avg=field_numerical_details.avg_value,
+    )
+
+
+@router.get(
+    "/datasource/{id}/field/{field_id}/values",
+    status_code=status.HTTP_200_OK,
+    responses={
+        status.HTTP_404_NOT_FOUND: {},
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {},
+    },
+)
+async def get_field_values(
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+    id: Annotated[int, Path()],
+    field_id: Annotated[int, Path()],
+    offset: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=0, le=1000)] = 100,
+) -> list[FieldValueSchema]:
+    # TODO: Field value saving
+    data_source = (
+        await db.execute(select(DataSource).where(DataSource.id == id))
+    ).scalar_one_or_none()
+    if not data_source:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found"
+        )
+
+    field = (
+        await db.execute(
+            select(Field).where(Field.data_source_id == id, Field.id == field_id)
+        )
+    ).scalar_one_or_none()
+    if not field:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Field not found"
+        )
+
+    query = (
+        select(FieldNominalValue).where(FieldNominalValue.field_id == field_id)
+        if field.data_type == FieldType.nominal
+        else select(FieldNumericValue).where(FieldNumericValue.field_id == field_id)
+    )
+    query = query.limit(limit).offset(offset)
+    field_values: Sequence[FieldNumericValue] | Sequence[FieldNominalValue] = (
+        (await db.execute(query)).scalars().all()
+    )
+
+    response = [
+        FieldValueSchema(
+            id=field_value.id,
+            value=field_value.value,
+            frequency=field_value.count,
+        )
+        for field_value in field_values
+    ]
+
+    return response
+
+
+@router.get(
+    "/datasource/{id}/field/{field_id}/aggregated-values",
+    summary="Create a task for getting a histogram of a numeric field where values are aggregated to intervals by number of bins.",
+    description="There is one required query parameter 'bins'. This value means number of bins in an output histogram (maximum is 1000). You can specify min and max borders. This operation is processed asynchronously due to its complexity - it returns 202 Accepted and a location header with URL where all information about the task status are placed (see the background tasks section).",
+    status_code=status.HTTP_200_OK,
+    responses={
+        status.HTTP_400_BAD_REQUEST: {},
+        status.HTTP_404_NOT_FOUND: {},
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {},
+    },
+)
+async def get_aggregated_values(
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+    id: Annotated[int, Path()],
+    field_id: Annotated[int, Path()],
+    bins: Annotated[int, Query(ge=1, le=1000)] = 10,
+    min: Annotated[float | None, Query()] = None,
+    max: Annotated[float | None, Query()] = None,
+    min_inclusive: Annotated[bool, Query()] = True,
+    max_inclusive: Annotated[bool, Query()] = True,
+) -> TaskStatus:
+    data_source = (
+        await db.execute(select(DataSource).where(DataSource.id == id))
+    ).scalar_one_or_none()
+    if not data_source:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found"
+        )
+
+    field = (
+        await db.execute(
+            select(Field).where(Field.data_source_id == id, Field.id == field_id)
+        )
+    ).scalar_one_or_none()
+    if not field:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Field not found"
+        )
+
+    if field.data_type != FieldType.numeric:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Field is not of numeric type",
+        )
+
+    # Select min and max values if not provided
+    if min is None:
+        field_min = (
+            await db.execute(
+                select(FieldNumericDetails.min_value).where(
+                    FieldNumericDetails.id == field_id
+                )
+            )
+        ).scalar_one_or_none()
+        if field_min is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Field min value not found",
+            )
+        min = field_min
+    if max is None:
+        field_max = (
+            await db.execute(
+                select(FieldNumericDetails.max_value).where(
+                    FieldNumericDetails.id == field_id
+                )
+            )
+        ).scalar_one_or_none()
+        if field_max is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Field max value not found",
+            )
+        max = field_max
+
+    # Create the task
+    task = aggregate_field_values.delay(
+        data_source_id=data_source.id,
+        field_id=field.id,
+        bins=bins,
+        min=min,
+        max=max,
+        min_inclusive=min_inclusive,
+        max_inclusive=max_inclusive,
+    )
+
+    return TaskStatus(
+        task_id=UUID(task.task_id),
+        task_name="get_aggregated_values",
+        status_message="Task created successfully",
+        status_location=f"/tasks/{task.id}",
     )
