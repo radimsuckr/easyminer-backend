@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from easyminer.config import API_V1_PREFIX
 from easyminer.crud.aio.task import get_task_by_id
 from easyminer.database import get_db_session
-from easyminer.models.task import TaskStatusEnum
+from easyminer.models import TaskStatusEnum
 from easyminer.schemas.task import TaskStatus
 
 router = APIRouter(prefix=API_V1_PREFIX, tags=["Tasks"])

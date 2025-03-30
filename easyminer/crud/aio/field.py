@@ -3,7 +3,7 @@ from collections.abc import Sequence
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from easyminer.models import Field, FieldNumericDetails, FieldType
+from easyminer.models import Field, FieldType, FieldNumericDetail
 
 
 async def get_fields_by_data_source(
@@ -49,7 +49,7 @@ async def create_field(
     if data_type == FieldType.numeric:
         if min_value is None or max_value is None or avg_value is None:
             raise ValueError("Numeric fields require statistical information.")
-        field_numeric_details = FieldNumericDetails(
+        field_numeric_details = FieldNumericDetail(
             id=field.id, min_value=min_value, max_value=max_value, avg_value=avg_value
         )
         db_session.add(field_numeric_details)
@@ -64,9 +64,9 @@ async def update_field_stats(
     min_value: float,
     max_value: float,
     avg_value: float,
-) -> FieldNumericDetails | None:
+) -> FieldNumericDetail | None:
     """Update statistical information for a field."""
-    field_numeric_details = await db_session.get(FieldNumericDetails, field_id)
+    field_numeric_details = await db_session.get(FieldNumericDetail, field_id)
     if not field_numeric_details:
         return None
 
@@ -80,6 +80,6 @@ async def update_field_stats(
 
 async def get_field_stats(
     db_session: AsyncSession, field_id: int
-) -> FieldNumericDetails | None:
+) -> FieldNumericDetail | None:
     """Get statistical information for a field."""
-    return await db_session.get(FieldNumericDetails, field_id)
+    return await db_session.get(FieldNumericDetail, field_id)

@@ -13,8 +13,7 @@ async def test_list_data_sources(client, db_session: AsyncSession):
     data_source = DataSource(
         name="Test Data Source",
         type="csv",
-        size_bytes=1000,
-        row_count=10,
+        size=1000,
     )
     db_session.add(data_source)
     await db_session.commit()
@@ -75,8 +74,7 @@ async def test_get_data_source(client, db_session: AsyncSession):
     data_source = DataSource(
         name="Get Test Data Source",
         type="csv",
-        size_bytes=1000,
-        row_count=10,
+        size=1000,
     )
     db_session.add(data_source)
     await db_session.commit()

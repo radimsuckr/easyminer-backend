@@ -10,7 +10,7 @@ from easyminer.crud.aio.field import (
     get_fields_by_ids,
     update_field_stats,
 )
-from easyminer.models import Field, FieldNumericDetails, FieldType
+from easyminer.models import Field, FieldNumericDetail, FieldType
 
 
 @pytest.mark.asyncio
@@ -308,7 +308,7 @@ async def test_update_field_stats(db_session: AsyncSession):
 
     # Check that the stats were updated in the database
     result = await db_session.execute(
-        select(FieldNumericDetails).where(FieldNumericDetails.id == field.id)
+        select(FieldNumericDetail).where(FieldNumericDetail.id == field.id)
     )
     db_field = result.scalar_one()
     assert db_field.min_value == 0

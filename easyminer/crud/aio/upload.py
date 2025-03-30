@@ -4,8 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
-from easyminer.models.data import DataSource
-from easyminer.models.upload import Chunk, PreviewUpload, Upload
+from easyminer.models import Chunk, DataSource, PreviewUpload, Upload
 from easyminer.schemas.data import FieldType, PreviewUploadSchema, StartUploadSchema
 
 
@@ -40,7 +39,6 @@ async def create_upload(
         name=upload.name,
         type=upload.db_type,
         upload=upload,
-        size_bytes=0,
     )
     db_session.add(data_source)
     await db_session.commit()

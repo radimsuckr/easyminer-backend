@@ -46,8 +46,7 @@ def mock_data_source():
     mock_ds.id = 1
     mock_ds.name = "Test Data Source"
     mock_ds.type = "csv"
-    mock_ds.size_bytes = 1000
-    mock_ds.row_count = 10
+    mock_ds.size = 1000
     mock_ds.upload_id = 1
     return mock_ds
 

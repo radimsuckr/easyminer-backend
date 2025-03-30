@@ -15,8 +15,7 @@ async def test_data_source_with_fields(db_session: AsyncSession):
     data_source = DataSource(
         name="Field Test Data Source",
         type="csv",
-        size_bytes=1000,
-        row_count=10,
+        size=1000,
     )
     db_session.add(data_source)
     await db_session.commit()

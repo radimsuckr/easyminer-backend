@@ -4,8 +4,7 @@ from sqlalchemy import delete, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
-from easyminer.models.data import DataSource
-from easyminer.models.upload import PreviewUpload, Upload
+from easyminer.models import DataSource, PreviewUpload, Upload
 
 
 async def get_data_source_by_id(
@@ -38,8 +37,6 @@ async def create_data_source(
     db_session: AsyncSession,
     name: str,
     type: str,
-    size_bytes: int = 0,
-    row_count: int = 0,
 ) -> DataSource:
     """Create a new data source."""
     query = (
@@ -47,8 +44,6 @@ async def create_data_source(
         .values(
             name=name,
             type=type,
-            size_bytes=size_bytes,
-            row_count=row_count,
         )
         .returning(DataSource.id)
     )
@@ -109,13 +104,13 @@ async def update_data_source_name(
 
 
 async def update_data_source_size(
-    db: AsyncSession, id: int, size_bytes: int
+    db: AsyncSession, id: int, size: int
 ) -> DataSource | None:
     """Update a data source size in bytes."""
     datasource = await db.execute(
         update(DataSource)
         .where(DataSource.id == id)
-        .values(size_bytes=DataSource.size_bytes + size_bytes)
+        .values(size=DataSource.size + size)
         .returning(DataSource)
     )
     await db.commit()

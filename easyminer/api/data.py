@@ -1,6 +1,6 @@
+import itertools
 import logging
 import pathlib as pl
-from collections.abc import Sequence
 from datetime import datetime
 from typing import Annotated
 from uuid import UUID
@@ -17,6 +17,7 @@ from fastapi import (
 )
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
 
 from easyminer.config import API_V1_PREFIX
 from easyminer.crud.aio.data_source import (
@@ -43,12 +44,13 @@ from easyminer.database import get_db_session
 from easyminer.models import (
     DataSource,
     Field,
-    FieldNominalValue,
-    FieldNumericDetails,
-    FieldNumericValue,
+    FieldNumericDetail,
     FieldType,
+    Instance,
 )
 from easyminer.schemas.data import (
+    AggregatedInstance,
+    AggregatedInstanceValue,
     DataSourceRead,
     FieldRead,
     FieldStatsSchema,
@@ -127,14 +129,12 @@ async def upload_chunk(
     upload_record = await get_upload_by_uuid(db, upload_id)
 
     if not upload_record:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Upload not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Upload not found")
 
-    if upload_record.data_source.is_finished:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Upload already closed"
-        )
+    # if upload_record.data_source.is_finished:
+    #     raise HTTPException(
+    #         status_code=status.HTTP_403_FORBIDDEN, detail="Upload already closed"
+    #     )
 
     # Get upload attributes we'll need later
     upload_id_value = upload_record.id
@@ -160,9 +160,7 @@ async def upload_chunk(
     # Get the associated data source
     data_source_record = await get_data_source_by_upload_id(db, upload_id_value)
     if not data_source_record:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found")
 
     # Store data source ID before updating
     data_source_id = data_source_record.id
@@ -175,21 +173,13 @@ async def upload_chunk(
     # For empty chunks (signaling end of upload), don't write to disk
     if len(chunk) > 0:
         # Use the storage service to save the chunk
-        chunk_path = pl.Path(
-            f"{data_source_id}/chunks/{datetime.now().strftime('%Y%m%d%H%M%S%f')}.chunk"
-        )
+        chunk_path = pl.Path(f"{data_source_id}/chunks/{datetime.now().strftime('%Y%m%d%H%M%S%f')}.chunk")
         _, path = storage.save(chunk_path, bytes(chunk, encoding))
         _ = await create_chunk(db, upload_id_value, str(path))
     # If this is the last chunk (empty chunk), process the data
     elif len(chunk) == 0:
-        logger.info(
-            f"Upload complete for data source {data_source_id}. Processing data..."
-        )
-        _ = await db.execute(
-            update(DataSource)
-            .where(DataSource.id == data_source_id)
-            .values(is_finished=True)
-        )
+        logger.info(f"Upload complete for data source {data_source_id}. Processing data...")
+        _ = await db.execute(update(DataSource).where(DataSource.id == data_source_id).values(is_finished=True))
         await db.commit()
         handle = process_csv.delay(
             data_source_id=data_source_id,
@@ -215,9 +205,7 @@ async def upload_chunk(
 async def upload_preview_chunk(
     db: Annotated[AsyncSession, Depends(get_db_session)],
     upload_id: Annotated[UUID, Path()],
-    chunk: Annotated[
-        str, Body(example=_csv_upload_example, media_type="text/plain")
-    ] = "",
+    chunk: Annotated[str, Body(example=_csv_upload_example, media_type="text/plain")] = "",
 ) -> Response:
     # TODO: check that the upload is not bigger than the set max_lines.
     """Upload a chunk of data for an upload."""
@@ -227,14 +215,10 @@ async def upload_preview_chunk(
     upload_record = await get_preview_upload_by_uuid(db, upload_id)
 
     if not upload_record:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Upload not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Upload not found")
 
     if upload_record.data_source.is_finished:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Upload already closed"
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Upload already closed")
 
     # Get upload attributes we'll need later
     upload_id_value = upload_record.id
@@ -259,9 +243,7 @@ async def upload_preview_chunk(
     if len(chunk) > 0:
         try:
             # Use the storage service to save the chunk
-            chunk_path = pl.Path(
-                f"{data_source_id}/chunks/{datetime.now().strftime('%Y%m%d%H%M%S%f')}.chunk"
-            )
+            chunk_path = pl.Path(f"{data_source_id}/chunks/{datetime.now().strftime('%Y%m%d%H%M%S%f')}.chunk")
             _, path = storage.save(chunk_path, bytes(chunk, "utf-8"))
             _ = await create_chunk(db, upload_id_value, str(path))
         except Exception as e:
@@ -271,14 +253,8 @@ async def upload_preview_chunk(
             )
     # If this is the last chunk (empty chunk), process the data
     elif len(chunk) == 0:
-        logger.info(
-            f"Upload complete for data source {data_source_id}. Processing data..."
-        )
-        _ = await db.execute(
-            update(DataSource)
-            .where(DataSource.id == data_source_id)
-            .values(is_finished=True)
-        )
+        logger.info(f"Upload complete for data source {data_source_id}. Processing data...")
+        _ = await db.execute(update(DataSource).where(DataSource.id == data_source_id).values(is_finished=True))
         await db.commit()
         _ = process_csv.delay(
             data_source_id=data_source_id,
@@ -317,9 +293,7 @@ async def delete_data_source_api(
     """Delete a data source."""
     success = await delete_data_source(db, id)
     if not success:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found")
 
 
 @router.get(
@@ -336,9 +310,7 @@ async def get_data_source_api(
     """Get a specific data source."""
     data_source = await get_data_source_by_id(db, id, eager=True)
     if not data_source:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found")
     return DataSourceRead.model_validate(data_source)
 
 
@@ -357,9 +329,7 @@ async def rename_data_source(
 ) -> None:
     data_source = await update_data_source_name(db, id, name)
     if not data_source:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found")
 
 
 @router.get(
@@ -372,40 +342,57 @@ async def rename_data_source(
     },
 )
 async def get_instances(
-    id: Annotated[int, Path()],
     db: Annotated[AsyncSession, Depends(get_db_session)],
+    id: Annotated[int, Path()],
     offset: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=1000)] = 100,
     field_ids: Annotated[list[int] | None, Query()] = None,
-) -> list[dict[str, str | int]]:
-    query = select(DataSource).where(DataSource.id == id)
-    data_source = (await db.execute(query)).scalar_one_or_none()
-    if not data_source:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found"
+) -> list[AggregatedInstance]:
+    query = (
+        select(DataSource)
+        .where(DataSource.id == id)
+        .options(
+            joinedload(DataSource.instances),
         )
+    )
+    data_source = (await db.execute(query)).unique().scalar_one_or_none()
+    if not data_source:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found")
     if not data_source.is_finished:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Data source is not finished processing",
         )
+    if not data_source.instances:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Data source has no instances",
+        )
 
-    query = select(Field).where(Field.data_source_id == id).limit(limit).offset(offset)
+    stmt = select(Instance).limit(limit).offset(offset).options(joinedload(Instance.field))
     if field_ids:
-        query = query.where(Field.id.in_(field_ids))
-    fields = (await db.execute(query)).scalars().all()
-    instances = [
-        {
-            "id": field.id,
-            "name": field.name,
-            "data_type": field.data_type,
-            "unique_count": field.unique_count,
-            "support": field.support,
-        }
-        for field in fields
-    ]
+        stmt = stmt.where(Field.id.in_(field_ids))
+    instances = (await db.execute(stmt)).scalars().all()
+    if not instances:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No instances found")
 
-    return instances or []
+    # the response of AggregatedInstance list must be grouped by row_id
+    response:list[AggregatedInstance] = []
+    for key, group in itertools.groupby(instances, lambda x: x.row_id):
+        group = list(group)
+        response.append(
+            AggregatedInstance(
+                id=key,
+                values=[
+                    AggregatedInstanceValue(field=instance.field_id, value=instance.value_nominal)
+                    if instance.field.data_type == FieldType.nominal
+                    else AggregatedInstanceValue(field=instance.field_id, value=instance.value_numeric)
+                    for instance in group
+                ],
+            )
+        )
+
+    return response
 
 
 @router.get(
@@ -431,9 +418,9 @@ async def get_fields_api(
     # Get the data source to validate access
     data_source = await get_data_source_by_id(db, id)
     if not data_source:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found")
+    if not data_source.is_finished:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Data source is not finished processing")
 
     # Get fields for the data source
     fields = await get_fields_by_data_source(db, id)
@@ -456,19 +443,16 @@ async def delete_field_api(
     # Get the data source to validate access
     data_source = await get_data_source_by_id(db, id)
     if not data_source:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found")
 
     # Get the field to validate access
     field = await get_field_by_id(db, field_id, id)
     if not field:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Field not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Field not found")
 
     # Delete the field
     await db.delete(field)
+    await db.commit()
 
 
 @router.get(
@@ -496,16 +480,12 @@ async def get_field_api(
     # Get the data source to validate access
     data_source = await get_data_source_by_id(db, id)
     if not data_source:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found")
 
     # Get the field
     field = await get_field_by_id(db, field_id, id)
     if not field:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Field not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Field not found")
 
     return FieldRead.model_validate(field)
 
@@ -526,19 +506,16 @@ async def rename_field(
     # Get the data source to validate access
     data_source = await get_data_source_by_id(db, id)
     if not data_source:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found")
 
     # Get the field
     field = await get_field_by_id(db, field_id, id)
     if not field:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Field not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Field not found")
 
     # Rename the field
     _ = await db.execute(update(Field).where(Field.id == field.id).values(name=name))
+    await db.commit()
 
 
 @router.put(
@@ -557,24 +534,16 @@ async def toggle_field_type(
     # Get the data source to validate access
     data_source = await get_data_source_by_id(db, id)
     if not data_source:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found")
 
     # Get the field
     field = await get_field_by_id(db, field_id, id)
     if not field:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Field not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Field not found")
 
     # Toggle the field type
-    new_type = (
-        FieldType.nominal if field.data_type == FieldType.numeric else FieldType.numeric
-    )
-    _ = await db.execute(
-        update(Field).where(Field.id == field.id).values(data_type=new_type)
-    )
+    new_type = FieldType.nominal if field.data_type == FieldType.numeric else FieldType.numeric
+    _ = await db.execute(update(Field).where(Field.id == field.id).values(data_type=new_type))
     await db.commit()
 
 
@@ -592,23 +561,15 @@ async def get_field_stats(
     field_id: Annotated[int, Path()],
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> FieldStatsSchema:
-    data_source = (
-        await db.execute(select(DataSource).where(DataSource.id == id))
-    ).scalar_one_or_none()
+    data_source = (await db.execute(select(DataSource).where(DataSource.id == id))).scalar_one_or_none()
     if not data_source:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found")
 
     field = (
-        await db.execute(
-            select(Field).where(Field.data_source_id == id, Field.id == field_id)
-        )
+        await db.execute(select(Field).where(Field.data_source_id == id, Field.id == field_id))
     ).scalar_one_or_none()
     if not field:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Field not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Field not found")
     if field.data_type != FieldType.numeric:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -616,14 +577,10 @@ async def get_field_stats(
         )
 
     field_numerical_details = (
-        await db.execute(
-            select(FieldNumericDetails).where(FieldNumericDetails.id == field_id)
-        )
+        await db.execute(select(FieldNumericDetail).where(FieldNumericDetail.id == field_id))
     ).scalar_one_or_none()
     if not field_numerical_details:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Field details not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Field details not found")
 
     return FieldStatsSchema(
         id=field.id,
@@ -648,46 +605,17 @@ async def get_field_values(
     offset: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=0, le=1000)] = 100,
 ) -> list[FieldValueSchema]:
-    # TODO: Field value saving
-    data_source = (
-        await db.execute(select(DataSource).where(DataSource.id == id))
-    ).scalar_one_or_none()
+    data_source = (await db.execute(select(DataSource).where(DataSource.id == id))).scalar_one_or_none()
     if not data_source:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found")
 
     field = (
-        await db.execute(
-            select(Field).where(Field.data_source_id == id, Field.id == field_id)
-        )
+        await db.execute(select(Field).where(Field.data_source_id == id, Field.id == field_id))
     ).scalar_one_or_none()
     if not field:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Field not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Field not found")
 
-    query = (
-        select(FieldNominalValue).where(FieldNominalValue.field_id == field_id)
-        if field.data_type == FieldType.nominal
-        else select(FieldNumericValue).where(FieldNumericValue.field_id == field_id)
-    )
-    query = query.limit(limit).offset(offset)
-    field_values: Sequence[FieldNumericValue] | Sequence[FieldNominalValue] = (
-        (await db.execute(query)).scalars().all()
-    )
-
-    response = [
-        FieldValueSchema(
-            id=field_value.id,
-            value=field_value.value,
-            frequency=field_value.count,
-        )
-        for field_value in field_values
-    ]
-
-    return response
-
+    # TODO: Finish "Value" saving
 
 @router.get(
     "/datasource/{id}/field/{field_id}/aggregated-values",
@@ -710,23 +638,15 @@ async def get_aggregated_values(
     min_inclusive: Annotated[bool, Query()] = True,
     max_inclusive: Annotated[bool, Query()] = True,
 ) -> TaskStatus:
-    data_source = (
-        await db.execute(select(DataSource).where(DataSource.id == id))
-    ).scalar_one_or_none()
+    data_source = (await db.execute(select(DataSource).where(DataSource.id == id))).scalar_one_or_none()
     if not data_source:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found")
 
     field = (
-        await db.execute(
-            select(Field).where(Field.data_source_id == id, Field.id == field_id)
-        )
+        await db.execute(select(Field).where(Field.data_source_id == id, Field.id == field_id))
     ).scalar_one_or_none()
     if not field:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Field not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Field not found")
 
     if field.data_type != FieldType.numeric:
         raise HTTPException(
@@ -737,11 +657,7 @@ async def get_aggregated_values(
     # Select min and max values if not provided
     if min is None:
         field_min = (
-            await db.execute(
-                select(FieldNumericDetails.min_value).where(
-                    FieldNumericDetails.id == field_id
-                )
-            )
+            await db.execute(select(FieldNumericDetail.min_value).where(FieldNumericDetail.id == field_id))
         ).scalar_one_or_none()
         if field_min is None:
             raise HTTPException(
@@ -751,11 +667,7 @@ async def get_aggregated_values(
         min = field_min
     if max is None:
         field_max = (
-            await db.execute(
-                select(FieldNumericDetails.max_value).where(
-                    FieldNumericDetails.id == field_id
-                )
-            )
+            await db.execute(select(FieldNumericDetail.max_value).where(FieldNumericDetail.id == field_id))
         ).scalar_one_or_none()
         if field_max is None:
             raise HTTPException(
@@ -774,6 +686,8 @@ async def get_aggregated_values(
         min_inclusive=min_inclusive,
         max_inclusive=max_inclusive,
     )
+
+    # TODO: Implement the Celery task to calculate this
 
     return TaskStatus(
         task_id=UUID(task.task_id),

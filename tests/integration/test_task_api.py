@@ -12,8 +12,7 @@ async def test_data_source(db_session: AsyncSession) -> DataSource:
     data_source = DataSource(
         name="Task Test Data Source",
         type="csv",
-        size_bytes=1000,
-        row_count=10,
+        size=1000,
     )
     db_session.add(data_source)
     await db_session.commit()

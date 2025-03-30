@@ -3,7 +3,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from easyminer.crud.aio.data_source import (
-    create_data_source,
     delete_data_source,
     get_data_source_by_id,
     get_data_source_by_upload_id,
@@ -28,8 +27,7 @@ async def test_create_data_source(
     assert data_source.type == "csv"
     assert data_source.upload is None
     assert data_source.preview_upload is None
-    assert data_source.size_bytes == 1000
-    assert data_source.row_count == 20
+    assert data_source.size == 1000
 
     # Check that the data source is in the database
     result = await db_session.execute(
@@ -116,14 +114,14 @@ async def test_update_data_source_size(
     updated_ds = await update_data_source_size(db_session, data_source.id, 500)
     assert updated_ds is not None
     assert updated_ds.id == data_source.id
-    assert updated_ds.size_bytes == 1500  # 1000 + 500
+    assert updated_ds.size == 1500  # 1000 + 500
 
     # Check that the size was updated in the database
     result = await db_session.execute(
         select(DataSource).where(DataSource.id == data_source.id)
     )
     db_data_source = result.scalar_one()
-    assert db_data_source.size_bytes == 1500
+    assert db_data_source.size == 1500
 
     # Test updating non-existent data source
     updated_ds = await update_data_source_size(db_session, 999, 500)

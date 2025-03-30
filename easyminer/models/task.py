@@ -8,7 +8,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from easyminer.database import Base
 
 if TYPE_CHECKING:
-    from easyminer.models.data import DataSource
+    from easyminer.models import DataSource
 
 
 class TaskStatusEnum(enum.Enum):

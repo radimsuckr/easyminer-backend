@@ -20,7 +20,7 @@ from easyminer.database import Base
 from easyminer.schemas.data import CompressionType, DbType, FieldType, MediaType
 
 if TYPE_CHECKING:
-    from easyminer.models.data import DataSource
+    from easyminer.models import DataSource
 
 
 class Upload(Base):

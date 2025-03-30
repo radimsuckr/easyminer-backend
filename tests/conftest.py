@@ -81,8 +81,7 @@ async def test_data_source(db_session: AsyncSession) -> DataSource:
         db_session=db_session,
         name="Test Data Source",
         type="csv",
-        size_bytes=1000,
-        row_count=20,
+        size=1000,
     )
     return data_source
 
@@ -129,8 +128,7 @@ async def test_data_source_with_data(db_session: AsyncSession):
             data_source = DataSource(
                 name="Retrieval Test Data Source",
                 type="csv",
-                size_bytes=1000,
-                row_count=5,
+                size=1000,
             )
             db_session.add(data_source)
             await db_session.commit()
@@ -205,8 +203,7 @@ async def test_data_source_with_chunks(db_session: AsyncSession):
             data_source = DataSource(
                 name="Preview Test Data Source",
                 type="csv",
-                size_bytes=1000,
-                row_count=5,
+                size=1000,
             )
             db_session.add(data_source)
             await db_session.commit()

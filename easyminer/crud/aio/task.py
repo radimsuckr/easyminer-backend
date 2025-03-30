@@ -5,7 +5,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
-from easyminer.models.task import Task, TaskStatusEnum
+from easyminer.models import Task, TaskStatusEnum
 
 logger = logging.getLogger(__name__)
 

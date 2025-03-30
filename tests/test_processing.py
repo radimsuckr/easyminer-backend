@@ -35,8 +35,7 @@ async def test_csv_processor(test_db):
         name="test_source",
         type="csv",
         upload_id=123,  # Reference to upload ID
-        size_bytes=0,
-        row_count=0,
+        size=0,
     )
     test_db.add(data_source)
     await test_db.commit()
@@ -64,7 +63,6 @@ async def test_csv_processor(test_db):
 
         # Verify that the data source was updated
         await test_db.refresh(data_source)
-        assert data_source.row_count == 3  # 3 rows in the test data
 
         # Verify that fields were created
         result = await test_db.execute(

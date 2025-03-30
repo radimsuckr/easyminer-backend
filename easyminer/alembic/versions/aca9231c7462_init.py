@@ -1,8 +1,8 @@
 """init
 
-Revision ID: 7f446b60eb9b
+Revision ID: aca9231c7462
 Revises:
-Create Date: 2025-03-30 20:08:23.076952+02:00
+Create Date: 2025-03-30 22:50:34.250133+02:00
 
 """
 
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = "7f446b60eb9b"
+revision: str = "aca9231c7462"
 down_revision: str | None = None
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
@@ -25,19 +25,10 @@ def upgrade() -> None:
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
         sa.Column("name", sa.String(length=255), nullable=False),
         sa.Column("type", sa.Enum("limited", name="dbtype"), nullable=False),
+        sa.Column("size", sa.Integer(), nullable=False),
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column("updated_at", sa.DateTime(), nullable=False),
-        sa.Column("row_count", sa.Integer(), nullable=False),
-        sa.Column("size_bytes", sa.Integer(), nullable=False),
         sa.Column("is_finished", sa.Boolean(), nullable=False),
-        sa.PrimaryKeyConstraint("id"),
-    )
-    op.create_table(
-        "field_numeric_details",
-        sa.Column("id", sa.Integer(), nullable=False),
-        sa.Column("min_value", sa.Double(), nullable=False),
-        sa.Column("max_value", sa.Double(), nullable=False),
-        sa.Column("avg_value", sa.Double(), nullable=False),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_table(
@@ -50,15 +41,13 @@ def upgrade() -> None:
         "field",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
         sa.Column("name", sa.String(length=255), nullable=False),
-        sa.Column(
-            "data_type", sa.Enum("nominal", "numeric", name="fieldtype"), nullable=False
-        ),
-        sa.Column("unique_count", sa.Integer(), nullable=False),
-        sa.Column("support", sa.Integer(), nullable=False),
+        sa.Column("data_type", sa.Enum("nominal", "numeric", name="fieldtype"), nullable=False),
+        sa.Column("unique_values_size_nominal", sa.Integer(), nullable=False),
+        sa.Column("unique_values_size_numeric", sa.Integer(), nullable=False),
+        sa.Column("support_nominal", sa.Integer(), nullable=False),
+        sa.Column("support_numeric", sa.Integer(), nullable=False),
         sa.Column("data_source_id", sa.Integer(), nullable=False),
-        sa.ForeignKeyConstraint(
-            ["data_source_id"], ["data_source.id"], ondelete="CASCADE"
-        ),
+        sa.ForeignKeyConstraint(["data_source_id"], ["data_source.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_table(
@@ -66,15 +55,9 @@ def upgrade() -> None:
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
         sa.Column("uuid", sa.UUID(), nullable=False),
         sa.Column("max_lines", sa.Integer(), nullable=False),
-        sa.Column(
-            "compression",
-            sa.Enum("zip", "gzip", "bzip2", name="compressiontype"),
-            nullable=True,
-        ),
+        sa.Column("compression", sa.Enum("zip", "gzip", "bzip2", name="compressiontype"), nullable=True),
         sa.Column("data_source_id", sa.Integer(), nullable=False),
-        sa.ForeignKeyConstraint(
-            ["data_source_id"], ["data_source.id"], ondelete="CASCADE"
-        ),
+        sa.ForeignKeyConstraint(["data_source_id"], ["data_source.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("data_source_id"),
         sa.UniqueConstraint("uuid"),
@@ -86,22 +69,13 @@ def upgrade() -> None:
         sa.Column("name", sa.String(length=100), nullable=False),
         sa.Column(
             "status",
-            sa.Enum(
-                "pending",
-                "scheduled",
-                "started",
-                "success",
-                "failure",
-                name="taskstatusenum",
-            ),
+            sa.Enum("pending", "scheduled", "started", "success", "failure", name="taskstatusenum"),
             nullable=False,
         ),
         sa.Column("status_message", sa.String(length=255), nullable=True),
         sa.Column("data_source_id", sa.Integer(), nullable=True),
         sa.Column("result_id", sa.Integer(), nullable=True),
-        sa.ForeignKeyConstraint(
-            ["data_source_id"], ["data_source.id"], ondelete="CASCADE"
-        ),
+        sa.ForeignKeyConstraint(["data_source_id"], ["data_source.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["result_id"], ["task_result.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
@@ -118,22 +92,12 @@ def upgrade() -> None:
         sa.Column("quotes_char", sa.String(length=1), nullable=False),
         sa.Column("escape_char", sa.String(length=1), nullable=False),
         sa.Column("locale", sa.String(length=20), nullable=False),
-        sa.Column(
-            "compression",
-            sa.Enum("zip", "gzip", "bzip2", name="compressiontype"),
-            nullable=True,
-        ),
+        sa.Column("compression", sa.Enum("zip", "gzip", "bzip2", name="compressiontype"), nullable=True),
         sa.Column("preview_max_lines", sa.Integer(), nullable=True),
         sa.Column("null_values", sa.ARRAY(sa.String(length=255)), nullable=False),
-        sa.Column(
-            "data_types",
-            sa.ARRAY(sa.Enum("nominal", "numeric", name="fieldtype")),
-            nullable=False,
-        ),
+        sa.Column("data_types", sa.ARRAY(sa.Enum("nominal", "numeric", name="fieldtype")), nullable=False),
         sa.Column("data_source_id", sa.Integer(), nullable=False),
-        sa.ForeignKeyConstraint(
-            ["data_source_id"], ["data_source.id"], ondelete="CASCADE"
-        ),
+        sa.ForeignKeyConstraint(["data_source_id"], ["data_source.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("data_source_id"),
     )
@@ -147,21 +111,36 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_table(
-        "field_nominal_value",
-        sa.Column("id", sa.Integer(), nullable=False),
+        "data_source_instance",
+        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
+        sa.Column("row_id", sa.Integer(), nullable=False),
+        sa.Column("value_nominal", sa.String(length=255), nullable=True),
+        sa.Column("value_numeric", sa.Double(), nullable=True),
+        sa.Column("data_source_id", sa.Integer(), nullable=False),
         sa.Column("field_id", sa.Integer(), nullable=False),
-        sa.Column("value", sa.String(length=255), nullable=False),
-        sa.Column("count", sa.Integer(), nullable=False),
+        sa.ForeignKeyConstraint(["data_source_id"], ["data_source.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["field_id"], ["field.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_table(
-        "field_numeric_value",
-        sa.Column("id", sa.Integer(), nullable=False),
+        "data_source_value",
+        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
+        sa.Column("value_nominal", sa.String(length=255), nullable=True),
+        sa.Column("value_numeric", sa.Double(), nullable=True),
+        sa.Column("frequency", sa.Integer(), nullable=False),
+        sa.Column("data_source_id", sa.Integer(), nullable=False),
         sa.Column("field_id", sa.Integer(), nullable=False),
-        sa.Column("value", sa.Double(), nullable=False),
-        sa.Column("count", sa.Integer(), nullable=False),
+        sa.ForeignKeyConstraint(["data_source_id"], ["data_source.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["field_id"], ["field.id"], ondelete="CASCADE"),
+        sa.PrimaryKeyConstraint("id"),
+    )
+    op.create_table(
+        "field_numeric_detail",
+        sa.Column("id", sa.Integer(), nullable=False),
+        sa.Column("min_value", sa.Double(), nullable=False),
+        sa.Column("max_value", sa.Double(), nullable=False),
+        sa.Column("avg_value", sa.Double(), nullable=False),
+        sa.ForeignKeyConstraint(["id"], ["field.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
     # ### end Alembic commands ###
@@ -169,8 +148,9 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     # ### commands auto generated by Alembic - please adjust! ###
-    op.drop_table("field_numeric_value")
-    op.drop_table("field_nominal_value")
+    op.drop_table("field_numeric_detail")
+    op.drop_table("data_source_value")
+    op.drop_table("data_source_instance")
     op.drop_table("chunk")
     op.drop_table("upload")
     op.drop_index(op.f("ix_task_task_id"), table_name="task")
@@ -178,6 +158,5 @@ def downgrade() -> None:
     op.drop_table("preview_upload")
     op.drop_table("field")
     op.drop_table("task_result")
-    op.drop_table("field_numeric_details")
     op.drop_table("data_source")
     # ### end Alembic commands ###
