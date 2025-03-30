@@ -21,7 +21,7 @@ from easyminer.database import Base, get_db_session
 from easyminer.models import *  # noqa: F401,F403
 from easyminer.models.data import DataSource, FieldType
 from easyminer.models.upload import Upload
-from easyminer.schemas.data import UploadSettings
+from easyminer.schemas.data import StartUploadSchema
 from easyminer.storage.storage import DiskStorage
 
 # Global variables for test database
@@ -58,7 +58,7 @@ async def test_upload(db_session: AsyncSession) -> Upload:
     """Create a test upload for testing."""
     upload = await create_upload(
         db_session=db_session,
-        settings=UploadSettings(
+        settings=StartUploadSchema(
             name="Test Upload",
             media_type="csv",
             db_type="limited",

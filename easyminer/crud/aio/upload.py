@@ -6,10 +6,12 @@ from sqlalchemy.orm import joinedload
 
 from easyminer.models.data import DataSource
 from easyminer.models.upload import Chunk, PreviewUpload, Upload
-from easyminer.schemas.data import PreviewUploadSchema, UploadSettings
+from easyminer.schemas.data import PreviewUploadSchema, StartUploadSchema
 
 
-async def create_upload(db_session: AsyncSession, settings: UploadSettings) -> Upload:
+async def create_upload(
+    db_session: AsyncSession, settings: StartUploadSchema
+) -> Upload:
     """Create a new upload entry in the database with settings."""
     upload_id = uuid4()
     upload = Upload(

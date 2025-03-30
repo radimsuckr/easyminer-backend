@@ -41,16 +41,13 @@ from easyminer.crud.aio.upload import (
 from easyminer.database import get_db_session
 from easyminer.models import Field
 from easyminer.models.data import DataSource, FieldType
-from easyminer.processing.data_retrieval import (
-    get_data_preview,
-)
 from easyminer.schemas.data import (
     DataSourceRead,
     FieldRead,
     MediaType,
     PreviewUploadSchema,
+    StartUploadSchema,
     UploadResponseSchema,
-    UploadSettings,
 )
 from easyminer.storage import DiskStorage
 from easyminer.tasks import process_csv
@@ -70,7 +67,7 @@ _csv_upload_example = """a,b,c
 
 @router.post("/upload/start")
 async def start_upload(
-    settings: UploadSettings,
+    settings: StartUploadSchema,
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> UUID:
     """Start a new upload process."""

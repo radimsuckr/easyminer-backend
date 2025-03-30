@@ -11,14 +11,14 @@ from easyminer.crud.aio.upload import (
     get_upload_by_uuid,
 )
 from easyminer.models.upload import Upload
-from easyminer.schemas.data import DbType, MediaType, UploadSettings
+from easyminer.schemas.data import DbType, MediaType, StartUploadSchema
 
 
 @pytest.mark.asyncio
 async def test_create_upload(db_session: AsyncSession):
     """Test creating a new upload with SQLite."""
     # Create upload settings
-    settings = UploadSettings(
+    settings = StartUploadSchema(
         name="Test Upload",
         media_type=MediaType.csv,
         db_type=DbType.limited,

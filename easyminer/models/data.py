@@ -1,4 +1,3 @@
-import enum
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -6,7 +5,7 @@ from sqlalchemy import Double, Enum, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from easyminer.database import Base
-from easyminer.schemas.data import DbType
+from easyminer.schemas.data import DbType, FieldType
 
 if TYPE_CHECKING:
     from easyminer.models.task import Task
@@ -50,11 +49,6 @@ class DataSource(Base):
     tasks: Mapped[list["Task"]] = relationship(
         "Task", back_populates="data_source", cascade="all, delete-orphan"
     )
-
-
-class FieldType(str, enum.Enum):
-    nominal = "nominal"
-    numeric = "numeric"
 
 
 class Field(Base):

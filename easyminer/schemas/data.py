@@ -11,6 +11,17 @@ if TYPE_CHECKING:
     from easyminer.models.data import DataSource
 
 
+class FieldType(str, Enum):
+    nominal = "nominal"
+    numeric = "numeric"
+
+
+class UploadFormat(str, Enum):
+    nq = "nq"
+    nt = "nt"
+    ttl = "ttl"
+
+
 class CompressionType(str, Enum):
     zip = "zip"
     gzip = "gzip"
@@ -43,7 +54,7 @@ class PreviewResponse(BaseSchema):
     )
 
 
-class UploadSettings(BaseSchema):
+class StartUploadSchema(BaseSchema):
     """Settings for file upload."""
 
     name: str = Field("upload", description="Name of the file")
@@ -56,6 +67,14 @@ class UploadSettings(BaseSchema):
     locale: str = Field("en_US", description="Locale for number formatting")
     compression: CompressionType | None = Field(
         None, description="Compression type (none, gzip, etc.)"
+    )
+    null_values: list[str] = Field([], description="List of null value representations")
+    data_types: list["FieldType"] = Field(
+        [FieldType.nominal], description="List of data types"
+    )
+    format: UploadFormat | None = Field(
+        None,
+        description="RDF format. **NOT USED. Kept only for compatibility.**",
     )
 
 
