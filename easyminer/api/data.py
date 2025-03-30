@@ -1,7 +1,7 @@
 import logging
 import pathlib as pl
 from datetime import datetime
-from typing import Annotated, Any
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import (
@@ -14,7 +14,7 @@ from fastapi import (
     Response,
     status,
 )
-from sqlalchemy import update
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from easyminer.config import API_V1_PREFIX
@@ -30,7 +30,6 @@ from easyminer.crud.aio.data_source import (
 from easyminer.crud.aio.field import (
     get_field_by_id,
     get_fields_by_data_source,
-    get_fields_by_ids,
 )
 from easyminer.crud.aio.upload import (
     create_chunk,
@@ -125,10 +124,10 @@ async def upload_chunk(
             status_code=status.HTTP_404_NOT_FOUND, detail="Upload not found"
         )
 
-    # if upload_record.data_source.is_finished:
-    #     raise HTTPException(
-    #         status_code=status.HTTP_403_FORBIDDEN, detail="Upload already closed"
-    #     )
+    if upload_record.data_source.is_finished:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Upload already closed"
+        )
 
     # Get upload attributes we'll need later
     upload_id_value = upload_record.id
@@ -358,7 +357,9 @@ async def rename_data_source(
 
 @router.get(
     "/datasource/{id}/instances",
+    status_code=status.HTTP_200_OK,
     responses={
+        status.HTTP_400_BAD_REQUEST: {},
         status.HTTP_404_NOT_FOUND: {},
         status.HTTP_500_INTERNAL_SERVER_ERROR: {},
     },
@@ -369,60 +370,35 @@ async def get_instances(
     offset: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=1000)] = 100,
     field_ids: Annotated[list[int] | None, Query()] = None,
-) -> list[dict[Any, Any]]:
-    """Get instances from a data source."""
-    # Check if data source exists
-    data_source = await get_data_source_by_id(db, id)
+) -> list[dict[str, str | int]]:
+    query = select(DataSource).where(DataSource.id == id)
+    data_source = (await db.execute(query)).scalar_one_or_none()
     if not data_source:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found"
         )
-
-    # If field_ids are provided, verify they exist and belong to this data source
-    fields_to_include: list[Field] = []
-    if field_ids:
-        # Query for fields that belong to this data source and match the provided IDs
-        fields_to_include = list(await get_fields_by_ids(db, field_ids, id))
-
-        # If some field IDs don't exist, return an error
-        if len(fields_to_include) != len(field_ids):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="One or more requested fields do not exist in this data source",
-            )
-    else:
-        # If no field_ids are provided, include all fields
-        fields_to_include = list(await get_fields_by_data_source(db, id))
-
-    try:
-        # Use the same preview data function, but apply offset and limit
-
-        field_names, rows = await get_data_preview(
-            db=db,
-            data_source=data_source,
-            limit=offset + limit,  # Fetch enough rows to apply offset
-            field_ids=field_ids,
-        )
-
-        # Apply offset manually (the preview function always starts from the beginning)
-        if offset >= len(rows):
-            return []
-
-        # Convert rows to Instance objects
-        instances = [row for row in rows[offset : offset + limit]]
-
-        # Return the paginated subset
-        return instances
-
-    except FileNotFoundError:
-        # No data found
-        return []
-    except Exception as e:
-        logger.error(f"Error retrieving instances: {str(e)}", exc_info=True)
+    if not data_source.is_finished:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error retrieving instances: {str(e)}",
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Data source is not finished processing",
         )
+
+    query = select(Field).where(Field.data_source_id == id).limit(limit).offset(offset)
+    if field_ids:
+        query = query.where(Field.id.in_(field_ids))
+    fields = (await db.execute(query)).scalars().all()
+    instances = [
+        {
+            "id": field.id,
+            "name": field.name,
+            "data_type": field.data_type,
+            "unique_count": field.unique_count,
+            "support": field.support,
+        }
+        for field in fields
+    ]
+
+    return instances or []
 
 
 @router.get(

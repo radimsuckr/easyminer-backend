@@ -381,21 +381,11 @@ class DataRetrieval:
 
 async def get_data_preview(
     db: AsyncSession,
-    data_source: DataSource,
-    limit: int = 10,
+    data_source_id: int,
+    limit: int,
+    offset: int,
     field_ids: list[int] | None = None,
 ) -> tuple[list[str], list[dict[str, Any]]]:
-    """Get a preview of data from a data source.
-
-    Args:
-        db: Database session
-        data_source: Data source object
-        limit: Maximum number of rows to return
-        field_ids: List of field IDs to include (or None for all fields)
-
-    Returns:
-        Tuple of (field_names, rows)
-    """
     # Get data source settings - use defaults
     encoding = "utf-8"
     separator = ","
@@ -405,7 +395,7 @@ async def get_data_preview(
     storage = DiskStorage(Path("../../var/data"))
     retrieval = DataRetrieval(
         storage=storage,
-        data_source_id=data_source.id,
+        data_source_id=data_source_id,
         encoding=encoding,
         separator=separator,
         quote_char=quote_char,
@@ -422,7 +412,7 @@ async def get_data_preview(
             for field_id in field_ids:
                 from easyminer.crud.aio.field import get_field_by_id
 
-                field = await get_field_by_id(db, field_id, data_source.id)
+                field = await get_field_by_id(db, field_id, data_source_id)
                 if field:
                     included_fields.append(field.name)
 

@@ -1,6 +1,6 @@
 from collections.abc import Sequence
 
-from sqlalchemy import and_, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from easyminer.models import Field, FieldNumericDetails, FieldType
@@ -24,18 +24,6 @@ async def get_field_by_id(
     if not field or field.data_source_id != data_source_id:
         return None
     return field
-
-
-async def get_fields_by_ids(
-    db_session: AsyncSession, field_ids: list[int], data_source_id: int
-) -> Sequence[Field]:
-    """Get fields by IDs if they belong to the data source."""
-    result = await db_session.execute(
-        select(Field).where(
-            and_(Field.data_source_id == data_source_id, Field.id.in_(field_ids))
-        )
-    )
-    return result.scalars().all()
 
 
 async def create_field(
