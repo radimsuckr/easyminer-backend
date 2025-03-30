@@ -5,7 +5,7 @@ from sqlalchemy import insert, select
 
 from easyminer.database import get_sync_db_session
 from easyminer.models.data import DataSource, Field, FieldType
-from easyminer.schemas.data import MediaType
+from easyminer.schemas.data import MediaType, UploadResponseSchema
 from easyminer.worker import app
 
 
@@ -16,7 +16,7 @@ def process_csv(
     encoding: str,
     separator: str,
     quote_char: str,
-):
+) -> UploadResponseSchema:
     logger = logging.getLogger(__name__)
     if upload_media_type != MediaType.csv:
         raise ValueError("Only CSV data sources are supported")
@@ -75,3 +75,10 @@ def process_csv(
                 logger.error(f"Failed to insert field {header}")
                 continue
             logger.info(f"Inserted field {header} with ID {id}")
+
+    return UploadResponseSchema(
+        id=data_source_record.id,
+        name=data_source_record.name,
+        type=data_source_record.type,
+        size=data_source_record.row_count,
+    )

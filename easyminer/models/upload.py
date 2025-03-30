@@ -70,7 +70,7 @@ class Upload(Base):
     __table_args__: Sequence[Constraint] = (UniqueConstraint("data_source_id"),)
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    uuid: Mapped[str] = mapped_column(String(36))
+    uuid: Mapped[pyUUID] = mapped_column(UUID())
     name: Mapped[str] = mapped_column(String(100))
     media_type: Mapped["MediaType"] = mapped_column(Enum(MediaType))
     db_type: Mapped["DbType"] = mapped_column(Enum(DbType))

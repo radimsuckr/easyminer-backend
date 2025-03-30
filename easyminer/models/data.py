@@ -6,6 +6,7 @@ from sqlalchemy import Double, Enum, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from easyminer.database import Base
+from easyminer.schemas.data import DbType
 
 if TYPE_CHECKING:
     from easyminer.models.task import Task
@@ -19,7 +20,7 @@ class DataSource(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(255))
-    type: Mapped[str] = mapped_column(String(50))
+    type: Mapped[DbType] = mapped_column(Enum(DbType), nullable=False)
     created_at: Mapped[datetime] = mapped_column(default=datetime.now(UTC))
     updated_at: Mapped[datetime] = mapped_column(
         default=datetime.now(UTC), onupdate=datetime.now(UTC)

@@ -13,7 +13,7 @@ async def create_upload(db_session: AsyncSession, settings: UploadSettings) -> U
     """Create a new upload entry in the database with settings."""
     upload_id = uuid4()
     upload = Upload(
-        uuid=str(upload_id),
+        uuid=upload_id,
         name=settings.name,
         media_type=settings.media_type,
         db_type=settings.db_type,
@@ -60,7 +60,7 @@ async def create_preview_upload(
 
 
 async def get_upload_by_uuid(
-    db_session: AsyncSession, upload_uuid: str
+    db_session: AsyncSession, upload_uuid: UUID
 ) -> Upload | None:
     """Get an upload by its UUID."""
     result = await db_session.execute(

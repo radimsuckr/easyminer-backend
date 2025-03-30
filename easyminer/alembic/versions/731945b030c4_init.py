@@ -1,8 +1,8 @@
 """init
 
-Revision ID: 5f863cf3ff7c
+Revision ID: 731945b030c4
 Revises:
-Create Date: 2025-03-29 22:47:09.646995+01:00
+Create Date: 2025-03-30 01:34:41.243500+01:00
 
 """
 
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = "5f863cf3ff7c"
+revision: str = "731945b030c4"
 down_revision: str | None = None
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
@@ -24,7 +24,7 @@ def upgrade() -> None:
         "data_source",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
         sa.Column("name", sa.String(length=255), nullable=False),
-        sa.Column("type", sa.String(length=50), nullable=False),
+        sa.Column("type", sa.Enum("limited", name="dbtype"), nullable=False),
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column("updated_at", sa.DateTime(), nullable=False),
         sa.Column("row_count", sa.Integer(), nullable=False),
@@ -121,7 +121,7 @@ def upgrade() -> None:
     op.create_table(
         "upload",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
-        sa.Column("uuid", sa.String(length=36), nullable=False),
+        sa.Column("uuid", sa.UUID(), nullable=False),
         sa.Column("name", sa.String(length=100), nullable=False),
         sa.Column("media_type", sa.Enum("csv", name="mediatype"), nullable=False),
         sa.Column("db_type", sa.Enum("limited", name="dbtype"), nullable=False),

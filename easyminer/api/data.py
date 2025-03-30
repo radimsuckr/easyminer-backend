@@ -48,7 +48,9 @@ from easyminer.processing.data_retrieval import (
 from easyminer.schemas.data import (
     DataSourceRead,
     FieldRead,
+    MediaType,
     PreviewUploadSchema,
+    UploadResponseSchema,
     UploadSettings,
 )
 from easyminer.storage import DiskStorage
@@ -60,6 +62,11 @@ MAX_PREVIEW_CHUNK_SIZE = 100 * 1024
 router = APIRouter(prefix=API_V1_PREFIX, tags=["Data"])
 
 logger = logging.getLogger(__name__)
+
+_csv_upload_example = """a,b,c
+1,2,3
+4,5,6
+7,x,9"""
 
 
 @router.post("/upload/start")
@@ -75,7 +82,7 @@ async def start_upload(
         )
 
     upload = await create_upload(db, settings)
-    return UUID(upload.uuid)
+    return upload.uuid
 
 
 @router.post("/upload/preview/start")
@@ -90,224 +97,194 @@ async def upload_preview_start(
 @router.post(
     "/upload/{upload_id}",
     responses={
-        status.HTTP_200_OK: {"description": "Upload successful and closed"},
-        status.HTTP_202_ACCEPTED: {},
+        status.HTTP_200_OK: {
+            "description": "Upload successful and closed",
+            "model": UploadResponseSchema,
+        },
+        status.HTTP_202_ACCEPTED: {"description": "Chunk accepted"},
         status.HTTP_403_FORBIDDEN: {"description": "Upload already closed"},
         status.HTTP_429_TOO_MANY_REQUESTS: {"description": "Uploading chunks too fast"},
     },
 )
 async def upload_chunk(
     db: Annotated[AsyncSession, Depends(get_db_session)],
-    upload_id: str,
-    body: str = "",
-) -> Response:
+    upload_id: Annotated[UUID, Path()],
+    chunk: Annotated[
+        str, Body(example=_csv_upload_example, media_type="text/plain")
+    ] = "",  # NOTE: text/csv could possibly be used here
+):
     # TODO: add is_finished toggle that will be set to True when the last empty chunk is uploaded. Do this also for preview.
     """Upload a chunk of data for an upload."""
     storage = DiskStorage(pl.Path("../../var/data"))
 
-    try:
-        # Read the chunk data from the request body
-        chunk = body
+    # Retrieve the upload by UUID
+    upload_record = await get_upload_by_uuid(db, upload_id)
 
-        # Retrieve the upload by UUID
-        upload_record = await get_upload_by_uuid(db, upload_id)
-
-        if not upload_record:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Upload not found"
-            )
-
-        if upload_record.data_source.is_finished:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, detail="Upload already closed"
-            )
-
-        # Get upload attributes we'll need later
-        upload_id_value = upload_record.id
-        upload_media_type = upload_record.media_type
-
-        # Get upload settings
-        encoding = "utf-8"
-        separator = ","
-        quote_char = '"'
-
-        # Try to get these values from the database
-        try:
-            if hasattr(upload_record, "encoding") and upload_record.encoding:
-                encoding = upload_record.encoding
-            if hasattr(upload_record, "separator") and upload_record.separator:
-                separator = upload_record.separator
-            if hasattr(upload_record, "quotes_char") and upload_record.quotes_char:
-                quote_char = upload_record.quotes_char
-        except Exception:
-            # Use defaults if there's an error
-            pass
-
-        # Get the associated data source
-        data_source_record = await get_data_source_by_upload_id(db, upload_id_value)
-        if not data_source_record:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found"
-            )
-
-        # Store data source ID before updating
-        data_source_id = data_source_record.id
-
-        # Update data source size
-        updated_ds = await update_data_source_size(db, data_source_id, len(chunk))
-        if updated_ds:
-            data_source_record = updated_ds
-
-        # For empty chunks (signaling end of upload), don't write to disk
-        if len(chunk) > 0:
-            # Use the storage service to save the chunk
-            chunk_path = pl.Path(
-                f"{data_source_id}/chunks/{datetime.now().strftime('%Y%m%d%H%M%S%f')}.chunk"
-            )
-            _, path = storage.save(chunk_path, bytes(chunk, encoding))
-            _ = await create_chunk(db, upload_id_value, str(path))
-        # If this is the last chunk (empty chunk), process the data
-        elif len(chunk) == 0:
-            logger.info(
-                f"Upload complete for data source {data_source_id}. Processing data..."
-            )
-            _ = await db.execute(
-                update(DataSource)
-                .where(DataSource.id == data_source_id)
-                .values(is_finished=True)
-            )
-            await db.commit()
-            _ = process_csv.delay(
-                data_source_id=data_source_id,
-                upload_media_type=upload_media_type,
-                encoding=encoding,
-                separator=separator,
-                quote_char=quote_char,
-            )
-            return Response(status_code=status.HTTP_200_OK)
-
-        return Response(status_code=status.HTTP_202_ACCEPTED)
-    except Exception as e:
-        # Ensure we rollback on any error
-        try:
-            await db.rollback()
-        except Exception:
-            pass  # Ignore rollback errors
-
-        logging.error(f"Error in upload_chunk: {str(e)}", exc_info=True)
-
+    if not upload_record:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error processing chunk: {str(e)}",
+            status_code=status.HTTP_404_NOT_FOUND, detail="Upload not found"
         )
+
+    # if upload_record.data_source.is_finished:
+    #     raise HTTPException(
+    #         status_code=status.HTTP_403_FORBIDDEN, detail="Upload already closed"
+    #     )
+
+    # Get upload attributes we'll need later
+    upload_id_value = upload_record.id
+    upload_media_type = upload_record.media_type
+
+    # Get upload settings
+    encoding = "utf-8"
+    separator = ","
+    quote_char = '"'
+
+    # Try to get these values from the database
+    try:
+        if hasattr(upload_record, "encoding") and upload_record.encoding:
+            encoding = upload_record.encoding
+        if hasattr(upload_record, "separator") and upload_record.separator:
+            separator = upload_record.separator
+        if hasattr(upload_record, "quotes_char") and upload_record.quotes_char:
+            quote_char = upload_record.quotes_char
+    except Exception:
+        # Use defaults if there's an error
+        pass
+
+    # Get the associated data source
+    data_source_record = await get_data_source_by_upload_id(db, upload_id_value)
+    if not data_source_record:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found"
+        )
+
+    # Store data source ID before updating
+    data_source_id = data_source_record.id
+
+    # Update data source size
+    updated_ds = await update_data_source_size(db, data_source_id, len(chunk))
+    if updated_ds:
+        data_source_record = updated_ds
+
+    # For empty chunks (signaling end of upload), don't write to disk
+    if len(chunk) > 0:
+        # Use the storage service to save the chunk
+        chunk_path = pl.Path(
+            f"{data_source_id}/chunks/{datetime.now().strftime('%Y%m%d%H%M%S%f')}.chunk"
+        )
+        _, path = storage.save(chunk_path, bytes(chunk, encoding))
+        _ = await create_chunk(db, upload_id_value, str(path))
+    # If this is the last chunk (empty chunk), process the data
+    elif len(chunk) == 0:
+        logger.info(
+            f"Upload complete for data source {data_source_id}. Processing data..."
+        )
+        _ = await db.execute(
+            update(DataSource)
+            .where(DataSource.id == data_source_id)
+            .values(is_finished=True)
+        )
+        await db.commit()
+        handle = process_csv.delay(
+            data_source_id=data_source_id,
+            upload_media_type=upload_media_type,
+            encoding=encoding,
+            separator=separator,
+            quote_char=quote_char,
+        )
+        result: UploadResponseSchema = handle.get(timeout=5)
+        # NOTE: We could return the task ID here instead of waiting for the result. The user can poll for the task status later.
+        return result
 
 
 @router.post(
     "/upload/preview/{upload_id}",
     responses={
         status.HTTP_200_OK: {"description": "Upload successful and closed"},
-        status.HTTP_202_ACCEPTED: {},
+        status.HTTP_202_ACCEPTED: {"description": "Chunk accepted"},
         status.HTTP_403_FORBIDDEN: {"description": "Upload already closed"},
         status.HTTP_429_TOO_MANY_REQUESTS: {"description": "Uploading chunks too fast"},
     },
 )
 async def upload_preview_chunk(
     db: Annotated[AsyncSession, Depends(get_db_session)],
-    upload_id: UUID,
-    body: str = "",
+    upload_id: Annotated[UUID, Path()],
+    chunk: Annotated[
+        str, Body(example=_csv_upload_example, media_type="text/plain")
+    ] = "",
 ) -> Response:
     # TODO: check that the upload is not bigger than the set max_lines.
     """Upload a chunk of data for an upload."""
     storage = DiskStorage(pl.Path("../../var/data"))
 
-    try:
-        # Read the chunk data from the request body
-        chunk = body
+    # Retrieve the upload by UUID
+    upload_record = await get_preview_upload_by_uuid(db, upload_id)
 
-        # Retrieve the upload by UUID
-        upload_record = await get_preview_upload_by_uuid(db, upload_id)
-
-        if not upload_record:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Upload not found"
-            )
-
-        if upload_record.data_source.is_finished:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, detail="Upload already closed"
-            )
-
-        # Get upload attributes we'll need later
-        upload_id_value = upload_record.id
-
-        # Get upload settings
-        encoding = "utf-8"
-        separator = ","
-        quote_char = '"'
-
-        # Get the associated data source
-        data_source_record = await get_data_source_by_preview_upload_id(
-            db, upload_id_value
-        )
-
-        # Store data source ID before updating
-        data_source_id = data_source_record.id
-
-        # Update data source size
-        updated_ds = await update_data_source_size(db, data_source_id, len(chunk))
-        if updated_ds:
-            data_source_record = updated_ds
-
-        # For empty chunks (signaling end of upload), don't write to disk
-        if len(chunk) > 0:
-            try:
-                # Use the storage service to save the chunk
-                chunk_path = pl.Path(
-                    f"{data_source_id}/chunks/{datetime.now().strftime('%Y%m%d%H%M%S%f')}.chunk"
-                )
-                _, path = storage.save(chunk_path, bytes(chunk, "utf-8"))
-                _ = await create_chunk(db, upload_id_value, str(path))
-            except Exception as e:
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail=f"Error saving chunk: {str(e)}",
-                )
-        # If this is the last chunk (empty chunk), process the data
-        elif len(chunk) == 0:
-            logger.info(
-                f"Upload complete for data source {data_source_id}. Processing data..."
-            )
-            _ = await db.execute(
-                update(DataSource)
-                .where(DataSource.id == data_source_id)
-                .values(is_finished=True)
-            )
-            await db.commit()
-            _ = process_csv.delay(
-                data_source_id=data_source_id,
-                upload_media_type="csv",
-                encoding=encoding,
-                separator=separator,
-                quote_char=quote_char,
-            )
-            return Response(status_code=status.HTTP_200_OK)
-
-        # Return 202 Accepted
-        return Response(status_code=status.HTTP_202_ACCEPTED)
-
-    except Exception as e:
-        # Ensure we rollback on any error
-        try:
-            await db.rollback()
-        except Exception:
-            pass  # Ignore rollback errors
-
-        logging.error(f"Error in upload_chunk: {str(e)}", exc_info=True)
-
+    if not upload_record:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error processing chunk: {str(e)}",
+            status_code=status.HTTP_404_NOT_FOUND, detail="Upload not found"
         )
+
+    if upload_record.data_source.is_finished:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Upload already closed"
+        )
+
+    # Get upload attributes we'll need later
+    upload_id_value = upload_record.id
+
+    # Get upload settings
+    encoding = "utf-8"
+    separator = ","
+    quote_char = '"'
+
+    # Get the associated data source
+    data_source_record = await get_data_source_by_preview_upload_id(db, upload_id_value)
+
+    # Store data source ID before updating
+    data_source_id = data_source_record.id
+
+    # Update data source size
+    updated_ds = await update_data_source_size(db, data_source_id, len(chunk))
+    if updated_ds:
+        data_source_record = updated_ds
+
+    # For empty chunks (signaling end of upload), don't write to disk
+    if len(chunk) > 0:
+        try:
+            # Use the storage service to save the chunk
+            chunk_path = pl.Path(
+                f"{data_source_id}/chunks/{datetime.now().strftime('%Y%m%d%H%M%S%f')}.chunk"
+            )
+            _, path = storage.save(chunk_path, bytes(chunk, "utf-8"))
+            _ = await create_chunk(db, upload_id_value, str(path))
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error saving chunk: {str(e)}",
+            )
+    # If this is the last chunk (empty chunk), process the data
+    elif len(chunk) == 0:
+        logger.info(
+            f"Upload complete for data source {data_source_id}. Processing data..."
+        )
+        _ = await db.execute(
+            update(DataSource)
+            .where(DataSource.id == data_source_id)
+            .values(is_finished=True)
+        )
+        await db.commit()
+        _ = process_csv.delay(
+            data_source_id=data_source_id,
+            upload_media_type=MediaType.csv,
+            encoding=encoding,
+            separator=separator,
+            quote_char=quote_char,
+        )
+        return Response(status_code=status.HTTP_200_OK)
+
+    # Return 202 Accepted
+    return Response(status_code=status.HTTP_202_ACCEPTED)
 
 
 @router.get("/datasource")
@@ -322,6 +299,10 @@ async def list_data_sources(
 @router.delete(
     "/datasource/{id}",
     status_code=status.HTTP_200_OK,  # TODO: This should return 204 to be Restful and also have better OAPI UI
+    responses={
+        status.HTTP_404_NOT_FOUND: {},
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {},
+    },
 )
 async def delete_data_source_api(
     id: Annotated[int, Path()],
@@ -335,7 +316,13 @@ async def delete_data_source_api(
         )
 
 
-@router.get("/datasource/{id}")
+@router.get(
+    "/datasource/{id}",
+    responses={
+        status.HTTP_404_NOT_FOUND: {},
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {},
+    },
+)
 async def get_data_source_api(
     id: Annotated[int, Path()],
     db: Annotated[AsyncSession, Depends(get_db_session)],
@@ -352,6 +339,10 @@ async def get_data_source_api(
 @router.put(
     "/datasource/{id}",
     status_code=status.HTTP_200_OK,  # TODO: This should return 204 to be Restful and also have better OAPI UI
+    responses={
+        status.HTTP_404_NOT_FOUND: {},
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {},
+    },
 )
 async def rename_data_source(
     id: Annotated[int, Path()],
@@ -365,7 +356,13 @@ async def rename_data_source(
         )
 
 
-@router.get("/datasource/{id}/instances")
+@router.get(
+    "/datasource/{id}/instances",
+    responses={
+        status.HTTP_404_NOT_FOUND: {},
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {},
+    },
+)
 async def get_instances(
     id: Annotated[int, Path()],
     db: Annotated[AsyncSession, Depends(get_db_session)],
@@ -428,7 +425,13 @@ async def get_instances(
         )
 
 
-@router.get("/datasource/{id}/field")
+@router.get(
+    "/datasource/{id}/field",
+    responses={
+        status.HTTP_404_NOT_FOUND: {},
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {},
+    },
+)
 async def get_fields_api(
     id: Annotated[int, Path()],
     db: Annotated[AsyncSession, Depends(get_db_session)],
@@ -455,7 +458,13 @@ async def get_fields_api(
     return [FieldRead.model_validate(field) for field in fields]
 
 
-@router.delete("/datasource/{id}/field/{field_id}")
+@router.delete(
+    "/datasource/{id}/field/{field_id}",
+    responses={
+        status.HTTP_404_NOT_FOUND: {},
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {},
+    },
+)
 async def delete_field_api(
     id: Annotated[int, Path()],
     field_id: Annotated[int, Path()],
@@ -479,7 +488,13 @@ async def delete_field_api(
     await db.delete(field)
 
 
-@router.get("/datasource/{id}/field/{field_id}")
+@router.get(
+    "/datasource/{id}/field/{field_id}",
+    responses={
+        status.HTTP_404_NOT_FOUND: {},
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {},
+    },
+)
 async def get_field_api(
     id: Annotated[int, Path()],
     field_id: Annotated[int, Path()],
@@ -512,7 +527,13 @@ async def get_field_api(
     return FieldRead.model_validate(field)
 
 
-@router.put("/datasource/{id}/field/{field_id}")
+@router.put(
+    "/datasource/{id}/field/{field_id}",
+    responses={
+        status.HTTP_404_NOT_FOUND: {},
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {},
+    },
+)
 async def rename_field(
     id: Annotated[int, Path()],
     field_id: Annotated[int, Path()],
@@ -540,6 +561,10 @@ async def rename_field(
 @router.put(
     "/datasource/{id}/field/{field_id}/change-type",
     description="Toggle between nominal and numeric field types",
+    responses={
+        status.HTTP_404_NOT_FOUND: {},
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {},
+    },
 )
 async def toggle_field_type(
     id: Annotated[int, Path()],

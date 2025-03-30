@@ -1,11 +1,14 @@
 from datetime import datetime
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from pydantic import ConfigDict, Field, model_validator
 
 from easyminer.schemas import BaseSchema
+
+if TYPE_CHECKING:
+    from easyminer.models.data import DataSource
 
 
 class CompressionType(str, Enum):
@@ -59,8 +62,8 @@ class UploadSettings(BaseSchema):
 class DataSourceBase(BaseSchema):
     """Base schema for data source."""
 
-    name: str = Field(..., description="Name of the data source")
-    type: str = Field(..., description="Type of the data source (e.g., csv, mysql)")
+    name: str = Field("Super data source", description="Name of the data source")
+    type: DbType = Field(DbType.limited, description="Type of the data source")
 
 
 class DataSourceCreate(DataSourceBase):
@@ -73,30 +76,34 @@ class DataSourceCreate(DataSourceBase):
 class DataSourceRead(DataSourceBase):
     """Schema for reading a data source."""
 
-    id: int
-    created_at: datetime
-    updated_at: datetime
-    row_count: int
-    size_bytes: int
-    upload_id: UUID | None = Field(
-        None, description="UUID from either Upload or PreviewUpload relationship"
+    id: int = Field(1, description="ID of the data source")
+    created_at: datetime = Field(
+        datetime(2025, 1, 1, 10, 10, 10), description="Creation date of the data source"
     )
-    model_config = ConfigDict(from_attributes=True, json_encoders={UUID: str})
+    updated_at: datetime = Field(
+        datetime(2025, 1, 1, 10, 20, 30),
+        description="Last update date of the data source",
+    )
+    row_count: int = Field(10, description="Number of rows in the data source")
+    size_bytes: int = Field(100, description="Size of the data source in bytes")
+    upload_id: UUID = Field(
+        UUID("397aab84-43c0-4cfc-9c9f-54d2585ce9ac"),
+        description="UUID from either Upload or PreviewUpload relationship",
+    )
+
+    model_config: ConfigDict = ConfigDict(
+        from_attributes=True, json_encoders={UUID: str}
+    )
 
     @model_validator(mode="before")
     @classmethod
-    def set_upload_id(cls, data: Any) -> Any:
-        """Set the upload_id from either Upload or PreviewUpload relationship."""
-        try:
-            if hasattr(data, "upload") and data.upload:
-                # Upload.uuid is a string, convert it to UUID
-                data.upload_id = UUID(data.upload.uuid)
-            elif hasattr(data, "preview_upload") and data.preview_upload:
-                # PreviewUpload.uuid is already a UUID
-                data.upload_id = data.preview_upload.uuid
-        except Exception:
-            # If we can't access the relationships, just keep upload_id as None
-            pass
+    def set_upload_id(cls, data: "DataSource") -> "DataSource":
+        if hasattr(data, "upload") and data.upload:
+            setattr(data, "upload_id", data.upload.uuid)
+        elif hasattr(data, "preview_upload") and data.preview_upload:
+            setattr(data, "upload_id", data.preview_upload.uuid)
+        else:
+            raise ValueError("No upload or preview_upload relationship found")
         return data
 
 
@@ -123,10 +130,18 @@ class FieldRead(FieldBase):
     min_value: float | None = None
     max_value: float | None = None
     avg_value: float | None = None
-    model_config = ConfigDict(from_attributes=True)
+
+    model_config: ConfigDict = ConfigDict(from_attributes=True)
 
 
 class Stats(BaseSchema):
     min: float
     max: float
     avg: float
+
+
+class UploadResponseSchema(BaseSchema):
+    id: int = Field(1, description="ID of the data source")
+    name: str = Field("upload", description="Name of the data source")
+    type: DbType = Field(DbType.limited, description="Database type")
+    size: int = Field(100, description="Number of instances (rows) in the data source")
