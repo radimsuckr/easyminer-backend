@@ -1,13 +1,14 @@
+import logging
 from typing import Annotated
 from uuid import UUID
 
+import celery.result
 from fastapi import APIRouter, Depends, HTTPException, Path, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from easyminer.config import API_V1_PREFIX
 from easyminer.crud.aio.task import get_task_by_id
 from easyminer.database import get_db_session
-from easyminer.models import TaskStatusEnum
 from easyminer.schemas.task import TaskStatus
 
 router = APIRouter(prefix=API_V1_PREFIX, tags=["Tasks"])
@@ -27,9 +28,7 @@ async def get_task_status(
 ) -> TaskStatus:
     task = await get_task_by_id(db, task_id)
     if not task:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Task not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
 
     return TaskStatus(
         task_id=task.task_id,
@@ -41,27 +40,15 @@ async def get_task_status(
 
 
 @router.get("/task-result/{task_id}", status_code=status.HTTP_200_OK)
-async def get_task_result(
-    task_id: Annotated[UUID, Path()],
-    db: Annotated[AsyncSession, Depends(get_db_session)],
-):
-    task = await get_task_by_id(db, task_id, eager=True)
-    if not task:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Task not found"
-        )
+async def get_task_result(task_id: Annotated[UUID, Path()]):
+    logger = logging.getLogger(__name__)
 
-    # Check if the task is completed
-    if task.status != TaskStatusEnum.success:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Task is not completed yet (current status: {task.status})",
-        )
-
-    if not task.result:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Task result not found",
-        )
-
-    return task.result.value
+    ares = celery.result.AsyncResult(str(task_id))
+    if not ares.ready():
+        raise HTTPException(status_code=status.HTTP_202_ACCEPTED, detail="Task not ready")
+    try:
+        result = ares.result
+    except BaseException as e:
+        logger.error(f"Error getting task result: {e}")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task result not found")
+    return result

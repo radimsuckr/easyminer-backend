@@ -12,6 +12,7 @@ from fastapi import (
     HTTPException,
     Path,
     Query,
+    Request,
     Response,
     status,
 )
@@ -630,6 +631,21 @@ async def get_field_values(
     description="There is one required query parameter 'bins'. This value means number of bins in an output histogram (maximum is 1000). You can specify min and max borders. This operation is processed asynchronously due to its complexity - it returns 202 Accepted and a location header with URL where all information about the task status are placed (see the background tasks section).",
     status_code=status.HTTP_200_OK,
     responses={
+        status.HTTP_200_OK: {
+            "links": {
+                "TaskStatus": {
+                    "operationId": "get_task_status",
+                    "parameters": {"task_id": "{task_id}"},
+                    "description": "Get task status",
+                },
+                "TaskResult": {
+                    "operationId": "get_task_result",
+                    "parameters": {"task_id": "{task_id}"},
+                    "description": "Get task result",
+                },
+            },
+            "model": TaskStatus,
+        },
         status.HTTP_400_BAD_REQUEST: {},
         status.HTTP_404_NOT_FOUND: {},
         status.HTTP_500_INTERNAL_SERVER_ERROR: {},
@@ -637,6 +653,7 @@ async def get_field_values(
 )
 async def get_aggregated_values(
     db: Annotated[AsyncSession, Depends(get_db_session)],
+    request: Request,
     id: Annotated[int, Path()],
     field_id: Annotated[int, Path()],
     bins: Annotated[int, Query(ge=1, le=1000)] = 10,
@@ -694,11 +711,10 @@ async def get_aggregated_values(
         max_inclusive=max_inclusive,
     )
 
-    # TODO: Implement the Celery task to calculate this
-
     return TaskStatus(
         task_id=UUID(task.task_id),
         task_name="get_aggregated_values",
         status_message="Task created successfully",
-        status_location=f"/tasks/{task.id}",
+        status_location=request.url_for("get_task_status", task_id=task.task_id).path,
+        result_location=request.url_for("get_task_result", task_id=task.task_id).path,
     )

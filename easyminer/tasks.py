@@ -1,11 +1,13 @@
 import csv
 import logging
 
-from sqlalchemy import insert, select, update
+import pydantic as pd
+from sqlalchemy import func, insert, select, update
 from sqlalchemy.orm import Session
 
 from easyminer.database import get_sync_db_session
 from easyminer.models import DataSource, Field, FieldNumericDetail, FieldType, Instance
+from easyminer.schemas import BaseSchema
 from easyminer.schemas.data import MediaType, UploadResponseSchema
 from easyminer.worker import app
 
@@ -177,8 +179,57 @@ def process_csv(
     )
 
 
+class Histogram(BaseSchema):
+    from_: float = pd.Field(..., alias="from")
+    to: float = pd.Field(...)
+    from_inclusive: bool = pd.Field(...)
+    to_inclusive: bool = pd.Field(...)
+    frequency: int = pd.Field(...)
+
+
 @app.task
 def aggregate_field_values(
     data_source_id: int, field_id: int, bins: int, min: float, max: float, min_inclusive: bool, max_inclusive: bool
-):
-    pass
+) -> list[Histogram]:
+    logger = logging.getLogger(__name__)
+    logger.info(f"Aggregating field values for field {field_id} in data source {data_source_id}")
+
+    with get_sync_db_session() as session:
+        field = session.execute(
+            select(Field).filter(Field.id == field_id, Field.data_source_id == data_source_id)
+        ).scalar_one_or_none()
+        if not field:
+            raise ValueError(f"Field with ID {field_id} not found in data source {data_source_id}")
+
+        histograms: list[Histogram] = []
+        bin_size = (max - min) / bins
+        for i in range(bins):
+            from_ = min + i * bin_size
+            to = min + (i + 1) * bin_size
+            from_inclusive = min_inclusive if i == 0 else True
+            to_inclusive = max_inclusive if i == bins - 1 else False
+
+            stmt = (
+                select(func.count())
+                .select_from(Instance)
+                .where(
+                    Instance.data_source_id == data_source_id,
+                    Instance.field_id == field.id,
+                    Instance.value_numeric != None,  # noqa: E711
+                    Instance.value_numeric > from_ if from_inclusive else Instance.value_numeric >= from_,
+                    Instance.value_numeric < to if to_inclusive else Instance.value_numeric <= to,
+                )
+            )
+            frequency = session.execute(stmt).scalar_one()
+
+            histograms.append(
+                Histogram(
+                    from_=from_,
+                    to=to,
+                    from_inclusive=from_inclusive,
+                    to_inclusive=to_inclusive,
+                    frequency=frequency,
+                )
+            )
+
+    return histograms
