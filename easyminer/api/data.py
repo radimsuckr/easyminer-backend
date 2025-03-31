@@ -15,7 +15,7 @@ from fastapi import (
     Response,
     status,
 )
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
@@ -369,7 +369,13 @@ async def get_instances(
             detail="Data source has no instances",
         )
 
-    stmt = select(Instance).limit(limit).offset(offset).options(joinedload(Instance.field))
+    fields_count = (
+        await db.execute(select(func.count()).select_from(Field).where(Field.data_source_id == id))
+    ).scalar_one()
+
+    stmt = (
+        select(Instance).limit(fields_count * limit).offset(fields_count * offset).options(joinedload(Instance.field))
+    )
     if field_ids:
         stmt = stmt.where(Field.id.in_(field_ids))
     instances = (await db.execute(stmt)).scalars().all()
@@ -377,7 +383,7 @@ async def get_instances(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No instances found")
 
     # the response of AggregatedInstance list must be grouped by row_id
-    response:list[AggregatedInstance] = []
+    response: list[AggregatedInstance] = []
     for key, group in itertools.groupby(instances, lambda x: x.row_id):
         group = list(group)
         response.append(
@@ -616,6 +622,7 @@ async def get_field_values(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Field not found")
 
     # TODO: Finish "Value" saving
+
 
 @router.get(
     "/datasource/{id}/field/{field_id}/aggregated-values",
