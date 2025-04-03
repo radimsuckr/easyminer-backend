@@ -622,7 +622,39 @@ async def get_field_values(
     if not field:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Field not found")
 
-    # TODO: Finish "Value" saving
+    # NOTE: possibly rewrite to pre-save values in db
+    instances = (
+        (
+            await db.execute(
+                select(
+                    Instance.field_id,
+                    Instance.value_nominal,
+                    Instance.value_numeric,
+                    func.count(Instance.id).label("frequency"),
+                )
+                .where(Instance.field_id == field.id)
+                .group_by(Instance.field_id, Instance.value_nominal, Instance.value_numeric)
+                .limit(limit)
+                .offset(offset)
+            )
+        )
+        .tuples()
+        .all()
+    )
+    if not instances:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No values found")
+
+    result: list[FieldValueSchema] = []
+    for instance in instances:
+        if field.data_type == FieldType.numeric:
+            result.append(
+                FieldValueSchema(id=instance.field_id, value=instance.value_numeric, frequency=instance.frequency)
+            )
+        else:
+            result.append(
+                FieldValueSchema(id=instance.field_id, value=instance.value_nominal, frequency=instance.frequency)
+            )
+    return result
 
 
 @router.get(
