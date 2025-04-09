@@ -70,7 +70,7 @@ def check_numeric_fields(
             )
             if non_numeric_instances:
                 _ = session.execute(update(Field).where(Field.id == field.id).values(data_type=FieldType.nominal))
-                logger.info(f"Field {field.name} is nominal, setting data type to nominal")
+                logger.info(f"Field {field.name} is numeric, setting data type to nominal")
 
 
 def calculate_numeric_field_detail(
@@ -79,7 +79,6 @@ def calculate_numeric_field_detail(
 ):
     logger = logging.getLogger(__name__)
     logger.info(f"Calculating numeric field detail for field {field.name}")
-    from sqlalchemy import func
 
     stats = (
         session.execute(
@@ -113,7 +112,7 @@ def calculate_numeric_field_detail(
         )
 
 
-@app.task
+@app.task(pydantic=True)
 def process_csv(
     data_source_id: int, upload_media_type: MediaType, encoding: str, separator: str, quote_char: str
 ) -> UploadResponseSchema:
@@ -161,14 +160,13 @@ def process_csv(
                     row_counter += 1
                 session.bulk_save_objects(instances)
 
+        fields = list(session.execute(select(Field).filter(Field.data_source_id == data_source_id)).scalars().all())
         # Check if all numeric fields have purely numeric instances
         check_numeric_fields(session, fields, data_source_id)
 
         for field in fields:
             if field.data_type == FieldType.numeric:
-                logger.info(f"Calculating numeric field detail for field {field.name}")
                 calculate_numeric_field_detail(session, field)
-
         session.commit()
 
     return UploadResponseSchema(
@@ -187,7 +185,7 @@ class Histogram(BaseSchema):
     frequency: int = pd.Field(...)
 
 
-@app.task
+@app.task(pydantic=True)
 def aggregate_field_values(
     data_source_id: int, field_id: int, bins: int, min: float, max: float, min_inclusive: bool, max_inclusive: bool
 ) -> list[Histogram]:
