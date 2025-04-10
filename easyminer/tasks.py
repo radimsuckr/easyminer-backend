@@ -1,6 +1,8 @@
 import csv
 import logging
 
+from easyminer.models.dataset import Dataset
+from easyminer.schemas.dataset import DatasetSchema
 import pydantic as pd
 from sqlalchemy import func, insert, select, update
 from sqlalchemy.orm import Session
@@ -231,3 +233,37 @@ def aggregate_field_values(
             )
 
     return histograms
+
+
+@app.task(pydantic=True)
+def create_dataset(data_source_id: int, name: str) -> DatasetSchema:
+    logger = logging.getLogger(__name__)
+    logger.info(f"Creating dataset {name} from data source {data_source_id}")
+
+    with get_sync_db_session() as session:
+        data_source = session.execute(select(DataSource).filter(DataSource.id == data_source_id)).scalar_one_or_none()
+        if not data_source:
+            raise ValueError(f"Data source with ID {data_source_id} not found")
+
+        dataset = session.execute(
+            insert(Dataset)
+            .values(
+                name=name,
+                type=data_source.type,
+                size=data_source.size,
+                data_source_id=data_source.id,
+            )
+            .returning(Dataset)
+        ).scalar_one_or_none()
+        session.commit()
+
+        if not dataset:
+            raise ValueError(f"Failed to create dataset {name}")
+
+    return DatasetSchema(
+        id=dataset.id,
+        name=dataset.name,
+        type=dataset.type,
+        size=dataset.size,
+        data_source_id=dataset.data_source_id,
+    )

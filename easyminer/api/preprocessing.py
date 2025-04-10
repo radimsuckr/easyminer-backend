@@ -3,9 +3,9 @@ from uuid import UUID
 
 from fastapi import (
     APIRouter,
-    BackgroundTasks,
     Body,
     Depends,
+    Form,
     HTTPException,
     Path,
     Query,
@@ -20,14 +20,13 @@ from easyminer.schemas.preprocessing import (
     AttributeRead,
     AttributeValueRead,
     DatasetRead,
-    TaskResult,
     TaskStatus,
 )
+from easyminer.tasks import create_dataset
 
 router = APIRouter(prefix=API_V1_PREFIX, tags=["Preprocessing"])
 
 
-# Dataset endpoints
 @router.get("/dataset", response_model=list[DatasetRead])
 async def list_datasets(
     request: Request,
@@ -38,19 +37,24 @@ async def list_datasets(
     raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED)
 
 
-@router.post(
-    "/dataset", response_model=TaskStatus, status_code=status.HTTP_202_ACCEPTED
-)
-async def create_dataset(
+@router.post("/dataset", response_model=TaskStatus, status_code=status.HTTP_202_ACCEPTED)
+async def create_dataset_api(
     request: Request,
-    dataSource: Annotated[int, Body()],
-    name: Annotated[str, Body()],
-    db: Annotated[AsyncSession, Depends(get_db_session)],
-    background_tasks: BackgroundTasks,
+    dataSource: Annotated[int, Form()],
+    name: Annotated[str, Form()],
 ):
     """Create a task for the dataset creation from a data source."""
-    # TODO: Implement this endpoint
-    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED)
+    task = create_dataset.delay(dataSource, name)
+    if task:
+        return TaskStatus(
+            task_id=UUID(task.task_id),
+            task_name="create_dataset",
+            status_message="Task created successfully",
+            status_location=request.url_for("get_task_status", task_id=task.task_id).path,
+            result_location=request.url_for("get_task_result", task_id=task.task_id).path,
+        )
+    else:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @router.get("/dataset/{id}", response_model=DatasetRead)
@@ -104,16 +108,13 @@ async def create_attribute(
     dataset_id: Annotated[int, Path()],
     body: Annotated[str, Body()],
     db: Annotated[AsyncSession, Depends(get_db_session)],
-    background_tasks: BackgroundTasks,
 ):
     """Create a task for the attribute creation from a data source field."""
     # TODO: Implement this endpoint
     raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED)
 
 
-@router.get(
-    "/dataset/{dataset_id}/attribute/{attribute_id}", response_model=AttributeRead
-)
+@router.get("/dataset/{dataset_id}/attribute/{attribute_id}", response_model=AttributeRead)
 async def get_attribute(
     dataset_id: Annotated[int, Path()],
     attribute_id: Annotated[int, Path()],
@@ -147,7 +148,6 @@ async def rename_attribute(
     raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED)
 
 
-# Value endpoints
 @router.get(
     "/dataset/{dataset_id}/attribute/{attribute_id}/values",
     response_model=list[AttributeValueRead],

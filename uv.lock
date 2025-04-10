@@ -316,6 +316,7 @@ dependencies = [
     { name = "psycopg" },
     { name = "pydantic-settings" },
     { name = "pyhumps" },
+    { name = "python-multipart" },
     { name = "sqlalchemy", extra = ["asyncio", "postgresql-psycopg"] },
 ]
 
@@ -345,6 +346,7 @@ requires-dist = [
     { name = "psycopg", specifier = ">=3.2.6" },
     { name = "pydantic-settings", specifier = ">=2.4.0" },
     { name = "pyhumps", specifier = ">=3.8.0" },
+    { name = "python-multipart", specifier = ">=0.0.20" },
     { name = "sqlalchemy", extras = ["asyncio", "postgresql-psycopg"], specifier = ">=2.0.31" },
 ]
 
