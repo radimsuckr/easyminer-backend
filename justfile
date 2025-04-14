@@ -6,13 +6,11 @@ default:
 build-docker:
 	docker build -t "{{ docker_image_name }}:latest" .
 
-[working-directory: "easyminer"]
 dev:
-	uv run fastapi dev
+	uv run uvicorn easyminer.app:app --reload --log-level debug
 
-[working-directory: "easyminer"]
 run:
-	uv run fastapi run
+	uv run uvicorn easyminer.app:app --log-level info
 
 [working-directory: "tools"]
 fake_server:
