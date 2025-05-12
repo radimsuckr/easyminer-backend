@@ -5,6 +5,7 @@ from uuid import UUID
 from pydantic import Field
 
 from easyminer.schemas import BaseSchema
+from easyminer.schemas.data import DbType
 
 
 class Error(BaseSchema):
@@ -50,6 +51,13 @@ class DatasetUpdate(BaseSchema):
     """Schema for updating a dataset."""
 
     name: str
+
+class DatasetSchema(BaseSchema):
+    id: int = Field(..., description="Dataset ID")
+    name: str = Field(..., description="Dataset name")
+    size: int = Field(..., description="Dataset size")
+    type: DbType = Field(..., description="Database type")
+    data_source_id: int = Field(..., description="Data source ID")
 
 
 class AttributeBase(BaseSchema):

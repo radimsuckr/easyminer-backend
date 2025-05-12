@@ -1,16 +1,16 @@
 import csv
 import logging
 
-from easyminer.models.dataset import Dataset
-from easyminer.schemas.dataset import DatasetSchema
 import pydantic as pd
 from sqlalchemy import func, insert, select, update
 from sqlalchemy.orm import Session
 
 from easyminer.database import get_sync_db_session
 from easyminer.models import DataSource, Field, FieldNumericDetail, FieldType, Instance
+from easyminer.models.dataset import Dataset
 from easyminer.schemas import BaseSchema
 from easyminer.schemas.data import MediaType, UploadResponseSchema
+from easyminer.schemas.preprocessing import DatasetSchema
 from easyminer.worker import app
 
 
@@ -28,9 +28,9 @@ def create_fields(
             existing_field_id = session.execute(
                 select(Field.id).filter(Field.name == header, Field.data_source_id == data_source_id)
             ).scalar_one_or_none()
-            # if existing_field_id:
-            #     logger.warning(f"Field {header} already exists, skipping.")
-            #     continue
+            if existing_field_id:
+                logger.warning(f"Field {header} already exists, skipping.")
+                continue
             stmt = insert(Field) if not existing_field_id else (update(Field).where(Field.id == existing_field_id))
             stmt = stmt.values(
                 name=header,

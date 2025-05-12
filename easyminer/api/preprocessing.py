@@ -12,10 +12,12 @@ from fastapi import (
     Request,
     status,
 )
+from sqlalchemy import exists, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from easyminer.config import API_V1_PREFIX
 from easyminer.database import get_db_session
+from easyminer.models.dataset import Dataset
 from easyminer.schemas.preprocessing import (
     AttributeRead,
     AttributeValueRead,
@@ -28,13 +30,11 @@ router = APIRouter(prefix=API_V1_PREFIX, tags=["Preprocessing"])
 
 
 @router.get("/dataset", response_model=list[DatasetRead])
-async def list_datasets(
-    request: Request,
-    db: Annotated[AsyncSession, Depends(get_db_session)],
-):
+async def list_datasets(db: Annotated[AsyncSession, Depends(get_db_session)]):
     """Display a list of all datasets within the user data space."""
-    # TODO: Implement this endpoint
-    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED)
+    stmt = select(Dataset)
+    datasets = (await db.execute(stmt)).scalars().all()
+    return [DatasetRead.model_validate(dataset) for dataset in datasets]
 
 
 @router.post("/dataset", response_model=TaskStatus, status_code=status.HTTP_202_ACCEPTED)
@@ -57,14 +57,24 @@ async def create_dataset_api(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-@router.get("/dataset/{id}", response_model=DatasetRead)
+@router.get(
+    "/dataset/{id}",
+    response_model=DatasetRead,
+    responses={
+        status.HTTP_404_NOT_FOUND: {},
+    },
+)
 async def get_dataset(
     id: Annotated[int, Path()],
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ):
     """Get detail information about a dataset."""
-    # TODO: Implement this endpoint
-    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED)
+    stmt = select(Dataset).where(Dataset.id == id)
+    dataset = (await db.execute(stmt)).scalars().first()
+    if dataset:
+        return DatasetRead.model_validate(dataset)
+    else:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
 
 
 @router.delete("/dataset/{id}")
@@ -77,15 +87,28 @@ async def delete_dataset(
     raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED)
 
 
-@router.put("/dataset/{id}")
+@router.put(
+    "/dataset/{id}",
+    responses={
+        status.HTTP_204_NO_CONTENT: {},
+        status.HTTP_404_NOT_FOUND: {},
+    },
+    status_code=status.HTTP_204_NO_CONTENT,
+)
 async def rename_dataset(
     id: Annotated[int, Path()],
     name: Annotated[str, Body()],
     db: Annotated[AsyncSession, Depends(get_db_session)],
-):
+) -> None:
     """Rename this dataset."""
-    # TODO: Implement this endpoint
-    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED)
+    stmt = select(exists(Dataset).where(Dataset.id == id))
+    result = await db.execute(stmt)
+    if not result.scalar_one():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+
+    stmt = update(Dataset).where(Dataset.id == id).values(name=name)
+    _ = await db.execute(stmt)
+    await db.commit()
 
 
 # Attribute endpoints
