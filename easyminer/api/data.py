@@ -78,10 +78,7 @@ _csv_upload_example = """a,b,c
 
 
 @router.post("/upload/start")
-async def start_upload(
-    settings: StartUploadSchema,
-    db: Annotated[AsyncSession, Depends(get_db_session)],
-) -> UUID:
+async def start_upload(db: Annotated[AsyncSession, Depends(get_db_session)], settings: StartUploadSchema) -> UUID:
     """Start a new upload process."""
     if settings.media_type != "csv":
         raise HTTPException(
@@ -89,14 +86,13 @@ async def start_upload(
             detail="Only CSV uploads are supported",
         )
 
-    upload = await create_upload(db, settings)
-    return upload.uuid
+    upload_uuid = await create_upload(db, settings)
+    return upload_uuid
 
 
 @router.post("/upload/preview/start")
-async def upload_preview_start(
-    settings: PreviewUploadSchema,
-    db: Annotated[AsyncSession, Depends(get_db_session)],
+async def start_preview_upload(
+    db: Annotated[AsyncSession, Depends(get_db_session)], settings: PreviewUploadSchema
 ) -> UUID:
     upload = await create_preview_upload(db, settings)
     return upload.uuid

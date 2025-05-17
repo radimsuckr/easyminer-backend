@@ -8,9 +8,8 @@ from sqlalchemy import func, insert, select, update
 from sqlalchemy.orm import Session
 
 from easyminer.database import get_sync_db_session
-from easyminer.models import DataSource, Field, FieldNumericDetail, FieldType, Instance
+from easyminer.models import Chunk, DataSource, Field, FieldNumericDetail, FieldType, Instance
 from easyminer.models.dataset import Dataset
-from easyminer.models.upload import Chunk
 from easyminer.parser import (
     Attribute,
     EquidistantIntervalsAttribute,

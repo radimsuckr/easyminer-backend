@@ -4,20 +4,19 @@ from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
-from easyminer.models import Chunk, DataSource, PreviewUpload, Upload
+from easyminer.models import Chunk, DataSource, DataType, NullValue, PreviewUpload, Upload
 from easyminer.schemas.data import FieldType, PreviewUploadSchema, StartUploadSchema
 
 
-async def create_upload(db_session: AsyncSession, settings: StartUploadSchema) -> Upload:
+async def create_upload(db: AsyncSession, settings: StartUploadSchema) -> UUID:
     """Create a new upload entry in the database with settings."""
     if len(settings.data_types) == 0:
         raise ValueError("data_types cannot be empty")
     if len(settings.data_types) > len(FieldType):
         raise ValueError(f"data_types cannot have more than {len(FieldType)} values, got {len(settings.data_types)}")
 
-    upload_id = uuid4()
     upload = Upload(
-        uuid=upload_id,
+        uuid=uuid4(),
         name=settings.name,
         media_type=settings.media_type,
         db_type=settings.db_type,
@@ -27,19 +26,22 @@ async def create_upload(db_session: AsyncSession, settings: StartUploadSchema) -
         escape_char=settings.escape_char,
         locale=settings.locale,
         compression=settings.compression,
-        null_values=settings.null_values,
-        data_types=settings.data_types,
     )
-    db_session.add(upload)
+    db.add(upload)
+
+    for null_value in settings.null_values:
+        db.add(NullValue(value=null_value, upload=upload))
+    for data_type in settings.data_types:
+        db.add(DataType(value=data_type, upload=upload))
+
     data_source = DataSource(
         name=upload.name,
-        type=upload.db_type,
+        type=settings.db_type,
         upload=upload,
     )
-    db_session.add(data_source)
-    await db_session.commit()
-    await db_session.refresh(upload)
-    return upload
+    db.add(data_source)
+
+    return data_source.upload.uuid
 
 
 async def create_preview_upload(db_session: AsyncSession, settings: PreviewUploadSchema) -> PreviewUpload:

@@ -1,14 +1,98 @@
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
+from uuid import UUID as pyUUID
 
-from sqlalchemy import Double, Enum, ForeignKey, Integer, String
+from sqlalchemy import (
+    UUID,
+    DateTime,
+    Double,
+    Enum,
+    ForeignKey,
+    Integer,
+    String,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from easyminer.database import Base
-from easyminer.schemas.data import DbType, FieldType
+from easyminer.schemas.data import CompressionType, DbType, FieldType, MediaType
 
 if TYPE_CHECKING:
     from easyminer.models import Dataset, PreviewUpload, Task, Upload
+
+
+class Upload(Base):
+    __tablename__: str = "upload"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    uuid: Mapped[pyUUID] = mapped_column(UUID())
+    name: Mapped[str] = mapped_column(String(100))
+    media_type: Mapped["MediaType"] = mapped_column(Enum(MediaType))
+    db_type: Mapped["DbType"] = mapped_column(Enum(DbType))
+    separator: Mapped[str] = mapped_column(String(1))
+    encoding: Mapped[str] = mapped_column(String(40))
+    quotes_char: Mapped[str] = mapped_column(String(1))
+    escape_char: Mapped[str] = mapped_column(String(1))
+    locale: Mapped[str] = mapped_column(String(20))
+    compression: Mapped["CompressionType | None"] = mapped_column(Enum(CompressionType), nullable=True)
+    preview_max_lines: Mapped[int | None] = mapped_column(Integer(), nullable=True)
+
+    data_source: Mapped["DataSource"] = relationship(back_populates="upload")
+    chunks: Mapped[list["Chunk"]] = relationship(
+        "Chunk",
+        back_populates="upload",
+        cascade="all, delete-orphan",
+    )
+    null_values: Mapped[list["NullValue"]] = relationship(
+        "NullValue",
+        back_populates="upload",
+        cascade="all, delete-orphan",
+    )
+    data_types: Mapped[list["DataType"]] = relationship(
+        "DataType",
+        back_populates="upload",
+        cascade="all, delete-orphan",
+    )
+
+
+class NullValue(Base):
+    __tablename__: str = "null_value"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    value: Mapped[str] = mapped_column(String(255))
+
+    upload_id: Mapped[int] = mapped_column(ForeignKey("upload.id", ondelete="CASCADE"))
+    upload: Mapped["Upload"] = relationship("Upload", back_populates="null_values")
+
+
+class DataType(Base):
+    __tablename__: str = "data_type"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    value: Mapped[FieldType] = mapped_column(Enum(FieldType))
+
+    upload_id: Mapped[int] = mapped_column(ForeignKey("upload.id", ondelete="CASCADE"))
+    upload: Mapped["Upload"] = relationship("Upload", back_populates="data_types")
+
+
+class PreviewUpload(Base):
+    __tablename__: str = "preview_upload"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    uuid: Mapped[pyUUID] = mapped_column(UUID(), unique=True)
+    max_lines: Mapped[int] = mapped_column(Integer())
+    compression: Mapped[CompressionType | None] = mapped_column(Enum(CompressionType))
+    media_type: Mapped["MediaType"] = mapped_column(Enum(MediaType))
+
+
+class Chunk(Base):
+    __tablename__: str = "chunk"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime(), default=datetime.now)
+    path: Mapped[str] = mapped_column(String(255))
+
+    upload_id: Mapped[int] = mapped_column(ForeignKey("upload.id", ondelete="CASCADE"))
+    upload: Mapped["Upload"] = relationship("Upload", back_populates="chunks")
 
 
 class DataSource(Base):
@@ -30,19 +114,11 @@ class DataSource(Base):
         "Instance", back_populates="data_source", cascade="all, delete-orphan"
     )
     values: Mapped[list["Value"]] = relationship("Value", back_populates="data_source", cascade="all, delete-orphan")
+    upload_id: Mapped[int] = mapped_column(ForeignKey("upload.id", ondelete="CASCADE"))
     upload: Mapped["Upload"] = relationship(
-        "Upload",
         back_populates="data_source",
         cascade="all, delete-orphan",
         single_parent=True,
-        uselist=False,
-    )
-    preview_upload: Mapped["PreviewUpload"] = relationship(
-        "PreviewUpload",
-        back_populates="data_source",
-        cascade="all, delete-orphan",
-        single_parent=True,
-        uselist=False,
     )
     tasks: Mapped[list["Task"]] = relationship("Task", back_populates="data_source", cascade="all, delete-orphan")
     datasets: Mapped[list["Dataset"]] = relationship(
