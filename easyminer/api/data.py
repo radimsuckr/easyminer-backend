@@ -126,11 +126,12 @@ async def upload_chunk(
         upload_size = await db.scalar(
             select(func.count()).select_from(Instance).where(Instance.data_source_id == upload.data_source.id)
         )
+        upload.data_source.size = upload_size or 0
         result = UploadResponseSchema(
             id=upload.id,
             name=upload.name,
             type=upload.db_type,
-            size=upload_size or 0,
+            size=upload.data_source.size,
         )
         await db.commit()
         return result
