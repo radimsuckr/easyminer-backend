@@ -1,0 +1,56 @@
+import logging
+
+from sqlalchemy import func, select
+
+from easyminer.database import get_sync_db_session
+from easyminer.models import Field, Instance
+from easyminer.worker import app
+
+logger = logging.getLogger(__name__)
+
+
+@app.task
+def aggregate_field_values(
+    data_source_id: int, field_id: int, bins: int, min: float, max: float, min_inclusive: bool, max_inclusive: bool
+) -> list[dict[str, float | bool | int]]:
+    logger.info(
+        f"Aggregating field values for data_source_id={data_source_id}, field_id={field_id}, bins={bins}, min={min}, max={max}, min_inclusive={min_inclusive}, max_inclusive={max_inclusive}"
+    )
+
+    with get_sync_db_session() as db:
+        field = db.get(Field, field_id)
+        if not field or field.data_source_id != data_source_id:
+            raise ValueError(f"Field with ID {field_id} not found in data source {data_source_id}")
+
+        histograms: list[dict[str, float | bool | int]] = []
+        bin_size = (max - min) / bins
+        for i in range(bins):
+            from_ = min + i * bin_size
+            to = min + (i + 1) * bin_size
+            from_inclusive = min_inclusive if i == 0 else True
+            to_inclusive = max_inclusive if i == bins - 1 else False
+
+            stmt = (
+                select(func.count())
+                .select_from(Instance)
+                .where(
+                    Instance.data_source_id == data_source_id,
+                    Instance.field_id == field.id,
+                    Instance.value_numeric != None,  # noqa: E711
+                    Instance.value_numeric > from_ if from_inclusive else Instance.value_numeric >= from_,
+                    Instance.value_numeric < to if to_inclusive else Instance.value_numeric <= to,
+                )
+            )
+            frequency = db.execute(stmt).scalar_one()
+
+            histograms.append(
+                {
+                    "from": from_,
+                    "to": to,
+                    "from_inclusive": from_inclusive,
+                    "to_inclusive": to_inclusive,
+                    "frequency": frequency,
+                }
+            )
+
+    return histograms
