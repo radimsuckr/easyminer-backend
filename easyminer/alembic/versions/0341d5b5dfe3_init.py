@@ -1,8 +1,8 @@
 """init
 
-Revision ID: 83a26d11839f
+Revision ID: 0341d5b5dfe3
 Revises:
-Create Date: 2025-05-17 11:02:12.953888+02:00
+Create Date: 2025-05-17 16:55:20.238512+02:00
 
 """
 
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = "83a26d11839f"
+revision: str = "0341d5b5dfe3"
 down_revision: str | None = None
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
@@ -109,6 +109,7 @@ def upgrade() -> None:
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
         sa.Column("name", sa.String(length=255), nullable=False),
         sa.Column("data_type", sa.Enum("nominal", "numeric", name="fieldtype"), nullable=False),
+        sa.Column("index", sa.Integer(), nullable=False),
         sa.Column("unique_values_size_nominal", sa.Integer(), nullable=False),
         sa.Column("unique_values_size_numeric", sa.Integer(), nullable=False),
         sa.Column("support_nominal", sa.Integer(), nullable=False),
@@ -140,6 +141,7 @@ def upgrade() -> None:
         "data_source_instance",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
         sa.Column("row_id", sa.Integer(), nullable=False),
+        sa.Column("col_id", sa.Integer(), nullable=False),
         sa.Column("value_nominal", sa.String(length=255), nullable=True),
         sa.Column("value_numeric", sa.Double(), nullable=True),
         sa.Column("data_source_id", sa.Integer(), nullable=False),

@@ -15,7 +15,7 @@ ROOT_DIR: Path = Path(os.path.dirname(os.path.abspath(__file__)) + "/..").resolv
 class Settings(BaseSettings):
     database_url: str
     database_url_sync: str
-    echo_sql: bool = True
+    echo_sql: bool = False
     test: bool = False
     project_name: str = "EasyMiner Backend"
     debug_logs: bool = False

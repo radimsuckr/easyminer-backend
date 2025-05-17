@@ -127,6 +127,7 @@ async def upload_chunk(
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Upload is locked, try again later")
 
     # Lock the upload
+    original_state = upload.state
     logging.info("Locking the upload")
     upload = (
         await db.execute(
@@ -143,9 +144,18 @@ async def upload_chunk(
     chunk_id = await create_chunk(db, upload.id, chunk_datetime, str(saved_path))
     logger.info("Chunk %s created for upload %s", chunk_id, upload_id)
 
+    separator = upload.separator
+    quote_char = upload.quotes_char
+    escape_char = upload.escape_char
     await db.commit()
 
-    _ = process_chunk.delay(chunk_id)
+    _ = process_chunk.delay(
+        chunk_id,
+        original_state,
+        separator=separator,
+        quote_char=quote_char,
+        escape_char=escape_char,
+    )
 
 
 @router.post(

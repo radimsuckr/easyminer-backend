@@ -145,6 +145,7 @@ class Field(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, index=True)
     name: Mapped[str] = mapped_column(String(255))
     data_type: Mapped["FieldType"] = mapped_column(Enum(FieldType))
+    index: Mapped[int] = mapped_column(Integer, nullable=False)
 
     # Statistics
     unique_values_size_nominal: Mapped[int] = mapped_column(default=0)
@@ -174,6 +175,7 @@ class Instance(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, index=True)
     row_id: Mapped[int] = mapped_column(Integer)  # Row number in the original data
+    col_id: Mapped[int] = mapped_column(Integer)  # Column number in the original data
     value_nominal: Mapped[str | None] = mapped_column(String(255), nullable=True)
     value_numeric: Mapped[float | None] = mapped_column(Double, nullable=True)
 
