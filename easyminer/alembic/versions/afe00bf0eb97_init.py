@@ -1,8 +1,8 @@
 """init
 
-Revision ID: 3b2810b6bbfb
+Revision ID: afe00bf0eb97
 Revises:
-Create Date: 2025-05-17 21:31:28.999655+02:00
+Create Date: 2025-05-17 22:04:46.314478+02:00
 
 """
 
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = "3b2810b6bbfb"
+revision: str = "afe00bf0eb97"
 down_revision: str | None = None
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
@@ -143,7 +143,7 @@ def upgrade() -> None:
         sa.Column("row_id", sa.Integer(), nullable=False),
         sa.Column("col_id", sa.Integer(), nullable=False),
         sa.Column("value_nominal", sa.String(length=255), nullable=True),
-        sa.Column("value_numeric", sa.Double(), nullable=True),
+        sa.Column("value_numeric", sa.DECIMAL(), nullable=True),
         sa.Column("data_source_id", sa.Integer(), nullable=False),
         sa.Column("field_id", sa.Integer(), nullable=False),
         sa.ForeignKeyConstraint(["data_source_id"], ["data_source.id"], ondelete="CASCADE"),
@@ -155,7 +155,7 @@ def upgrade() -> None:
         "data_source_value",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
         sa.Column("value_nominal", sa.String(length=255), nullable=True),
-        sa.Column("value_numeric", sa.Double(), nullable=True),
+        sa.Column("value_numeric", sa.DECIMAL(), nullable=True),
         sa.Column("frequency", sa.Integer(), nullable=False),
         sa.Column("data_source_id", sa.Integer(), nullable=False),
         sa.Column("field_id", sa.Integer(), nullable=False),
@@ -167,9 +167,9 @@ def upgrade() -> None:
     op.create_table(
         "field_numeric_detail",
         sa.Column("id", sa.Integer(), nullable=False),
-        sa.Column("min_value", sa.Double(), nullable=False),
-        sa.Column("max_value", sa.Double(), nullable=False),
-        sa.Column("avg_value", sa.Double(), nullable=False),
+        sa.Column("min_value", sa.DECIMAL(), nullable=False),
+        sa.Column("max_value", sa.DECIMAL(), nullable=False),
+        sa.Column("avg_value", sa.DECIMAL(), nullable=False),
         sa.ForeignKeyConstraint(["id"], ["field.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )

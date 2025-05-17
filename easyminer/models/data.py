@@ -1,12 +1,13 @@
 import enum
 from datetime import UTC, datetime
+from decimal import Decimal
 from typing import TYPE_CHECKING, final
 from uuid import UUID as pyUUID
 
 from sqlalchemy import (
+    DECIMAL,
     UUID,
     DateTime,
-    Double,
     Enum,
     ForeignKey,
     Integer,
@@ -163,9 +164,9 @@ class FieldNumericDetail(Base):
     __tablename__: str = "field_numeric_detail"
 
     id: Mapped[int] = mapped_column(ForeignKey("field.id", ondelete="CASCADE"), primary_key=True, index=True)
-    min_value: Mapped[float] = mapped_column(Double)
-    max_value: Mapped[float] = mapped_column(Double)
-    avg_value: Mapped[float] = mapped_column(Double)
+    min_value: Mapped[Decimal] = mapped_column(DECIMAL)
+    max_value: Mapped[Decimal] = mapped_column(DECIMAL)
+    avg_value: Mapped[Decimal] = mapped_column(DECIMAL)
 
 
 class Instance(Base):
@@ -177,7 +178,7 @@ class Instance(Base):
     row_id: Mapped[int] = mapped_column(Integer)  # Row number in the original data
     col_id: Mapped[int] = mapped_column(Integer)  # Column number in the original data
     value_nominal: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    value_numeric: Mapped[float | None] = mapped_column(Double, nullable=True)
+    value_numeric: Mapped[Decimal | None] = mapped_column(DECIMAL, nullable=True)
 
     data_source_id: Mapped[int] = mapped_column(ForeignKey("data_source.id", ondelete="CASCADE"))
     data_source: Mapped["DataSource"] = relationship("DataSource", back_populates="instances")
@@ -192,7 +193,7 @@ class Value(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, index=True)
     value_nominal: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    value_numeric: Mapped[float | None] = mapped_column(Double, nullable=True)
+    value_numeric: Mapped[Decimal | None] = mapped_column(DECIMAL, nullable=True)
     frequency: Mapped[int] = mapped_column(Integer)
 
     data_source_id: Mapped[int] = mapped_column(ForeignKey("data_source.id", ondelete="CASCADE"))

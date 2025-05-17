@@ -2,6 +2,7 @@ import itertools
 import logging
 import pathlib
 from datetime import datetime
+from decimal import Decimal
 from typing import Annotated
 from uuid import UUID
 
@@ -267,7 +268,7 @@ async def get_instances(
     if not data_source:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found")
 
-    if not data_source.upload.state != UploadState.finished:
+    if data_source.upload.state != UploadState.finished:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Data source upload is not finished processing"
         )
@@ -516,7 +517,7 @@ async def get_field_values(
     result: list[FieldValueSchema] = []
     for instance in instances:
         if field.data_type == FieldType.numeric:
-            result.append(FieldValueSchema(id=instance[0], value=instance[2] or 0, frequency=instance[3]))
+            result.append(FieldValueSchema(id=instance[0], value=float(instance[2]) or 0, frequency=instance[3]))
         else:
             result.append(FieldValueSchema(id=instance[0], value=instance[1] or "", frequency=instance[3]))
     return result
@@ -554,8 +555,8 @@ async def get_aggregated_values(
     id: Annotated[int, Path()],
     field_id: Annotated[int, Path()],
     bins: Annotated[int, Query(ge=1, le=1000)] = 10,
-    min: Annotated[float | None, Query()] = None,
-    max: Annotated[float | None, Query()] = None,
+    min: Annotated[Decimal | None, Query()] = None,
+    max: Annotated[Decimal | None, Query()] = None,
     min_inclusive: Annotated[bool, Query()] = True,
     max_inclusive: Annotated[bool, Query()] = True,
 ) -> TaskStatus:

@@ -1,5 +1,6 @@
 import csv
 import logging
+from decimal import Decimal, InvalidOperation
 
 import pydantic
 from sqlalchemy import insert, update
@@ -52,21 +53,21 @@ def process_chunk(
 
             row_counter = 0
             batch_size = 1000
-            instance_values: list[dict[str, str | float | None]] = []
+            instance_values: list[dict[str, str | Decimal | int | None]] = []
             for row in reader:
                 logger.debug(f"Row: {row}")
                 for i, col in enumerate(row):
-                    col_float: float | None = None
+                    col_decimal: Decimal | None = None
                     try:
-                        col_float = float(col)
-                    except ValueError:
+                        col_decimal = Decimal(col)
+                    except InvalidOperation:
                         pass
                     instance_values.append(
                         {
                             "row_id": row_counter,
                             "col_id": i,
                             "value_nominal": col,
-                            "value_numeric": col_float,
+                            "value_numeric": col_decimal,
                             "field_id": col_fields[i].id,
                             "data_source_id": chunk.upload.data_source.id,
                         }

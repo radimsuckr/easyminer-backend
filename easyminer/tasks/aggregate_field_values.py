@@ -1,4 +1,5 @@
 import logging
+from decimal import Decimal
 
 from sqlalchemy import func, select
 
@@ -11,8 +12,8 @@ logger = logging.getLogger(__name__)
 
 @app.task
 def aggregate_field_values(
-    data_source_id: int, field_id: int, bins: int, min: float, max: float, min_inclusive: bool, max_inclusive: bool
-) -> list[dict[str, float | bool | int]]:
+    data_source_id: int, field_id: int, bins: int, min: Decimal, max: Decimal, min_inclusive: bool, max_inclusive: bool
+) -> list[dict[str, Decimal | bool | int]]:
     logger.info(
         f"Aggregating field values for data_source_id={data_source_id}, field_id={field_id}, bins={bins}, min={min}, max={max}, min_inclusive={min_inclusive}, max_inclusive={max_inclusive}"
     )
@@ -22,7 +23,7 @@ def aggregate_field_values(
         if not field or field.data_source_id != data_source_id:
             raise ValueError(f"Field with ID {field_id} not found in data source {data_source_id}")
 
-        histograms: list[dict[str, float | bool | int]] = []
+        histograms: list[dict[str, Decimal | bool | int]] = []
         bin_size = (max - min) / bins
         for i in range(bins):
             from_ = min + i * bin_size
