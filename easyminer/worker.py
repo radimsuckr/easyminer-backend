@@ -32,7 +32,7 @@ app.conf.update(
     # task_serializer="pickle",
     # result_serializer="pickle",
 )
-app.autodiscover_tasks(["easyminer"])
+app.autodiscover_tasks(["easyminer.tasks"])
 
 
 @celeryd_init.connect()
@@ -60,9 +60,7 @@ def before_task_publish_handler(body, exchange, routing_key, *args, **kwargs):
 
 
 @after_task_publish.connect()
-def after_task_publish_handler(
-    body, exchange: str | Exchange, routing_key, *args, **kwargs
-):
+def after_task_publish_handler(body, exchange: str | Exchange, routing_key, *args, **kwargs):
     logger = logging.getLogger(__name__)
     header_id: UUID = kwargs["headers"]["id"]
     logger.debug(f"Task {header_id} published")
@@ -87,10 +85,7 @@ def task_prerun_handler(task_id: UUID, task, *args, **kwargs):
     logger = logging.getLogger(__name__)
     with get_sync_db_session() as session:
         update_query = (
-            update(Task)
-            .filter(Task.task_id == task_id)
-            .values(status=TaskStatusEnum.started)
-            .returning(Task.task_id)
+            update(Task).filter(Task.task_id == task_id).values(status=TaskStatusEnum.started).returning(Task.task_id)
         )
         t_id = session.execute(update_query)
         session.commit()
@@ -104,10 +99,7 @@ def task_postrun_handler(task_id: UUID, task, retval, state, *args, **kwargs):
     logger = logging.getLogger(__name__)
     with get_sync_db_session() as session:
         update_query = (
-            update(Task)
-            .filter(Task.task_id == task_id)
-            .values(status=TaskStatusEnum.success)
-            .returning(Task.task_id)
+            update(Task).filter(Task.task_id == task_id).values(status=TaskStatusEnum.success).returning(Task.task_id)
         )
         t_id = session.execute(update_query)
         session.commit()

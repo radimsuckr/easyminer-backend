@@ -1,6 +1,6 @@
 import itertools
 import logging
-import pathlib as pl
+import pathlib
 from datetime import datetime
 from typing import Annotated
 from uuid import UUID
@@ -13,7 +13,6 @@ from fastapi import (
     Path,
     Query,
     Request,
-    Response,
     status,
 )
 from sqlalchemy import func, select, update
@@ -21,25 +20,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from easyminer.config import API_V1_PREFIX
+from easyminer.crud.aio.chunk import create_chunk
 from easyminer.crud.aio.data_source import (
     delete_data_source,
     get_data_source_by_id,
-    get_data_source_by_preview_upload_id,
-    get_data_source_by_upload_id,
     get_data_sources,
     update_data_source_name,
-    update_data_source_size,
 )
 from easyminer.crud.aio.field import (
     get_field_by_id,
     get_fields_by_data_source,
 )
 from easyminer.crud.aio.upload import (
-    create_chunk,
     create_preview_upload,
     create_upload,
-    get_preview_upload_by_uuid,
-    get_upload_by_uuid,
 )
 from easyminer.database import get_db_session
 from easyminer.models import (
@@ -48,6 +42,7 @@ from easyminer.models import (
     FieldNumericDetail,
     FieldType,
     Instance,
+    Upload,
 )
 from easyminer.schemas.data import (
     AggregatedInstance,
@@ -62,10 +57,10 @@ from easyminer.schemas.data import (
 )
 from easyminer.schemas.task import TaskStatus
 from easyminer.storage import DiskStorage
-from easyminer.tasks import aggregate_field_values, process_csv
+from easyminer.tasks.process_chunk import process_chunk
 
-# Maximum chunk size for preview uploads (100KB)
-MAX_PREVIEW_CHUNK_SIZE = 100 * 1024
+# Maximum chunk size for preview uploads (1MB)
+MAX_CHUNK_SIZE = 1000 * 1024
 
 router = APIRouter(prefix=API_V1_PREFIX, tags=["Data"])
 
@@ -87,6 +82,7 @@ async def start_upload(db: Annotated[AsyncSession, Depends(get_db_session)], set
         )
 
     upload_uuid = await create_upload(db, settings)
+    await db.commit()
     return upload_uuid
 
 
@@ -113,89 +109,31 @@ async def start_preview_upload(
 async def upload_chunk(
     db: Annotated[AsyncSession, Depends(get_db_session)],
     upload_id: Annotated[UUID, Path()],
-    chunk: Annotated[
+    content: Annotated[
         str, Body(example=_csv_upload_example, media_type="text/plain")
     ] = "",  # NOTE: text/csv could possibly be used here
 ):
-    # TODO: add is_finished toggle that will be set to True when the last empty chunk is uploaded. Do this also for preview.
-    """Upload a chunk of data for an upload."""
-    storage = DiskStorage(pl.Path("../../var/data"))
+    if len(content) > MAX_CHUNK_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Chunk size exceeds {MAX_CHUNK_SIZE} bytes",
+        )
 
-    # Retrieve the upload by UUID
-    upload_record = await get_upload_by_uuid(db, upload_id)
-
-    if not upload_record:
+    upload = await db.scalar(select(Upload).where(Upload.uuid == upload_id))
+    if not upload:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Upload not found")
 
-    # if upload_record.data_source.is_finished:
-    #     raise HTTPException(
-    #         status_code=status.HTTP_403_FORBIDDEN, detail="Upload already closed"
-    #     )
+    chunk_datetime = datetime.now()
+    chunk_path = pathlib.Path(f"{upload_id}/chunks/{chunk_datetime.strftime('%Y%m%d%H%M%S%f')}.chunk")
+    storage = DiskStorage()
+    _, saved_path = storage.save(chunk_path, content.encode("utf-8"))
+    chunk_id = await create_chunk(db, upload.id, chunk_datetime, str(saved_path))
+    logger.info("Chunk %s created for upload %s", chunk_id, upload_id)
 
-    # Get upload attributes we'll need later
-    upload_id_value = upload_record.id
-    upload_media_type = upload_record.media_type
+    await db.commit()
 
-    # Get upload settings
-    encoding = "utf-8"
-    separator = ","
-    quote_char = '"'
-
-    # Try to get these values from the database
-    try:
-        if hasattr(upload_record, "encoding") and upload_record.encoding:
-            encoding = upload_record.encoding
-        if hasattr(upload_record, "separator") and upload_record.separator:
-            separator = upload_record.separator
-        if hasattr(upload_record, "quotes_char") and upload_record.quotes_char:
-            quote_char = upload_record.quotes_char
-    except Exception:
-        # Use defaults if there's an error
-        pass
-
-    # Get the associated data source
-    data_source_record = await get_data_source_by_upload_id(db, upload_id_value)
-    if not data_source_record:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found")
-
-    fields_count = (
-        await db.execute(select(func.count()).select_from(Field).where(Field.data_source_id == data_source_record.id))
-    ).scalar_one()
-
-    # Store data source ID before updating
-    data_source_id = data_source_record.id
-
-    # Update data source size
-    updated_ds = await update_data_source_size(db, data_source_id, len(chunk))
-    if updated_ds:
-        data_source_record = updated_ds
-
-    # For empty chunks (signaling end of upload), don't write to disk
-    if len(chunk) > 0:
-        # Use the storage service to save the chunk
-        chunk_path = pl.Path(f"{data_source_id}/chunks/{datetime.now().strftime('%Y%m%d%H%M%S%f')}.chunk")
-        _, path = storage.save(chunk_path, bytes(chunk, encoding))
-        dbchunk_id = await create_chunk(db, upload_id_value, str(path))
-        await db.flush()
-        await db.commit()
-        handle = process_csv.delay(
-            data_source_id=data_source_id,
-            upload_media_type=upload_media_type,
-            encoding=encoding,
-            separator=separator,
-            quote_char=quote_char,
-            create_fields=fields_count == 0,
-            chunk_id=dbchunk_id,
-        )
-        result = handle.get(timeout=5)
-        return result
-    # If this is the last chunk (empty chunk), process the data
-    elif len(chunk) == 0:
-        logger.info(f"Upload complete for data source {data_source_id}. Processing data...")
-        _ = await db.execute(update(DataSource).where(DataSource.id == data_source_id).values(is_finished=True))
-        await db.commit()
-        # NOTE: We could return the task ID here instead of waiting for the result. The user can poll for the task status later.
-        return None
+    result = process_chunk.delay(chunk_id)
+    return result.get(timeout=10)
 
 
 @router.post(
@@ -211,72 +149,8 @@ async def upload_preview_chunk(
     db: Annotated[AsyncSession, Depends(get_db_session)],
     upload_id: Annotated[UUID, Path()],
     chunk: Annotated[str, Body(example=_csv_upload_example, media_type="text/plain")] = "",
-) -> Response:
-    # TODO: check that the upload is not bigger than the set max_lines.
-    """Upload a chunk of data for an upload."""
-    storage = DiskStorage(pl.Path("../../var/data"))
-
-    # Retrieve the upload by UUID
-    upload_record = await get_preview_upload_by_uuid(db, upload_id)
-
-    if not upload_record:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Upload not found")
-
-    if upload_record.data_source.is_finished:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Upload already closed")
-
-    # Get upload attributes we'll need later
-    upload_id_value = upload_record.id
-    upload_media_type = upload_record.media_type
-
-    # Get upload settings
-    encoding = "utf-8"
-    separator = ","
-    quote_char = '"'
-
-    # Get the associated data source
-    data_source_record = await get_data_source_by_preview_upload_id(db, upload_id_value)
-    if not data_source_record:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found")
-
-    fields_count = (
-        await db.execute(select(func.count()).select_from(Field).where(Field.data_source_id == data_source_record.id))
-    ).scalar_one()
-
-    # Store data source ID before updating
-    data_source_id = data_source_record.id
-
-    # Update data source size
-    updated_ds = await update_data_source_size(db, data_source_id, len(chunk))
-    if updated_ds:
-        data_source_record = updated_ds
-
-        # For empty chunks (signaling end of upload), don't write to disk
-    if len(chunk) > 0:
-        # Use the storage service to save the chunk
-        chunk_path = pl.Path(f"{data_source_id}/chunks/{datetime.now().strftime('%Y%m%d%H%M%S%f')}.chunk")
-        _, path = storage.save(chunk_path, bytes(chunk, encoding))
-        dbchunk_id = await create_chunk(db, upload_id_value, str(path))
-        await db.flush()
-        await db.commit()
-        handle = process_csv.delay(
-            data_source_id=data_source_id,
-            upload_media_type=upload_media_type,
-            encoding=encoding,
-            separator=separator,
-            quote_char=quote_char,
-            create_fields=fields_count == 0,
-            chunk_id=dbchunk_id,
-        )
-        result = handle.get(timeout=5)
-        return Response(status_code=status.HTTP_202_ACCEPTED, content=result)
-    # If this is the last chunk (empty chunk), process the data
-    elif len(chunk) == 0:
-        logger.info(f"Upload complete for data source {data_source_id}. Processing data...")
-        _ = await db.execute(update(DataSource).where(DataSource.id == data_source_id).values(is_finished=True))
-        await db.commit()
-        # NOTE: We could return the task ID here instead of waiting for the result. The user can poll for the task status later.
-        return Response(status_code=status.HTTP_200_OK, content="Upload complete")
+):
+    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED)
 
 
 @router.get("/datasource")
@@ -742,15 +616,15 @@ async def get_aggregated_values(
         max = field_max
 
     # Create the task
-    task = aggregate_field_values.delay(
-        data_source_id=data_source.id,
-        field_id=field.id,
-        bins=bins,
-        min=min,
-        max=max,
-        min_inclusive=min_inclusive,
-        max_inclusive=max_inclusive,
-    )
+    # task = aggregate_field_values.delay(
+    #     data_source_id=data_source.id,
+    #     field_id=field.id,
+    #     bins=bins,
+    #     min=min,
+    #     max=max,
+    #     min_inclusive=min_inclusive,
+    #     max_inclusive=max_inclusive,
+    # )
 
     return TaskStatus(
         task_id=UUID(task.task_id),

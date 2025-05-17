@@ -24,7 +24,7 @@ from easyminer.schemas.preprocessing import (
     DatasetRead,
     TaskStatus,
 )
-from easyminer.tasks import create_dataset
+# from easyminer.tasks import create_dataset
 
 router = APIRouter(prefix=API_V1_PREFIX, tags=["Preprocessing"])
 
@@ -45,17 +45,18 @@ async def create_dataset_api(
     pmml: Annotated[str, Body()],
 ):
     """Create a task for the dataset creation from a data source."""
-    task = create_dataset.delay(dataSource, name, pmml)
-    if task:
-        return TaskStatus(
-            task_id=UUID(task.task_id),
-            task_name="create_dataset",
-            status_message="Task created successfully",
-            status_location=request.url_for("get_task_status", task_id=task.task_id).path,
-            result_location=request.url_for("get_task_result", task_id=task.task_id).path,
-        )
-    else:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    # task = create_dataset.delay(dataSource, name, pmml)
+    # if task:
+    #     return TaskStatus(
+    #         task_id=UUID(task.task_id),
+    #         task_name="create_dataset",
+    #         status_message="Task created successfully",
+    #         status_location=request.url_for("get_task_status", task_id=task.task_id).path,
+    #         result_location=request.url_for("get_task_result", task_id=task.task_id).path,
+    #     )
+    # else:
+    #     raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED)
 
 
 @router.get(

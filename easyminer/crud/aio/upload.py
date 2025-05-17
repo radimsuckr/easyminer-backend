@@ -1,10 +1,10 @@
 from uuid import UUID, uuid4
 
-from sqlalchemy import insert, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
-from easyminer.models import Chunk, DataSource, DataType, NullValue, PreviewUpload, Upload
+from easyminer.models import DataSource, DataType, NullValue, PreviewUpload, Upload
 from easyminer.schemas.data import FieldType, PreviewUploadSchema, StartUploadSchema
 
 
@@ -41,6 +41,7 @@ async def create_upload(db: AsyncSession, settings: StartUploadSchema) -> UUID:
     )
     db.add(data_source)
 
+    await db.flush()
     return data_source.upload.uuid
 
 
@@ -86,9 +87,3 @@ async def get_preview_upload_by_uuid(
 async def get_upload_by_id(db_session: AsyncSession, upload_id: int) -> Upload | None:
     """Get an upload by its ID."""
     return await db_session.get(Upload, upload_id)
-
-
-async def create_chunk(db_session: AsyncSession, upload_id: int, path: str) -> int:
-    stmt = insert(Chunk).values(upload_id=upload_id, path=path).returning(Chunk.id)
-    result = await db_session.execute(stmt)
-    return result.scalar_one()

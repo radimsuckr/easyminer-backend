@@ -1,5 +1,6 @@
 import os
 from enum import Enum
+from pathlib import Path
 
 from dotenv import load_dotenv
 from pydantic_settings import BaseSettings
@@ -8,6 +9,7 @@ _ = load_dotenv()
 
 
 API_V1_PREFIX = "/api/v1"
+ROOT_DIR: Path = Path(os.path.dirname(os.path.abspath(__file__)) + "/..").resolve()
 
 
 class Settings(BaseSettings):
@@ -42,15 +44,11 @@ class EasyMinerModules(str, Enum):
 
 
 _allowed_modules = {module.value for module in EasyMinerModules}
-easyminer_modules = set(
-    os.environ.get("EASYMINER_MODULES", "data,preprocessing,mining").split(",")
-)
+easyminer_modules = set(os.environ.get("EASYMINER_MODULES", "data,preprocessing,mining").split(","))
 if len(easyminer_modules) == 0:
     raise ValueError('"EASYMINER_MODULES" cannot be empty')
 if not easyminer_modules.issubset(_allowed_modules):
-    raise ValueError(
-        f'Invalid module in "EASYMINER_MODULES". Choose from {_allowed_modules}'
-    )
+    raise ValueError(f'Invalid module in "EASYMINER_MODULES". Choose from {_allowed_modules}')
 
 
 settings = Settings(

@@ -1,5 +1,8 @@
 import abc
 from pathlib import Path
+from typing import override
+
+from easyminer.config import ROOT_DIR
 
 
 class Storage(abc.ABC):
@@ -17,11 +20,13 @@ class Storage(abc.ABC):
 
 
 class DiskStorage(Storage):
-    def __init__(self, root: Path) -> None:
+    def __init__(self) -> None:
         super().__init__()
-        self._root = root.resolve()
+
+        self._root: Path = ROOT_DIR / "var" / "storage"
         self._root.mkdir(parents=True, exist_ok=True)
 
+    @override
     def save(self, path: Path, content: bytes):
         path = self._root / path
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -29,6 +34,7 @@ class DiskStorage(Storage):
             written = f.write(content)
         return written, path
 
+    @override
     def read(self, path: Path) -> bytes:
         """Read content from a file.
 
@@ -46,6 +52,7 @@ class DiskStorage(Storage):
             raise FileNotFoundError(f"File not found: {path}")
         return full_path.read_bytes()
 
+    @override
     def exists(self, path: Path) -> bool:
         """Check if a file or directory exists.
 
@@ -57,6 +64,7 @@ class DiskStorage(Storage):
         """
         return (self._root / path).exists()
 
+    @override
     def list_files(self, path: Path, pattern: str = "*") -> list[Path]:
         """List files in a directory.
 

@@ -87,12 +87,12 @@ class PreviewUpload(Base):
 class Chunk(Base):
     __tablename__: str = "chunk"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    uploaded_at: Mapped[datetime] = mapped_column(DateTime(), default=datetime.now)
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, index=True)
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime())
     path: Mapped[str] = mapped_column(String(255))
 
     upload_id: Mapped[int] = mapped_column(ForeignKey("upload.id", ondelete="CASCADE"))
-    upload: Mapped["Upload"] = relationship("Upload", back_populates="chunks")
+    upload: Mapped["Upload"] = relationship(back_populates="chunks")
 
 
 class DataSource(Base):
