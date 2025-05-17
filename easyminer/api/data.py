@@ -44,6 +44,7 @@ from easyminer.models import (
     Instance,
     Upload,
 )
+from easyminer.models.data import UploadState
 from easyminer.schemas.data import (
     AggregatedInstance,
     AggregatedInstanceValue,
@@ -122,6 +123,18 @@ async def upload_chunk(
     upload = await db.scalar(select(Upload).where(Upload.uuid == upload_id))
     if not upload:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Upload not found")
+    if upload.state == UploadState.locked:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Upload is locked, try again later")
+
+    # Lock the upload
+    logging.info("Locking the upload")
+    upload = (
+        await db.execute(
+            update(Upload).values(state=UploadState.locked).where(Upload.id == upload.id).returning(Upload)
+        )
+    ).scalar_one()
+    await db.flush()
+    logging.info("Locked")
 
     chunk_datetime = datetime.now()
     chunk_path = pathlib.Path(f"{upload_id}/chunks/{chunk_datetime.strftime('%Y%m%d%H%M%S%f')}.chunk")
@@ -132,8 +145,7 @@ async def upload_chunk(
 
     await db.commit()
 
-    result = process_chunk.delay(chunk_id)
-    return result.get(timeout=10)
+    _ = process_chunk.delay(chunk_id)
 
 
 @router.post(

@@ -1,5 +1,6 @@
+import enum
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, final
 from uuid import UUID as pyUUID
 
 from sqlalchemy import (
@@ -20,6 +21,14 @@ if TYPE_CHECKING:
     from easyminer.models import Dataset, PreviewUpload, Task, Upload
 
 
+@final
+class UploadState(int, enum.Enum):
+    initialized = 0
+    locked = 1
+    ready = 2
+    finished = 3
+
+
 class Upload(Base):
     __tablename__: str = "upload"
 
@@ -35,6 +44,9 @@ class Upload(Base):
     locale: Mapped[str] = mapped_column(String(20))
     compression: Mapped["CompressionType | None"] = mapped_column(Enum(CompressionType), nullable=True)
     preview_max_lines: Mapped[int | None] = mapped_column(Integer(), nullable=True)
+
+    state: Mapped[UploadState] = mapped_column(Enum(UploadState), default=UploadState.initialized)
+    last_change_at: Mapped[datetime] = mapped_column(DateTime(), default=datetime.now(UTC), onupdate=datetime.now(UTC))
 
     data_source: Mapped["DataSource"] = relationship(back_populates="upload")
     chunks: Mapped[list["Chunk"]] = relationship(
@@ -106,7 +118,6 @@ class DataSource(Base):
     size: Mapped[int] = mapped_column(default=0)
     created_at: Mapped[datetime] = mapped_column(default=datetime.now(UTC))
     updated_at: Mapped[datetime] = mapped_column(default=datetime.now(UTC), onupdate=datetime.now(UTC))
-    is_finished: Mapped[bool] = mapped_column(default=False)
 
     # Relationships
     fields: Mapped[list["Field"]] = relationship("Field", back_populates="data_source", cascade="all, delete-orphan")

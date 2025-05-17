@@ -1,9 +1,11 @@
 import logging
+import time
 
 import pydantic
+from sqlalchemy import update
 
 from easyminer.database import get_sync_db_session
-from easyminer.models import Chunk
+from easyminer.models import Chunk, Upload, UploadState
 from easyminer.worker import app
 
 logger = logging.getLogger(__name__)
@@ -22,6 +24,14 @@ def process_chunk(chunk_id: int) -> ProcessChunkResult:
             raise ValueError(f"Chunk with ID {chunk_id} not found")
 
         logger.info(f"Processing chunk {chunk_id} with path {chunk.path}")
+
+        # Unlock the upload
+        logger.info("Unlocking the upload")
+        _ = db.execute(update(Upload).values(state=UploadState.ready).where(Upload.id == chunk.upload_id))
+        logger.info("Unlocked")
+
+        time.sleep(5)
+        db.commit()
 
     return ProcessChunkResult(
         chunk_id=chunk_id,

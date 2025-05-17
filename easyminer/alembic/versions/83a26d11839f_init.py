@@ -1,8 +1,8 @@
 """init
 
-Revision ID: 3a957ff0f841
+Revision ID: 83a26d11839f
 Revises:
-Create Date: 2025-05-17 09:55:57.439900+02:00
+Create Date: 2025-05-17 11:02:12.953888+02:00
 
 """
 
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = "3a957ff0f841"
+revision: str = "83a26d11839f"
 down_revision: str | None = None
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
@@ -50,6 +50,8 @@ def upgrade() -> None:
         sa.Column("locale", sa.String(length=20), nullable=False),
         sa.Column("compression", sa.Enum("zip", "gzip", "bzip2", name="compressiontype"), nullable=True),
         sa.Column("preview_max_lines", sa.Integer(), nullable=True),
+        sa.Column("state", sa.Enum("initialized", "locked", "ready", "finished", name="uploadstate"), nullable=False),
+        sa.Column("last_change_at", sa.DateTime(), nullable=False),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_table(
@@ -61,6 +63,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["upload_id"], ["upload.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
+    op.create_index(op.f("ix_chunk_id"), "chunk", ["id"], unique=False)
     op.create_table(
         "data_source",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
@@ -69,7 +72,6 @@ def upgrade() -> None:
         sa.Column("size", sa.Integer(), nullable=False),
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column("updated_at", sa.DateTime(), nullable=False),
-        sa.Column("is_finished", sa.Boolean(), nullable=False),
         sa.Column("upload_id", sa.Integer(), nullable=False),
         sa.ForeignKeyConstraint(["upload_id"], ["upload.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
@@ -190,6 +192,7 @@ def downgrade() -> None:
     op.drop_table("data_type")
     op.drop_index(op.f("ix_data_source_id"), table_name="data_source")
     op.drop_table("data_source")
+    op.drop_index(op.f("ix_chunk_id"), table_name="chunk")
     op.drop_table("chunk")
     op.drop_table("upload")
     op.drop_table("task_result")

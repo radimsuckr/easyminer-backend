@@ -1,6 +1,6 @@
 import contextlib
 from collections.abc import AsyncGenerator, AsyncIterator, Generator
-from typing import Any
+from typing import Any, final
 
 from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import (
@@ -18,10 +18,14 @@ class Base(DeclarativeBase):
     pass
 
 
+@final
 class DatabaseSessionManager:
-    def __init__(self, host: str, engine_kwargs: dict[str, Any] = {}):
+    def __init__(self, host: str, engine_kwargs: dict[str, Any] | None = None):
+        if engine_kwargs is None:
+            engine_kwargs = {}
+
         self._engine = create_async_engine(host, **engine_kwargs)
-        self._sessionmaker = async_sessionmaker(autocommit=False, bind=self._engine)
+        self._sessionmaker = async_sessionmaker(self._engine)
 
     async def close(self):
         if self._engine is None:
@@ -70,10 +74,9 @@ async def get_db_session() -> AsyncGenerator[AsyncSession]:
 def get_sync_db_session() -> Generator[Session]:
     sync_engine = create_engine(
         settings.database_url_sync,
-        # echo=settings.echo_sql,
-        echo=False,
+        echo=settings.echo_sql,
     )
-    session = sessionmaker(sync_engine, expire_on_commit=False)()
+    session = sessionmaker(sync_engine)()
     try:
         yield session
     except Exception:
