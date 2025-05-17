@@ -58,9 +58,7 @@ class DatabaseSessionManager:
             await session.close()
 
 
-sessionmanager = DatabaseSessionManager(
-    settings.database_url, {"echo": settings.echo_sql}
-)
+sessionmanager = DatabaseSessionManager(settings.database_url, {"echo": settings.echo_sql})
 
 
 async def get_db_session() -> AsyncGenerator[AsyncSession]:
@@ -72,7 +70,8 @@ async def get_db_session() -> AsyncGenerator[AsyncSession]:
 def get_sync_db_session() -> Generator[Session]:
     sync_engine = create_engine(
         settings.database_url_sync,
-        echo=settings.echo_sql,
+        # echo=settings.echo_sql,
+        echo=False,
     )
     session = sessionmaker(sync_engine, expire_on_commit=False)()
     try:

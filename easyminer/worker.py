@@ -26,11 +26,11 @@ app = Celery(
 )
 app.conf.update(
     broker_connection_retry_on_startup=True,
-    accept_content={"pickle"},
-    result_accept_content={"pickle"},
-    event_serializer="pickle",
-    task_serializer="pickle",
-    result_serializer="pickle",
+    # accept_content={"pickle"},
+    # result_accept_content={"pickle"},
+    # event_serializer="pickle",
+    # task_serializer="pickle",
+    # result_serializer="pickle",
 )
 app.autodiscover_tasks(["easyminer"])
 

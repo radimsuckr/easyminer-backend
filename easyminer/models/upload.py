@@ -37,19 +37,13 @@ class Upload(Base):
     quotes_char: Mapped[str] = mapped_column(String(1))
     escape_char: Mapped[str] = mapped_column(String(1))
     locale: Mapped[str] = mapped_column(String(20))
-    compression: Mapped["CompressionType | None"] = mapped_column(
-        Enum(CompressionType), nullable=True
-    )
+    compression: Mapped["CompressionType | None"] = mapped_column(Enum(CompressionType), nullable=True)
     preview_max_lines: Mapped[int | None] = mapped_column(Integer(), nullable=True)
     null_values: Mapped[list[str]] = mapped_column(ARRAY(String(255)))
     data_types: Mapped[list[FieldType]] = mapped_column(ARRAY(Enum(FieldType)))
 
-    data_source_id: Mapped[int] = mapped_column(
-        ForeignKey("data_source.id", ondelete="CASCADE")
-    )
-    data_source: Mapped["DataSource"] = relationship(
-        "DataSource", back_populates="upload"
-    )
+    data_source_id: Mapped[int] = mapped_column(ForeignKey("data_source.id", ondelete="CASCADE"))
+    data_source: Mapped["DataSource"] = relationship("DataSource", back_populates="upload")
     chunks: Mapped[list["Chunk"]] = relationship(
         "Chunk",
         back_populates="upload",
@@ -66,13 +60,10 @@ class PreviewUpload(Base):
     uuid: Mapped[pyUUID] = mapped_column(UUID(), unique=True)
     max_lines: Mapped[int] = mapped_column(Integer())
     compression: Mapped[CompressionType | None] = mapped_column(Enum(CompressionType))
+    media_type: Mapped["MediaType"] = mapped_column(Enum(MediaType))
 
-    data_source_id: Mapped[int] = mapped_column(
-        ForeignKey("data_source.id", ondelete="CASCADE")
-    )
-    data_source: Mapped["DataSource"] = relationship(
-        "DataSource", back_populates="preview_upload", single_parent=True
-    )
+    data_source_id: Mapped[int] = mapped_column(ForeignKey("data_source.id", ondelete="CASCADE"))
+    data_source: Mapped["DataSource"] = relationship("DataSource", back_populates="preview_upload", single_parent=True)
 
 
 class Chunk(Base):

@@ -56,7 +56,6 @@ from easyminer.schemas.data import (
     FieldRead,
     FieldStatsSchema,
     FieldValueSchema,
-    MediaType,
     PreviewUploadSchema,
     StartUploadSchema,
     UploadResponseSchema,
@@ -163,6 +162,10 @@ async def upload_chunk(
     if not data_source_record:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found")
 
+    fields_count = (
+        await db.execute(select(func.count()).select_from(Field).where(Field.data_source_id == data_source_record.id))
+    ).scalar_one()
+
     # Store data source ID before updating
     data_source_id = data_source_record.id
 
@@ -176,11 +179,8 @@ async def upload_chunk(
         # Use the storage service to save the chunk
         chunk_path = pl.Path(f"{data_source_id}/chunks/{datetime.now().strftime('%Y%m%d%H%M%S%f')}.chunk")
         _, path = storage.save(chunk_path, bytes(chunk, encoding))
-        _ = await create_chunk(db, upload_id_value, str(path))
-    # If this is the last chunk (empty chunk), process the data
-    elif len(chunk) == 0:
-        logger.info(f"Upload complete for data source {data_source_id}. Processing data...")
-        _ = await db.execute(update(DataSource).where(DataSource.id == data_source_id).values(is_finished=True))
+        dbchunk_id = await create_chunk(db, upload_id_value, str(path))
+        await db.flush()
         await db.commit()
         handle = process_csv.delay(
             data_source_id=data_source_id,
@@ -188,10 +188,18 @@ async def upload_chunk(
             encoding=encoding,
             separator=separator,
             quote_char=quote_char,
+            create_fields=fields_count == 0,
+            chunk_id=dbchunk_id,
         )
-        result: UploadResponseSchema = handle.get(timeout=5)
-        # NOTE: We could return the task ID here instead of waiting for the result. The user can poll for the task status later.
+        result = handle.get(timeout=5)
         return result
+    # If this is the last chunk (empty chunk), process the data
+    elif len(chunk) == 0:
+        logger.info(f"Upload complete for data source {data_source_id}. Processing data...")
+        _ = await db.execute(update(DataSource).where(DataSource.id == data_source_id).values(is_finished=True))
+        await db.commit()
+        # NOTE: We could return the task ID here instead of waiting for the result. The user can poll for the task status later.
+        return None
 
 
 @router.post(
@@ -223,6 +231,7 @@ async def upload_preview_chunk(
 
     # Get upload attributes we'll need later
     upload_id_value = upload_record.id
+    upload_media_type = upload_record.media_type
 
     # Get upload settings
     encoding = "utf-8"
@@ -231,6 +240,12 @@ async def upload_preview_chunk(
 
     # Get the associated data source
     data_source_record = await get_data_source_by_preview_upload_id(db, upload_id_value)
+    if not data_source_record:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found")
+
+    fields_count = (
+        await db.execute(select(func.count()).select_from(Field).where(Field.data_source_id == data_source_record.id))
+    ).scalar_one()
 
     # Store data source ID before updating
     data_source_id = data_source_record.id
@@ -240,34 +255,32 @@ async def upload_preview_chunk(
     if updated_ds:
         data_source_record = updated_ds
 
-    # For empty chunks (signaling end of upload), don't write to disk
+        # For empty chunks (signaling end of upload), don't write to disk
     if len(chunk) > 0:
-        try:
-            # Use the storage service to save the chunk
-            chunk_path = pl.Path(f"{data_source_id}/chunks/{datetime.now().strftime('%Y%m%d%H%M%S%f')}.chunk")
-            _, path = storage.save(chunk_path, bytes(chunk, "utf-8"))
-            _ = await create_chunk(db, upload_id_value, str(path))
-        except Exception as e:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Error saving chunk: {str(e)}",
-            )
+        # Use the storage service to save the chunk
+        chunk_path = pl.Path(f"{data_source_id}/chunks/{datetime.now().strftime('%Y%m%d%H%M%S%f')}.chunk")
+        _, path = storage.save(chunk_path, bytes(chunk, encoding))
+        dbchunk_id = await create_chunk(db, upload_id_value, str(path))
+        await db.flush()
+        await db.commit()
+        handle = process_csv.delay(
+            data_source_id=data_source_id,
+            upload_media_type=upload_media_type,
+            encoding=encoding,
+            separator=separator,
+            quote_char=quote_char,
+            create_fields=fields_count == 0,
+            chunk_id=dbchunk_id,
+        )
+        result = handle.get(timeout=5)
+        return Response(status_code=status.HTTP_202_ACCEPTED, content=result)
     # If this is the last chunk (empty chunk), process the data
     elif len(chunk) == 0:
         logger.info(f"Upload complete for data source {data_source_id}. Processing data...")
         _ = await db.execute(update(DataSource).where(DataSource.id == data_source_id).values(is_finished=True))
         await db.commit()
-        _ = process_csv.delay(
-            data_source_id=data_source_id,
-            upload_media_type=MediaType.csv,
-            encoding=encoding,
-            separator=separator,
-            quote_char=quote_char,
-        )
-        return Response(status_code=status.HTTP_200_OK)
-
-    # Return 202 Accepted
-    return Response(status_code=status.HTTP_202_ACCEPTED)
+        # NOTE: We could return the task ID here instead of waiting for the result. The user can poll for the task status later.
+        return Response(status_code=status.HTTP_200_OK, content="Upload complete")
 
 
 @router.get("/datasource")

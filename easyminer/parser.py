@@ -113,7 +113,7 @@ class PmmlTaskParser:
             if column is not None and field is not None:
                 raw_bins[field.text].append(column.text)
 
-        bins: list[dict[str, list[str]]] = [{"value": k, "items": v} for k, v in raw_bins.items()]
+        bins: list[dict[str, str | list[str]]] = [{"value": k, "items": v} for k, v in raw_bins.items()]
         return NominalEnumerationAttribute(name=name, field_id=field_id, bins=bins)
 
     def _parse_equidistant(self, node: Element, name: str) -> EquidistantIntervalsAttribute | None:
@@ -231,7 +231,7 @@ if __name__ == "__main__":
             <DerivedField name="NewAttributeName" optype="categorical" dataType="string">
                 <MapValues>
                     <!-- The parser expects an integer ID here -->
-                    <FieldColumnPair field="1"/>
+                    <FieldColumnPair field="4"/>
                     <!-- NO InlineTable or other elements inside MapValues -->
                 </MapValues>
             </DerivedField>

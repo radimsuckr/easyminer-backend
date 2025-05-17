@@ -42,9 +42,10 @@ async def create_dataset_api(
     request: Request,
     dataSource: Annotated[int, Form()],
     name: Annotated[str, Form()],
+    pmml: Annotated[str, Body()],
 ):
     """Create a task for the dataset creation from a data source."""
-    task = create_dataset.delay(dataSource, name)
+    task = create_dataset.delay(dataSource, name, pmml)
     if task:
         return TaskStatus(
             task_id=UUID(task.task_id),

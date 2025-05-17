@@ -16,7 +16,7 @@ class DataSource(Base):
 
     __tablename__: str = "data_source"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, index=True)
     name: Mapped[str] = mapped_column(String(255))
     type: Mapped[DbType] = mapped_column(Enum(DbType), nullable=False)
     size: Mapped[int] = mapped_column(default=0)
@@ -55,7 +55,7 @@ class Field(Base):
 
     __tablename__: str = "field"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, index=True)
     name: Mapped[str] = mapped_column(String(255))
     data_type: Mapped["FieldType"] = mapped_column(Enum(FieldType))
 
@@ -74,7 +74,7 @@ class FieldNumericDetail(Base):
 
     __tablename__: str = "field_numeric_detail"
 
-    id: Mapped[int] = mapped_column(ForeignKey("field.id", ondelete="CASCADE"), primary_key=True)
+    id: Mapped[int] = mapped_column(ForeignKey("field.id", ondelete="CASCADE"), primary_key=True, index=True)
     min_value: Mapped[float] = mapped_column(Double)
     max_value: Mapped[float] = mapped_column(Double)
     avg_value: Mapped[float] = mapped_column(Double)
@@ -85,7 +85,7 @@ class Instance(Base):
 
     __tablename__: str = "data_source_instance"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, index=True)
     row_id: Mapped[int] = mapped_column(Integer)  # Row number in the original data
     value_nominal: Mapped[str | None] = mapped_column(String(255), nullable=True)
     value_numeric: Mapped[float | None] = mapped_column(Double, nullable=True)
@@ -101,7 +101,7 @@ class Value(Base):
 
     __tablename__: str = "data_source_value"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, index=True)
     value_nominal: Mapped[str | None] = mapped_column(String(255), nullable=True)
     value_numeric: Mapped[float | None] = mapped_column(Double, nullable=True)
     frequency: Mapped[int] = mapped_column(Integer)

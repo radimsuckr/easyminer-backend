@@ -1,6 +1,6 @@
 from uuid import UUID, uuid4
 
-from sqlalchemy import select
+from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
@@ -8,16 +8,12 @@ from easyminer.models import Chunk, DataSource, PreviewUpload, Upload
 from easyminer.schemas.data import FieldType, PreviewUploadSchema, StartUploadSchema
 
 
-async def create_upload(
-    db_session: AsyncSession, settings: StartUploadSchema
-) -> Upload:
+async def create_upload(db_session: AsyncSession, settings: StartUploadSchema) -> Upload:
     """Create a new upload entry in the database with settings."""
     if len(settings.data_types) == 0:
         raise ValueError("data_types cannot be empty")
     if len(settings.data_types) > len(FieldType):
-        raise ValueError(
-            f"data_types cannot have more than {len(FieldType)} values, got {len(settings.data_types)}"
-        )
+        raise ValueError(f"data_types cannot have more than {len(FieldType)} values, got {len(settings.data_types)}")
 
     upload_id = uuid4()
     upload = Upload(
@@ -46,9 +42,7 @@ async def create_upload(
     return upload
 
 
-async def create_preview_upload(
-    db_session: AsyncSession, settings: PreviewUploadSchema
-) -> PreviewUpload:
+async def create_preview_upload(db_session: AsyncSession, settings: PreviewUploadSchema) -> PreviewUpload:
     """Create a new upload entry in the database with settings."""
     upload_id = uuid4()
     upload = PreviewUpload(
@@ -68,14 +62,10 @@ async def create_preview_upload(
     return upload
 
 
-async def get_upload_by_uuid(
-    db_session: AsyncSession, upload_uuid: UUID
-) -> Upload | None:
+async def get_upload_by_uuid(db_session: AsyncSession, upload_uuid: UUID) -> Upload | None:
     """Get an upload by its UUID."""
     result = await db_session.execute(
-        select(Upload)
-        .options(joinedload(Upload.data_source))
-        .where(Upload.uuid == upload_uuid)
+        select(Upload).options(joinedload(Upload.data_source)).where(Upload.uuid == upload_uuid)
     )
     return result.scalar_one_or_none()
 
@@ -86,9 +76,7 @@ async def get_preview_upload_by_uuid(
 ) -> PreviewUpload | None:
     """Get an upload by its UUID."""
     result = await db_session.execute(
-        select(PreviewUpload)
-        .options(joinedload(PreviewUpload.data_source))
-        .where(PreviewUpload.uuid == uuid)
+        select(PreviewUpload).options(joinedload(PreviewUpload.data_source)).where(PreviewUpload.uuid == uuid)
     )
     return result.scalar_one_or_none()
 
@@ -98,7 +86,7 @@ async def get_upload_by_id(db_session: AsyncSession, upload_id: int) -> Upload |
     return await db_session.get(Upload, upload_id)
 
 
-async def create_chunk(db_session: AsyncSession, upload_id: int, path: str) -> None:
-    chunk = Chunk(upload_id=upload_id, path=path)
-    db_session.add(chunk)
-    await db_session.commit()
+async def create_chunk(db_session: AsyncSession, upload_id: int, path: str) -> int:
+    stmt = insert(Chunk).values(upload_id=upload_id, path=path).returning(Chunk.id)
+    result = await db_session.execute(stmt)
+    return result.scalar_one()
