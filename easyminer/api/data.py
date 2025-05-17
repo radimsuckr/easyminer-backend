@@ -15,7 +15,7 @@ from fastapi import (
     Request,
     status,
 )
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
@@ -111,20 +111,37 @@ async def upload_chunk(
             detail=f"Chunk size exceeds {MAX_CHUNK_SIZE} bytes",
         )
 
-    upload = await db.scalar(select(Upload).where(Upload.uuid == upload_id))
+    upload = await db.scalar(select(Upload).where(Upload.uuid == upload_id).options(joinedload(Upload.data_source)))
     if not upload:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Upload not found")
+
+    if upload.state == UploadState.finished:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Upload already closed")
+
     if upload.state == UploadState.locked:
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Upload is locked, try again later")
+
+    if upload.state == UploadState.ready and len(content) == 0:
+        upload.state = UploadState.finished
+        upload_size = await db.scalar(
+            select(func.count()).select_from(Instance).where(Instance.data_source_id == upload.data_source.id)
+        )
+        result = UploadResponseSchema(
+            id=upload.id,
+            name=upload.name,
+            type=upload.db_type,
+            size=upload_size or 0,
+        )
+        await db.commit()
+        return result
+
+    if len(content) == 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Empty chunk")
 
     # Lock the upload
     original_state = upload.state
     logging.info("Locking the upload")
-    upload = (
-        await db.execute(
-            update(Upload).values(state=UploadState.locked).where(Upload.id == upload.id).returning(Upload)
-        )
-    ).scalar_one()
+    upload.state = UploadState.locked
     await db.flush()
     logging.info("Locked")
 

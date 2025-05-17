@@ -41,7 +41,7 @@ def process_chunk(
                 logger.info(f"Header: {header}")
                 # Process header
                 for i, col in enumerate(header):
-                    logger.info(f"Processing column: {col}")
+                    logger.info(f"Processing header column: {col}")
                     field = Field(
                         name=col, index=i, data_type=FieldType.numeric, data_source_id=chunk.upload.data_source.id
                     )
@@ -54,7 +54,7 @@ def process_chunk(
             batch_size = 1000
             instance_values: list[dict[str, str | float | None]] = []
             for row in reader:
-                logger.info(f"Row: {row}")
+                logger.debug(f"Row: {row}")
                 for i, col in enumerate(row):
                     col_float: float | None = None
                     try:
@@ -72,11 +72,11 @@ def process_chunk(
                         }
                     )
                 if len(instance_values) % batch_size == 0:
-                    logger.info(f"Processing batch of {len(instance_values)} rows")
+                    logger.debug(f"Processing batch of {len(instance_values)} instances")
                     _ = db.execute(insert(Instance), instance_values)
                     instance_values.clear()
             if len(instance_values) > 0:
-                logger.info(f"Processing last batch of {len(instance_values)} rows")
+                logger.debug(f"Processing last batch of {len(instance_values)} instances")
                 _ = db.execute(insert(Instance), instance_values)
                 instance_values.clear()
 
