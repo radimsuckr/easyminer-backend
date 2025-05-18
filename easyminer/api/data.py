@@ -103,7 +103,7 @@ async def upload_chunk(
     db: Annotated[AsyncSession, Depends(get_db_session)],
     upload_id: Annotated[UUID, Path()],
     content: Annotated[
-        str, Body(example=_csv_upload_example, media_type="text/plain")
+        str, Body(examples=[_csv_upload_example], media_type="text/plain")
     ] = "",  # NOTE: text/csv could possibly be used here
 ):
     if len(content) > MAX_CHUNK_SIZE:
@@ -180,7 +180,7 @@ async def upload_chunk(
 async def upload_preview_chunk(
     db: Annotated[AsyncSession, Depends(get_db_session)],
     upload_id: Annotated[UUID, Path()],
-    chunk: Annotated[str, Body(example=_csv_upload_example, media_type="text/plain")] = "",
+    chunk: Annotated[str, Body(examples=[_csv_upload_example], media_type="text/plain")] = "",
 ):
     raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED)
 
@@ -235,7 +235,7 @@ async def get_data_source(
 async def rename_data_source(
     db: Annotated[AsyncSession, Depends(get_db_session)],
     id: Annotated[int, Path()],
-    name: Annotated[str, Body(example="A New Exciting Name", media_type="text/plain")],
+    name: Annotated[str, Body(examples=["A New Exciting Name"], media_type="text/plain")],
 ) -> None:
     data_source = await db.get(DataSource, id)
     if not data_source:
@@ -387,7 +387,7 @@ async def rename_field(
     db: Annotated[AsyncSession, Depends(get_db_session)],
     id: Annotated[int, Path()],
     field_id: Annotated[int, Path()],
-    name: Annotated[str, Body(example="New Field Name", media_type="text/plain")],
+    name: Annotated[str, Body(examples=["New Field Name"], media_type="text/plain")],
 ):
     data_source = await db.get(DataSource, id)
     if not data_source:

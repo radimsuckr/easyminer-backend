@@ -98,7 +98,7 @@ class DataSourceRead(DataSourceBase):
         description="UUID from either Upload or PreviewUpload relationship",
     )
 
-    model_config: ConfigDict = ConfigDict(from_attributes=True, json_encoders={UUID: str})
+    model_config: ConfigDict = ConfigDict(from_attributes=True)
 
     @model_validator(mode="before")
     @classmethod
