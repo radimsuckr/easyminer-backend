@@ -6,6 +6,7 @@ import sqlalchemy.exc
 from fastapi import FastAPI, HTTPException, Request, status
 
 from easyminer.api.data import router as data_router
+from easyminer.api.miner import router as miner_router
 from easyminer.api.preprocessing import router as preprocessing_router
 from easyminer.api.task import router as task_router
 from easyminer.config import (
@@ -45,6 +46,8 @@ if EasyMinerModules.data in easyminer_modules:
     app.include_router(data_router)
 if EasyMinerModules.preprocessing in easyminer_modules:
     app.include_router(preprocessing_router)
+if EasyMinerModules.miner in easyminer_modules:
+    app.include_router(miner_router)
 
 
 @app.exception_handler(sqlalchemy.exc.OperationalError)

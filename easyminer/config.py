@@ -40,11 +40,11 @@ if not celery_backend:
 class EasyMinerModules(str, Enum):
     data = "data"
     preprocessing = "preprocessing"
-    mining = "mining"
+    miner = "miner"
 
 
 _allowed_modules = {module.value for module in EasyMinerModules}
-easyminer_modules = set(os.environ.get("EASYMINER_MODULES", "data,preprocessing,mining").split(","))
+easyminer_modules = set(os.environ.get("EASYMINER_MODULES", "data,preprocessing,miner").split(","))
 if len(easyminer_modules) == 0:
     raise ValueError('"EASYMINER_MODULES" cannot be empty')
 if not easyminer_modules.issubset(_allowed_modules):
