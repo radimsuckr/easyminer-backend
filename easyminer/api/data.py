@@ -50,6 +50,7 @@ from easyminer.schemas.data import (
 from easyminer.schemas.task import TaskStatus
 from easyminer.storage import DiskStorage
 from easyminer.tasks import aggregate_field_values
+from easyminer.tasks.calculate_field_numeric_detail import calculate_field_numeric_detail
 from easyminer.tasks.process_chunk import process_chunk
 
 # Maximum chunk size for preview uploads (1MB)
@@ -134,7 +135,15 @@ async def upload_chunk(
             type=upload.db_type,
             size=upload.data_source.size,
         )
+
+        field_ids = (
+            await db.scalars(
+                select(Field.id).where(Field.data_source_id == upload.data_source.id).order_by(Field.index)
+            )
+        ).all()
         await db.commit()
+        for field_id in field_ids:
+            _ = calculate_field_numeric_detail.delay(field_id=field_id)
         return result
 
     if len(content) == 0:
@@ -322,7 +331,7 @@ async def get_fields(
     data_source = await db.get(DataSource, id, options=[joinedload(DataSource.fields), joinedload(DataSource.upload)])
     if not data_source:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found")
-    if not data_source.upload.state != UploadState.finished:
+    if data_source.upload.state != UploadState.finished:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Data source upload is not finished processing"
         )
@@ -463,9 +472,9 @@ async def get_field_stats(
 
     return FieldStatsSchema(
         id=field.id,
-        min=field_numerical_details.min_value,
-        max=field_numerical_details.max_value,
-        avg=field_numerical_details.avg_value,
+        min=float(field_numerical_details.min_value),
+        max=float(field_numerical_details.max_value),
+        avg=float(field_numerical_details.avg_value),
     )
 
 
