@@ -4,11 +4,12 @@ from uuid import UUID
 
 import celery.result
 from fastapi import APIRouter, Depends, HTTPException, Path, Request, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from easyminer.config import API_V1_PREFIX
 from easyminer.database import get_db_session
-from easyminer.models import Task
+from easyminer.models.task import Task
 from easyminer.schemas.task import TaskStatus
 
 router = APIRouter(prefix=API_V1_PREFIX, tags=["Tasks"])
@@ -24,7 +25,7 @@ router = APIRouter(prefix=API_V1_PREFIX, tags=["Tasks"])
 async def get_task_status(
     db: Annotated[AsyncSession, Depends(get_db_session)], request: Request, task_id: Annotated[UUID, Path()]
 ) -> TaskStatus:
-    task = await db.get(Task, task_id)
+    task = await db.scalar(select(Task).where(Task.task_id == task_id))
     if not task:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
 

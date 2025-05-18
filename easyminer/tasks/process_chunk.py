@@ -6,7 +6,7 @@ import pydantic
 from sqlalchemy import insert, update
 
 from easyminer.database import get_sync_db_session
-from easyminer.models import Chunk, Field, Instance, Upload, UploadState
+from easyminer.models.data import Chunk, Field, Instance, Upload, UploadState
 from easyminer.schemas.data import FieldType
 from easyminer.worker import app
 

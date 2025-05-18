@@ -8,7 +8,7 @@ from pydantic import ConfigDict, Field, model_validator
 from easyminer.schemas import BaseSchema
 
 if TYPE_CHECKING:
-    from easyminer.models import DataSource
+    from easyminer.models.data import DataSource
 
 
 class FieldType(str, Enum):
@@ -41,6 +41,7 @@ class PreviewUploadSchema(BaseSchema):
 
     max_lines: int = Field(..., description="Maximum number of lines to preview")
     compression: CompressionType | None = Field(..., description="Compression type (none, gzip, etc.)")
+    media_type: MediaType = Field(..., description="Media type")
 
 
 class PreviewResponse(BaseSchema):

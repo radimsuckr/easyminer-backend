@@ -19,7 +19,8 @@ from easyminer.database import Base
 from easyminer.schemas.data import CompressionType, DbType, FieldType, MediaType
 
 if TYPE_CHECKING:
-    from easyminer.models import Dataset, PreviewUpload, Task, Upload
+    from easyminer.models.data import PreviewUpload, Task, Upload
+    from easyminer.models.dataset import Attribute, Dataset
 
 
 @final
@@ -121,21 +122,21 @@ class DataSource(Base):
     updated_at: Mapped[datetime] = mapped_column(default=datetime.now(UTC), onupdate=datetime.now(UTC))
 
     # Relationships
-    fields: Mapped[list["Field"]] = relationship("Field", back_populates="data_source", cascade="all, delete-orphan")
-    instances: Mapped[list["Instance"]] = relationship(
-        "Instance", back_populates="data_source", cascade="all, delete-orphan"
+    fields: Mapped[list["Field"]] = relationship(back_populates="data_source", cascade="all, delete-orphan")
+    instances: Mapped[list["easyminer.models.data.Instance"]] = relationship(
+        back_populates="data_source", cascade="all, delete-orphan"
     )
-    values: Mapped[list["Value"]] = relationship("Value", back_populates="data_source", cascade="all, delete-orphan")
+    values: Mapped[list["easyminer.models.data.Value"]] = relationship(
+        back_populates="data_source", cascade="all, delete-orphan"
+    )
     upload_id: Mapped[int] = mapped_column(ForeignKey("upload.id", ondelete="CASCADE"))
     upload: Mapped["Upload"] = relationship(
         back_populates="data_source",
         cascade="all, delete-orphan",
         single_parent=True,
     )
-    tasks: Mapped[list["Task"]] = relationship("Task", back_populates="data_source", cascade="all, delete-orphan")
-    datasets: Mapped[list["Dataset"]] = relationship(
-        "Dataset", back_populates="data_source", cascade="all, delete-orphan"
-    )
+    tasks: Mapped[list["Task"]] = relationship(back_populates="data_source", cascade="all, delete-orphan")
+    datasets: Mapped[list["Dataset"]] = relationship(back_populates="data_source", cascade="all, delete-orphan")
 
 
 class Field(Base):
@@ -156,6 +157,7 @@ class Field(Base):
 
     data_source_id: Mapped[int] = mapped_column(ForeignKey("data_source.id", ondelete="CASCADE"))
     data_source: Mapped["DataSource"] = relationship("DataSource", back_populates="fields")
+    attributes: Mapped[list["Attribute"]] = relationship(back_populates="field", cascade="all, delete-orphan")
 
 
 class FieldNumericDetail(Base):

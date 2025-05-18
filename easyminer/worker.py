@@ -15,7 +15,7 @@ from sqlalchemy import insert, update
 
 from easyminer.config import celery_backend, celery_broker, logging_config
 from easyminer.database import get_sync_db_session
-from easyminer.models import Task, TaskStatusEnum
+from easyminer.models.task import Task, TaskStatusEnum
 
 logger = logging.getLogger(__name__)
 

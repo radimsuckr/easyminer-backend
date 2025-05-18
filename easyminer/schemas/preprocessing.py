@@ -1,8 +1,7 @@
-from enum import Enum
 from typing import Any
 from uuid import UUID
 
-from pydantic import Field
+from pydantic import ConfigDict, Field
 
 from easyminer.schemas import BaseSchema
 from easyminer.schemas.data import DbType
@@ -14,20 +13,6 @@ class Error(BaseSchema):
     code: int
     name: str
     message: str
-
-
-class DatasetType(str, Enum):
-    """Dataset type enum."""
-
-    LIMITED = "limited"
-    UNLIMITED = "unlimited"
-
-
-class DatasetBase(BaseSchema):
-    """Base schema for dataset."""
-
-    name: str
-    type: DatasetType
 
 
 class DatasetCreate(BaseSchema):
@@ -42,15 +27,19 @@ class DatasetRead(BaseSchema):
 
     id: int
     name: str
-    data_source: int
-    type: DatasetType
+    data_source_id: int
+    type: DbType
     size: int
+    is_active: bool
+
+    model_config: ConfigDict = ConfigDict(from_attributes=True)
 
 
 class DatasetUpdate(BaseSchema):
     """Schema for updating a dataset."""
 
     name: str
+
 
 class DatasetSchema(BaseSchema):
     id: int = Field(..., description="Dataset ID")

@@ -4,7 +4,7 @@ from decimal import Decimal
 from sqlalchemy import func, select
 
 from easyminer.database import get_sync_db_session
-from easyminer.models import Field, Instance
+from easyminer.models.data import Field, Instance
 from easyminer.worker import app
 
 logger = logging.getLogger(__name__)

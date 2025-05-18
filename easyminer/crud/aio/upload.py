@@ -2,12 +2,11 @@ from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from easyminer.models import DataSource, DataType, NullValue, PreviewUpload, Upload
+from easyminer.models.data import DataSource, DataType, NullValue, PreviewUpload, Upload
 from easyminer.schemas.data import FieldType, PreviewUploadSchema, StartUploadSchema
 
 
 async def create_upload(db: AsyncSession, settings: StartUploadSchema) -> UUID:
-    """Create a new upload entry in the database with settings."""
     if len(settings.data_types) == 0:
         raise ValueError("data_types cannot be empty")
     if len(settings.data_types) > len(FieldType):
@@ -43,21 +42,21 @@ async def create_upload(db: AsyncSession, settings: StartUploadSchema) -> UUID:
     return data_source.upload.uuid
 
 
-async def create_preview_upload(db_session: AsyncSession, settings: PreviewUploadSchema) -> PreviewUpload:
-    """Create a new upload entry in the database with settings."""
+async def create_preview_upload(db: AsyncSession, settings: PreviewUploadSchema) -> UUID:
     upload_id = uuid4()
     upload = PreviewUpload(
         uuid=upload_id,
         max_lines=settings.max_lines,
         compression=settings.compression,
     )
-    db_session.add(upload)
+    db.add(upload)
+
     data_source = DataSource(
         name=f"preview-{upload_id}",
         type="limited",
         preview_upload=upload,
     )
-    db_session.add(data_source)
-    await db_session.commit()
-    await db_session.refresh(upload)
-    return upload
+    db.add(data_source)
+
+    await db.flush()
+    return upload.uuid

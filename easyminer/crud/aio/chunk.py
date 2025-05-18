@@ -2,7 +2,7 @@ from datetime import datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from easyminer.models import Chunk
+from easyminer.models.data import Chunk
 
 
 async def create_chunk(db: AsyncSession, upload_id: int, uploaded_at: datetime, path: str) -> int:

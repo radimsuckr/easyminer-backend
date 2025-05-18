@@ -27,21 +27,21 @@ from easyminer.crud.aio.upload import (
     create_upload,
 )
 from easyminer.database import get_db_session
-from easyminer.models import (
+from easyminer.models.data import (
     DataSource,
     Field,
     FieldNumericDetail,
-    FieldType,
     Instance,
     Upload,
+    UploadState,
 )
-from easyminer.models.data import UploadState
 from easyminer.schemas.data import (
     AggregatedInstance,
     AggregatedInstanceValue,
     DataSourceRead,
     FieldRead,
     FieldStatsSchema,
+    FieldType,
     FieldValueSchema,
     PreviewUploadSchema,
     StartUploadSchema,
@@ -49,7 +49,7 @@ from easyminer.schemas.data import (
 )
 from easyminer.schemas.task import TaskStatus
 from easyminer.storage import DiskStorage
-from easyminer.tasks import aggregate_field_values
+from easyminer.tasks.aggregate_field_values import aggregate_field_values
 from easyminer.tasks.calculate_field_numeric_detail import calculate_field_numeric_detail
 from easyminer.tasks.process_chunk import process_chunk
 
@@ -84,8 +84,14 @@ async def start_upload(db: Annotated[AsyncSession, Depends(get_db_session)], set
 async def start_preview_upload(
     db: Annotated[AsyncSession, Depends(get_db_session)], settings: PreviewUploadSchema
 ) -> UUID:
-    upload = await create_preview_upload(db, settings)
-    return upload.uuid
+    if settings.media_type != "csv":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only CSV uploads are supported",
+        )
+
+    upload_uuid = await create_preview_upload(db, settings)
+    return upload_uuid
 
 
 @router.post(
@@ -104,8 +110,8 @@ async def upload_chunk(
     db: Annotated[AsyncSession, Depends(get_db_session)],
     upload_id: Annotated[UUID, Path()],
     content: Annotated[
-        str, Body(examples=[_csv_upload_example], media_type="text/plain")
-    ] = "",  # NOTE: text/csv could possibly be used here
+        str, Body(examples=[_csv_upload_example], media_type="text/plain")  # NOTE: text/csv could possibly be used here
+    ] = "",
 ):
     if len(content) > MAX_CHUNK_SIZE:
         raise HTTPException(
@@ -189,7 +195,9 @@ async def upload_chunk(
 async def upload_preview_chunk(
     db: Annotated[AsyncSession, Depends(get_db_session)],
     upload_id: Annotated[UUID, Path()],
-    chunk: Annotated[str, Body(examples=[_csv_upload_example], media_type="text/plain")] = "",
+    content: Annotated[
+        str, Body(examples=[_csv_upload_example], media_type="text/plain")  # NOTE: text/csv could possibly be used here
+    ] = "",
 ):
     raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED)
 
@@ -308,7 +316,7 @@ async def get_instances(
                 values=[
                     AggregatedInstanceValue(field=instance.field.index, value=instance.value_nominal)
                     if instance.value_numeric is None
-                    else AggregatedInstanceValue(field=instance.field.index, value=instance.value_numeric)
+                    else AggregatedInstanceValue(field=instance.field.index, value=float(instance.value_numeric))
                     for instance in group
                 ],
             )

@@ -3,7 +3,7 @@ import logging
 from sqlalchemy import func, select
 
 from easyminer.database import get_sync_db_session
-from easyminer.models import Field, FieldNumericDetail, Instance
+from easyminer.models.data import Field, FieldNumericDetail, Instance
 from easyminer.worker import app
 
 logger = logging.getLogger(__name__)
