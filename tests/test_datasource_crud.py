@@ -2,7 +2,7 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from easyminer.crud.aio.upload import create_upload
+from easyminer.crud.aio.data import create_upload
 from easyminer.models.data import Upload
 from easyminer.schemas.data import DbType, FieldType, MediaType, StartUploadSchema, UploadFormat
 
