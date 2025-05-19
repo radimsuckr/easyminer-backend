@@ -1,6 +1,6 @@
 from easyminer.database import get_sync_db_session
 from easyminer.models.data import DataSource
-from easyminer.models.dataset import Dataset
+from easyminer.models.preprocessing import Dataset
 from easyminer.worker import app
 
 

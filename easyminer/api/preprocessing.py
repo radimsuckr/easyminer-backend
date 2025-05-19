@@ -18,7 +18,7 @@ from sqlalchemy.orm import joinedload
 
 from easyminer.config import API_V1_PREFIX
 from easyminer.database import get_db_session
-from easyminer.models.dataset import Attribute, Dataset, Value
+from easyminer.models.preprocessing import Attribute, Dataset, Value
 from easyminer.schemas.preprocessing import (
     AttributeRead,
     AttributeValueRead,

@@ -48,10 +48,10 @@ class Attribute(Base):
         nullable=False,
     )
     field: Mapped["Field"] = relationship(back_populates="attributes")
-    instances: Mapped[list["easyminer.models.dataset.Instance"]] = relationship(
+    instances: Mapped[list["easyminer.models.preprocessing.Instance"]] = relationship(
         back_populates="attribute", cascade="all, delete-orphan"
     )
-    values: Mapped[list["easyminer.models.dataset.Value"]] = relationship(
+    values: Mapped[list["easyminer.models.preprocessing.Value"]] = relationship(
         back_populates="attribute", cascade="all, delete-orphan"
     )
 

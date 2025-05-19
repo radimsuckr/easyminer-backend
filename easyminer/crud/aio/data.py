@@ -1,8 +1,9 @@
+from datetime import datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from easyminer.models.data import DataSource, DataType, NullValue, PreviewUpload, Upload
+from easyminer.models.data import Chunk, DataSource, DataType, NullValue, PreviewUpload, Upload
 from easyminer.schemas.data import FieldType, PreviewUploadSchema, StartUploadSchema
 
 
@@ -60,3 +61,14 @@ async def create_preview_upload(db: AsyncSession, settings: PreviewUploadSchema)
 
     await db.flush()
     return upload.uuid
+
+
+async def create_chunk(db: AsyncSession, upload_id: int, uploaded_at: datetime, path: str) -> int:
+    chunk = Chunk(
+        upload_id=upload_id,
+        uploaded_at=uploaded_at,
+        path=path,
+    )
+    db.add(chunk)
+    await db.flush()
+    return chunk.id

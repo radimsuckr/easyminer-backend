@@ -21,8 +21,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from easyminer.config import API_V1_PREFIX
-from easyminer.crud.aio.chunk import create_chunk
-from easyminer.crud.aio.upload import (
+from easyminer.crud.aio.data import (
+    create_chunk,
     create_preview_upload,
     create_upload,
 )

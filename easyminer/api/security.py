@@ -12,9 +12,7 @@ class EasyminerHTTPBearer(HTTPBearer):
         creds = await super().__call__(request)
         if creds:
             if creds.credentials != STATIC_PASSWORD:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN, detail="Invalid credentials."
-                )
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid credentials.")
             return creds
         else:
             raise HTTPException(

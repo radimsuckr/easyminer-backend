@@ -20,7 +20,7 @@ from easyminer.schemas.data import CompressionType, DbType, FieldType, MediaType
 
 if TYPE_CHECKING:
     from easyminer.models.data import PreviewUpload, Task, Upload
-    from easyminer.models.dataset import Attribute, Dataset
+    from easyminer.models.preprocessing import Attribute, Dataset
 
 
 @final

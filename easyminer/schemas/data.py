@@ -172,3 +172,11 @@ class AggregatedInstance(BaseSchema):
 
     id: int = Field(description="Row number (1-based)")
     values: list[AggregatedInstanceValue] = Field(description="List of field-value pairs")
+
+
+class Value(BaseSchema):
+    """A value for a field with its frequency."""
+
+    id: int
+    value: Any = None
+    frequency: int
