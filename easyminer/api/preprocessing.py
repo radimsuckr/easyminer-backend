@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from easyminer.config import API_V1_PREFIX
+from easyminer.api.task import router as task_router
 from easyminer.database import get_db_session
 from easyminer.models.preprocessing import Attribute, Dataset, Value
 from easyminer.schemas.preprocessing import (
@@ -25,6 +26,7 @@ from easyminer.schemas.preprocessing import (
     DatasetRead,
     TaskStatus,
 )
+from easyminer.tasks.create_attribute import create_attribute as task_create_attribute
 from easyminer.tasks.create_dataset import create_dataset
 
 router = APIRouter(prefix=API_V1_PREFIX, tags=["Preprocessing"])
@@ -122,11 +124,24 @@ async def list_attributes(
 async def create_attribute(
     db: Annotated[AsyncSession, Depends(get_db_session)],
     dataset_id: Annotated[int, Path()],
-    body: Annotated[str, Body()],
+    body: Annotated[str, Body(media_type="application/xml")],
 ) -> TaskStatus:
     """Create a task for the attribute creation from a data source field."""
-    # TODO: Implement this endpoint
-    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED)
+    dataset = await db.get(Dataset, dataset_id, options=[joinedload(Dataset.attributes)])
+    if not dataset:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset not found")
+
+    task = task_create_attribute.delay(dataset_id, body)
+    if task:
+        return TaskStatus(
+            task_id=UUID(task.task_id),
+            task_name="create_attribute",
+            status_message="Task created successfully",
+            status_location=task_router.url_path_for("get_task_status", task_id=task.task_id),
+            result_location=task_router.url_path_for("get_task_result", task_id=task.task_id),
+        )
+    else:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @router.delete("/dataset/{dataset_id}/attribute/{attribute_id}")

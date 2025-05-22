@@ -1,4 +1,5 @@
 from collections import defaultdict
+from decimal import Decimal
 from xml.etree.ElementTree import Element
 
 import defusedxml.ElementTree as ET
@@ -9,37 +10,108 @@ class SimpleAttribute(BaseModel):
     name: str
     field_id: int
 
+    def transform(self, value: str | Decimal) -> str | Decimal:
+        return value
+
 
 class NominalEnumerationAttribute(BaseModel):
     name: str
     field_id: int
     bins: list[dict[str, list[str]]]
 
+    def transform(self, value: str | Decimal) -> str | None:
+        for bin in self.bins:
+            for bin_label, items in bin.items():
+                if value in items:
+                    return bin_label
+        return None
+
 
 class EquidistantIntervalsAttribute(BaseModel):
     name: str
     field_id: int
     bins: int
+    min_value: Decimal
+    max_value: Decimal
+
+    def transform(self, value: str | Decimal) -> str:
+        if isinstance(value, str):
+            raise NotImplementedError()  # TODO: improve
+
+        width = (self.max_value - self.min_value) / self.bins
+
+        for i in range(self.bins):
+            lower = self.min_value + i * width
+            upper = lower + width
+            if lower <= value < upper or (i == self.bins - 1 and value == upper):
+                return f"[{lower}, {upper})"
+        return "out_of_range"
 
 
 class EquifrequentIntervalsAttribute(BaseModel):
     name: str
     field_id: int
     bins: int
+    cutpoints: list[Decimal]
+
+    def transform(self, value: str | Decimal) -> str:
+        if isinstance(value, str):
+            raise NotImplementedError()  # TODO: improve
+
+        for i, cut in enumerate(self.cutpoints):
+            if value < cut:
+                return f"bin_{i}"
+        return f"bin_{len(self.cutpoints)}"
 
 
 class EquisizedIntervalsAttribute(BaseModel):
     name: str
     field_id: int
-    support: float
+    support: Decimal
+    min_value: Decimal
+    max_value: Decimal
+
+    def transform(self, value: str | Decimal) -> str:
+        if isinstance(value, str):
+            raise NotImplementedError()  # TODO: improve
+
+        if self.max_value <= self.min_value:
+            raise ValueError("Invalid min/max values")
+
+        range_ = self.max_value - self.min_value
+        bin_width = range_ * Decimal(self.support)
+        if bin_width <= 0:
+            raise ValueError("Invalid bin width")
+
+        bin_index = int((value - self.min_value) / bin_width)
+        max_bin = int(1 / self.support) - 1  # last bin inclusive
+        bin_index = min(max(bin_index, 0), max_bin)
+        bin_start = self.min_value + bin_width * bin_index
+        bin_end = bin_start + bin_width
+        return f"[{bin_start}, {bin_end})"
 
 
 class NumericIntervalsAttribute(BaseModel):
     class Interval(BaseModel):
-        from_value: float
+        from_value: Decimal
         from_inclusive: bool
-        to_value: float
+        to_value: Decimal
         to_inclusive: bool
+
+        def contains(self, value: Decimal) -> bool:
+            if self.from_inclusive:
+                if value < self.from_value:
+                    return False
+            else:
+                if value <= self.from_value:
+                    return False
+            if self.to_inclusive:
+                if value > self.to_value:
+                    return False
+            else:
+                if value >= self.to_value:
+                    return False
+            return True
 
     class Bin(BaseModel):
         bin_value: str
@@ -48,6 +120,16 @@ class NumericIntervalsAttribute(BaseModel):
     name: str
     field_id: int
     bins: list["NumericIntervalsAttribute.Bin"]
+
+    def transform(self, value: str | Decimal) -> str | None:
+        if isinstance(value, str):
+            raise NotImplementedError()  # TODO: improve
+
+        for bin in self.bins:
+            for interval in bin.intervals:
+                if interval.contains(value):
+                    return bin.bin_value
+        return None
 
 
 Attribute = (
@@ -247,3 +329,150 @@ if __name__ == "__main__":
     # Print the result
     print("Parsed Attributes:")
     print(parsed_attributes)
+    attr = parsed_attributes[0]
+    print(attr.name)
+    print(attr.transform(Decimal("123.45")))
+
+    # # Simulated user-uploaded data row
+    # sample_row = {
+    #     1: "green",
+    #     2: Decimal("3.5"),
+    #     3: Decimal("8.7"),
+    #     4: Decimal("10.0"),
+    #     5: Decimal("2.3"),
+    #     6: Decimal("12.1"),
+    # }
+    #
+    # # Define attributes
+    # attrs = [
+    #     SimpleAttribute(name="simple", field_id=1),
+    #     NominalEnumerationAttribute(
+    #         name="nominal_enum", field_id=1, bins=[{"color": ["red", "green"]}, {"other": ["blue", "yellow"]}]
+    #     ),
+    #     NumericIntervalsAttribute(
+    #         name="numeric_intervals",
+    #         field_id=5,
+    #         bins=[
+    #             NumericIntervalsAttribute.Bin(
+    #                 bin_value="low",
+    #                 intervals=[
+    #                     NumericIntervalsAttribute.Interval(
+    #                         from_value=0.0, from_inclusive=True, to_value=3.0, to_inclusive=True
+    #                     )
+    #                 ],
+    #             ),
+    #             NumericIntervalsAttribute.Bin(
+    #                 bin_value="high",
+    #                 intervals=[
+    #                     NumericIntervalsAttribute.Interval(
+    #                         from_value=3.0, from_inclusive=False, to_value=10.0, to_inclusive=False
+    #                     )
+    #                 ],
+    #             ),
+    #         ],
+    #     ),
+    # ]
+    #
+    # # Apply transformations
+    # for attr in attrs:
+    #     try:
+    #         value = sample_row.get(attr.field_id)
+    #         if value is None:
+    #             print(f"{attr.name} not found in sample row")
+    #             continue
+    #         transformed = attr.transform(value)
+    #         print(f"{attr.name} -> {transformed}")
+    #     except Exception as e:
+    #         print(f"{attr.name} transform failed: {e}")
+    #
+    # print("---")
+    #
+    # from collections import defaultdict
+    #
+    # # Simulate dataset: list of rows
+    # dataset = [
+    #     {1: "red", 2: Decimal("1.0"), 3: Decimal("3.0"), 4: Decimal("1.0"), 5: Decimal("2.0")},
+    #     {1: "blue", 2: Decimal("2.0"), 3: Decimal("6.0"), 4: Decimal("6.0"), 5: Decimal("5.0")},
+    #     {1: "green", 2: Decimal("3.0"), 3: Decimal("9.0"), 4: Decimal("11.0"), 5: Decimal("7.5")},
+    # ]
+    #
+    # # 1. SimpleAttribute
+    # simple = SimpleAttribute(name="simple", field_id=1)
+    #
+    # # 2. NominalEnumerationAttribute
+    # nominal = NominalEnumerationAttribute(
+    #     name="nom_enum",
+    #     field_id=1,
+    #     bins=[
+    #         {"color1": ["red", "green"]},
+    #         {"color2": ["blue"]},
+    #     ],
+    # )
+    #
+    # # 3. EquidistantIntervalsAttribute — must include min and max
+    # equidistant = EquidistantIntervalsAttribute(
+    #     name="eqdist",
+    #     field_id=2,
+    #     bins=3,
+    #     min_value=Decimal("1.0"),
+    #     max_value=Decimal("3.0"),
+    # )
+    #
+    # # 4. EquifrequentIntervalsAttribute — must include cutpoints
+    # equifrequent = EquifrequentIntervalsAttribute(
+    #     name="eqfreq",
+    #     field_id=3,
+    #     bins=3,
+    #     cutpoints=[Decimal("4.5"), Decimal("7.5")],  # splits values: <=4.5, 4.5–7.5, >7.5
+    # )
+    #
+    # # 5. EquisizedIntervalsAttribute — must include min and max
+    # equisized = EquisizedIntervalsAttribute(
+    #     name="eqsize",
+    #     field_id=4,
+    #     support=Decimal("5.0"),
+    #     min_value=Decimal("1.0"),
+    #     max_value=Decimal("11.0"),
+    # )
+    #
+    # # 6. NumericIntervalsAttribute — uses hand-crafted intervals
+    # numeric = NumericIntervalsAttribute(
+    #     name="numint",
+    #     field_id=5,
+    #     bins=[
+    #         NumericIntervalsAttribute.Bin(
+    #             bin_value="low",
+    #             intervals=[
+    #                 NumericIntervalsAttribute.Interval(
+    #                     from_value=1.0, from_inclusive=True, to_value=4.0, to_inclusive=False
+    #                 )
+    #             ],
+    #         ),
+    #         NumericIntervalsAttribute.Bin(
+    #             bin_value="medium",
+    #             intervals=[
+    #                 NumericIntervalsAttribute.Interval(
+    #                     from_value=4.0, from_inclusive=True, to_value=6.0, to_inclusive=True
+    #                 )
+    #             ],
+    #         ),
+    #         NumericIntervalsAttribute.Bin(
+    #             bin_value="high",
+    #             intervals=[
+    #                 NumericIntervalsAttribute.Interval(
+    #                     from_value=6.0, from_inclusive=False, to_value=10.0, to_inclusive=True
+    #                 )
+    #             ],
+    #         ),
+    #     ],
+    # )
+    #
+    # attributes = [simple, nominal, equidistant, equifrequent, equisized, numeric]
+    #
+    # # Run transformation
+    # for row in dataset:
+    #     for col in row:
+    #         for attr in attributes:
+    #             result = attr.transform(col)
+    #             print(f"{attr.name}({row[attr.field_id]}) -> {result}")
+    #     print("--------------")

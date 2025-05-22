@@ -97,8 +97,6 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="Run the mock server")
-    parser.add_argument(
-        "--port", type=int, default=8001, help="Port to run the server on"
-    )
+    parser.add_argument("--port", type=int, default=8001, help="Port to run the server on")
     args = parser.parse_args()
     run(port=args.port)
