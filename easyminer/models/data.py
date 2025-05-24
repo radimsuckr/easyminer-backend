@@ -19,8 +19,8 @@ from easyminer.database import Base
 from easyminer.schemas.data import CompressionType, DbType, FieldType, MediaType
 
 if TYPE_CHECKING:
-    from easyminer.models.data import PreviewUpload, Task, Upload
     from easyminer.models.preprocessing import Attribute, Dataset
+    from easyminer.models.task import Task
 
 
 @final
@@ -51,20 +51,12 @@ class Upload(Base):
     last_change_at: Mapped[datetime] = mapped_column(DateTime(), default=datetime.now(UTC), onupdate=datetime.now(UTC))
 
     data_source: Mapped["DataSource"] = relationship(back_populates="upload")
-    chunks: Mapped[list["Chunk"]] = relationship(
-        "Chunk",
-        back_populates="upload",
-        cascade="all, delete-orphan",
-    )
+    chunks: Mapped[list["Chunk"]] = relationship("Chunk", back_populates="upload", cascade="all, delete-orphan")
     null_values: Mapped[list["NullValue"]] = relationship(
-        "NullValue",
-        back_populates="upload",
-        cascade="all, delete-orphan",
+        "NullValue", back_populates="upload", cascade="all, delete-orphan"
     )
     data_types: Mapped[list["DataType"]] = relationship(
-        "DataType",
-        back_populates="upload",
-        cascade="all, delete-orphan",
+        "DataType", back_populates="upload", cascade="all, delete-orphan"
     )
 
 
@@ -123,17 +115,13 @@ class DataSource(Base):
 
     # Relationships
     fields: Mapped[list["Field"]] = relationship(back_populates="data_source", cascade="all, delete-orphan")
-    instances: Mapped[list["easyminer.models.data.Instance"]] = relationship(
+    instances: Mapped[list["DataSourceInstance"]] = relationship(
         back_populates="data_source", cascade="all, delete-orphan"
     )
-    values: Mapped[list["easyminer.models.data.Value"]] = relationship(
-        back_populates="data_source", cascade="all, delete-orphan"
-    )
+    values: Mapped[list["DataSourceValue"]] = relationship(back_populates="data_source", cascade="all, delete-orphan")
     upload_id: Mapped[int] = mapped_column(ForeignKey("upload.id", ondelete="CASCADE"))
     upload: Mapped["Upload"] = relationship(
-        back_populates="data_source",
-        cascade="all, delete-orphan",
-        single_parent=True,
+        back_populates="data_source", cascade="all, delete-orphan", single_parent=True
     )
     tasks: Mapped[list["Task"]] = relationship(back_populates="data_source", cascade="all, delete-orphan")
     datasets: Mapped[list["Dataset"]] = relationship(back_populates="data_source", cascade="all, delete-orphan")
@@ -171,7 +159,7 @@ class FieldNumericDetail(Base):
     avg_value: Mapped[Decimal] = mapped_column(DECIMAL)
 
 
-class Instance(Base):
+class DataSourceInstance(Base):
     """Represents a single cell in the data source."""
 
     __tablename__: str = "data_source_instance"
@@ -188,7 +176,7 @@ class Instance(Base):
     field: Mapped["Field"] = relationship("Field")
 
 
-class Value(Base):
+class DataSourceValue(Base):
     """Represents unique values and their frequencies."""
 
     __tablename__: str = "data_source_value"

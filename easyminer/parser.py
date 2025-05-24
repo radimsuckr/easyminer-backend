@@ -1,5 +1,4 @@
 from collections import defaultdict
-from decimal import Decimal
 from xml.etree.ElementTree import Element
 
 import defusedxml.ElementTree as ET
@@ -10,7 +9,7 @@ class SimpleAttribute(BaseModel):
     name: str
     field_id: int
 
-    def transform(self, value: str | Decimal) -> str | Decimal:
+    def transform(self, value: str | float) -> str | float:
         return value
 
 
@@ -19,7 +18,7 @@ class NominalEnumerationAttribute(BaseModel):
     field_id: int
     bins: list[dict[str, list[str]]]
 
-    def transform(self, value: str | Decimal) -> str | None:
+    def transform(self, value: str | float) -> str | None:
         for bin in self.bins:
             for bin_label, items in bin.items():
                 if value in items:
@@ -31,10 +30,10 @@ class EquidistantIntervalsAttribute(BaseModel):
     name: str
     field_id: int
     bins: int
-    min_value: Decimal
-    max_value: Decimal
+    min_value: float
+    max_value: float
 
-    def transform(self, value: str | Decimal) -> str:
+    def transform(self, value: str | float) -> str:
         if isinstance(value, str):
             raise NotImplementedError()  # TODO: improve
 
@@ -52,9 +51,9 @@ class EquifrequentIntervalsAttribute(BaseModel):
     name: str
     field_id: int
     bins: int
-    cutpoints: list[Decimal]
+    cutpoints: list[float]
 
-    def transform(self, value: str | Decimal) -> str:
+    def transform(self, value: str | float) -> str:
         if isinstance(value, str):
             raise NotImplementedError()  # TODO: improve
 
@@ -67,11 +66,11 @@ class EquifrequentIntervalsAttribute(BaseModel):
 class EquisizedIntervalsAttribute(BaseModel):
     name: str
     field_id: int
-    support: Decimal
-    min_value: Decimal
-    max_value: Decimal
+    support: float
+    min_value: float
+    max_value: float
 
-    def transform(self, value: str | Decimal) -> str:
+    def transform(self, value: str | float) -> str:
         if isinstance(value, str):
             raise NotImplementedError()  # TODO: improve
 
@@ -79,7 +78,7 @@ class EquisizedIntervalsAttribute(BaseModel):
             raise ValueError("Invalid min/max values")
 
         range_ = self.max_value - self.min_value
-        bin_width = range_ * Decimal(self.support)
+        bin_width = range_ * float(self.support)
         if bin_width <= 0:
             raise ValueError("Invalid bin width")
 
@@ -93,12 +92,12 @@ class EquisizedIntervalsAttribute(BaseModel):
 
 class NumericIntervalsAttribute(BaseModel):
     class Interval(BaseModel):
-        from_value: Decimal
+        from_value: float
         from_inclusive: bool
-        to_value: Decimal
+        to_value: float
         to_inclusive: bool
 
-        def contains(self, value: Decimal) -> bool:
+        def contains(self, value: float) -> bool:
             if self.from_inclusive:
                 if value < self.from_value:
                     return False
@@ -121,7 +120,7 @@ class NumericIntervalsAttribute(BaseModel):
     field_id: int
     bins: list["NumericIntervalsAttribute.Bin"]
 
-    def transform(self, value: str | Decimal) -> str | None:
+    def transform(self, value: str | float) -> str | None:
         if isinstance(value, str):
             raise NotImplementedError()  # TODO: improve
 
@@ -300,25 +299,28 @@ class PmmlTaskParser:
 
 
 if __name__ == "__main__":
-    # Corrected XML payload with version 4.2 and an integer 'field' attribute
     xml_payload = """<?xml version="1.0" encoding="UTF-8"?>
-    <PMML version="4.2" xmlns="http://www.dmg.org/PMML-4_2">
-        <Header copyright="Minimal Example"/>
-        <DataDictionary>
-            <DataField name="SourceFieldID_or_Name" optype="categorical" dataType="string"/>
-            <!-- Assume this field corresponds to ID 1 -->
-        </DataDictionary>
-        <TransformationDictionary>
-            <!-- Minimal DerivedField for SimpleAttribute mapping -->
-            <DerivedField name="NewAttributeName" optype="categorical" dataType="string">
-                <MapValues>
-                    <!-- The parser expects an integer ID here -->
-                    <FieldColumnPair field="4"/>
-                    <!-- NO InlineTable or other elements inside MapValues -->
-                </MapValues>
-            </DerivedField>
-        </TransformationDictionary>
-    </PMML>"""
+<PMML version="4.2" xmlns="http://www.dmg.org/PMML-4_2">
+	<Header copyright="NumericIntervals Example"/>
+	<DataDictionary>
+		<DataField name="numeric_column" optype="continuous" dataType="double"/>
+	</DataDictionary>
+	<TransformationDictionary>
+		<DerivedField name="binned_numeric_column" optype="categorical" dataType="string">
+			<Discretize field="4" defaultValue="unknown">
+				<DiscretizeBin binValue="low">
+					<Interval closure="closedOpen" leftMargin="0" rightMargin="10"/>
+				</DiscretizeBin>
+				<DiscretizeBin binValue="medium">
+					<Interval closure="closedOpen" leftMargin="10" rightMargin="20"/>
+				</DiscretizeBin>
+				<DiscretizeBin binValue="high">
+					<Interval closure="closedClosed" leftMargin="20" rightMargin="30"/>
+				</DiscretizeBin>
+			</Discretize>
+		</DerivedField>
+	</TransformationDictionary>
+</PMML>"""
 
     # Instantiate the parser
     parser = PmmlTaskParser(xml_payload)
@@ -331,16 +333,16 @@ if __name__ == "__main__":
     print(parsed_attributes)
     attr = parsed_attributes[0]
     print(attr.name)
-    print(attr.transform(Decimal("123.45")))
+    print(attr.transform(float("123.45")))
 
     # # Simulated user-uploaded data row
     # sample_row = {
     #     1: "green",
-    #     2: Decimal("3.5"),
-    #     3: Decimal("8.7"),
-    #     4: Decimal("10.0"),
-    #     5: Decimal("2.3"),
-    #     6: Decimal("12.1"),
+    #     2: float("3.5"),
+    #     3: float("8.7"),
+    #     4: float("10.0"),
+    #     5: float("2.3"),
+    #     6: float("12.1"),
     # }
     #
     # # Define attributes
@@ -391,9 +393,9 @@ if __name__ == "__main__":
     #
     # # Simulate dataset: list of rows
     # dataset = [
-    #     {1: "red", 2: Decimal("1.0"), 3: Decimal("3.0"), 4: Decimal("1.0"), 5: Decimal("2.0")},
-    #     {1: "blue", 2: Decimal("2.0"), 3: Decimal("6.0"), 4: Decimal("6.0"), 5: Decimal("5.0")},
-    #     {1: "green", 2: Decimal("3.0"), 3: Decimal("9.0"), 4: Decimal("11.0"), 5: Decimal("7.5")},
+    #     {1: "red", 2: float("1.0"), 3: float("3.0"), 4: float("1.0"), 5: float("2.0")},
+    #     {1: "blue", 2: float("2.0"), 3: float("6.0"), 4: float("6.0"), 5: float("5.0")},
+    #     {1: "green", 2: float("3.0"), 3: float("9.0"), 4: float("11.0"), 5: float("7.5")},
     # ]
     #
     # # 1. SimpleAttribute
@@ -414,8 +416,8 @@ if __name__ == "__main__":
     #     name="eqdist",
     #     field_id=2,
     #     bins=3,
-    #     min_value=Decimal("1.0"),
-    #     max_value=Decimal("3.0"),
+    #     min_value=float("1.0"),
+    #     max_value=float("3.0"),
     # )
     #
     # # 4. EquifrequentIntervalsAttribute — must include cutpoints
@@ -423,16 +425,16 @@ if __name__ == "__main__":
     #     name="eqfreq",
     #     field_id=3,
     #     bins=3,
-    #     cutpoints=[Decimal("4.5"), Decimal("7.5")],  # splits values: <=4.5, 4.5–7.5, >7.5
+    #     cutpoints=[float("4.5"), float("7.5")],  # splits values: <=4.5, 4.5–7.5, >7.5
     # )
     #
     # # 5. EquisizedIntervalsAttribute — must include min and max
     # equisized = EquisizedIntervalsAttribute(
     #     name="eqsize",
     #     field_id=4,
-    #     support=Decimal("5.0"),
-    #     min_value=Decimal("1.0"),
-    #     max_value=Decimal("11.0"),
+    #     support=float("5.0"),
+    #     min_value=float("1.0"),
+    #     max_value=float("11.0"),
     # )
     #
     # # 6. NumericIntervalsAttribute — uses hand-crafted intervals

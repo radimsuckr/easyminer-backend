@@ -6,7 +6,7 @@ import pydantic
 from sqlalchemy import insert, update
 
 from easyminer.database import get_sync_db_session
-from easyminer.models.data import Chunk, Field, Instance, Upload, UploadState
+from easyminer.models.data import Chunk, DataSourceInstance, Field, Upload, UploadState
 from easyminer.schemas.data import FieldType
 from easyminer.worker import app
 
@@ -74,11 +74,11 @@ def process_chunk(
                     )
                 if len(instance_values) % batch_size == 0:
                     logger.debug(f"Processing batch of {len(instance_values)} instances")
-                    _ = db.execute(insert(Instance), instance_values)
+                    _ = db.execute(insert(DataSourceInstance), instance_values)
                     instance_values.clear()
             if len(instance_values) > 0:
                 logger.debug(f"Processing last batch of {len(instance_values)} instances")
-                _ = db.execute(insert(Instance), instance_values)
+                _ = db.execute(insert(DataSourceInstance), instance_values)
                 instance_values.clear()
 
         # Unlock the upload

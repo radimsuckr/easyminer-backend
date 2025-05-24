@@ -9,24 +9,23 @@ from fastapi import (
     HTTPException,
     Path,
     Query,
-    Request,
     status,
 )
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
-from easyminer.config import API_V1_PREFIX
 from easyminer.api.task import router as task_router
+from easyminer.config import API_V1_PREFIX
 from easyminer.database import get_db_session
-from easyminer.models.preprocessing import Attribute, Dataset, Value
+from easyminer.models.preprocessing import Attribute, Dataset, DatasetValue
 from easyminer.schemas.preprocessing import (
     AttributeRead,
     AttributeValueRead,
     DatasetRead,
     TaskStatus,
 )
-from easyminer.tasks.create_attribute import create_attribute as task_create_attribute
+from easyminer.tasks.create_attribute import create_attributes
 from easyminer.tasks.create_dataset import create_dataset
 
 router = APIRouter(prefix=API_V1_PREFIX, tags=["Preprocessing"])
@@ -40,11 +39,7 @@ async def list_datasets(db: Annotated[AsyncSession, Depends(get_db_session)]) ->
 
 
 @router.post("/dataset", response_model=TaskStatus, status_code=status.HTTP_202_ACCEPTED)
-async def create_dataset_api(
-    request: Request,
-    dataSource: Annotated[int, Form()],
-    name: Annotated[str, Form()],
-):
+async def create_dataset_api(dataSource: Annotated[int, Form()], name: Annotated[str, Form()]):
     """Create a task for the dataset creation from a data source."""
     task = create_dataset.delay(dataSource, name)
     if task:
@@ -52,8 +47,8 @@ async def create_dataset_api(
             task_id=UUID(task.task_id),
             task_name="create_dataset",
             status_message="Task created successfully",
-            status_location=request.url_for("get_task_status", task_id=task.task_id).path,
-            result_location=request.url_for("get_task_result", task_id=task.task_id).path,
+            status_location=task_router.url_path_for("get_task_status", task_id=task.task_id),
+            result_location=task_router.url_path_for("get_task_result", task_id=task.task_id),
         )
     else:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -127,11 +122,11 @@ async def create_attribute(
     body: Annotated[str, Body(media_type="application/xml")],
 ) -> TaskStatus:
     """Create a task for the attribute creation from a data source field."""
-    dataset = await db.get(Dataset, dataset_id, options=[joinedload(Dataset.attributes)])
+    dataset = await db.get(Dataset, dataset_id)
     if not dataset:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset not found")
 
-    task = task_create_attribute.delay(dataset_id, body)
+    task = create_attributes.delay(dataset_id, body)
     if task:
         return TaskStatus(
             task_id=UUID(task.task_id),
@@ -216,7 +211,7 @@ async def list_values(
     limit: Annotated[int, Query(gt=0, le=1000)] = 100,
 ) -> list[AttributeValueRead]:
     """Display a list of all unique values for a specific attribute and dataset."""
-    dataset = await db.get(Dataset, dataset_id, options=[joinedload(Dataset.attributes)])
+    dataset = await db.get(Dataset, dataset_id)
     if not dataset:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset not found")
 
@@ -226,5 +221,5 @@ async def list_values(
     if not attribute:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Attribute not found")
 
-    values = (await db.execute(select(Value).offset(offset).limit(limit))).scalars().all()
+    values = (await db.execute(select(DatasetValue).offset(offset).limit(limit))).scalars().all()
     return [AttributeValueRead.model_validate(value) for value in values]

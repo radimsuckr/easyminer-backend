@@ -3,7 +3,7 @@ import logging
 from sqlalchemy import func, select
 
 from easyminer.database import get_sync_db_session
-from easyminer.models.data import Field, FieldNumericDetail, Instance
+from easyminer.models.data import DataSourceInstance, Field, FieldNumericDetail
 from easyminer.worker import app
 
 logger = logging.getLogger(__name__)
@@ -20,10 +20,10 @@ def calculate_field_numeric_detail(field_id: int):
         stats = (
             db.execute(
                 select(
-                    func.min(Instance.value_numeric).label("min_value"),
-                    func.max(Instance.value_numeric).label("max_value"),
-                    func.avg(Instance.value_numeric).label("avg_value"),
-                ).where(Instance.field_id == field.id, Instance.value_numeric.is_not(None))
+                    func.min(DataSourceInstance.value_numeric).label("min_value"),
+                    func.max(DataSourceInstance.value_numeric).label("max_value"),
+                    func.avg(DataSourceInstance.value_numeric).label("avg_value"),
+                ).where(DataSourceInstance.field_id == field.id, DataSourceInstance.value_numeric.is_not(None))
             )
             .tuples()
             .one()

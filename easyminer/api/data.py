@@ -29,9 +29,9 @@ from easyminer.crud.aio.data import (
 from easyminer.database import get_db_session
 from easyminer.models.data import (
     DataSource,
+    DataSourceInstance,
     Field,
     FieldNumericDetail,
-    Instance,
     Upload,
     UploadState,
 )
@@ -132,7 +132,9 @@ async def upload_chunk(
     if upload.state == UploadState.ready and len(content) == 0:
         upload.state = UploadState.finished
         upload_size = await db.scalar(
-            select(func.count()).select_from(Instance).where(Instance.data_source_id == upload.data_source.id)
+            select(func.count())
+            .select_from(DataSourceInstance)
+            .where(DataSourceInstance.data_source_id == upload.data_source.id)
         )
         upload.data_source.size = upload_size or 0
         result = UploadResponseSchema(
@@ -294,7 +296,10 @@ async def get_instances(
 
     fields_count = len(data_source.fields)
     stmt = (
-        select(Instance).limit(fields_count * limit).offset(fields_count * offset).options(joinedload(Instance.field))
+        select(DataSourceInstance)
+        .limit(fields_count * limit)
+        .offset(fields_count * offset)
+        .options(joinedload(DataSourceInstance.field))
     )
     if field_ids:
         stmt = stmt.where(Field.index.in_(field_ids))
@@ -514,13 +519,15 @@ async def get_field_values(
         (
             await db.execute(
                 select(
-                    Instance.field_id,
-                    Instance.value_nominal,
-                    Instance.value_numeric,
-                    func.count(Instance.id).label("frequency"),
+                    DataSourceInstance.field_id,
+                    DataSourceInstance.value_nominal,
+                    DataSourceInstance.value_numeric,
+                    func.count(DataSourceInstance.id).label("frequency"),
                 )
-                .where(Instance.field_id == field.id)
-                .group_by(Instance.field_id, Instance.value_nominal, Instance.value_numeric)
+                .where(DataSourceInstance.field_id == field.id)
+                .group_by(
+                    DataSourceInstance.field_id, DataSourceInstance.value_nominal, DataSourceInstance.value_numeric
+                )
                 .limit(limit)
                 .offset(offset)
             )

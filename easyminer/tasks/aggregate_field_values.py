@@ -4,7 +4,7 @@ from decimal import Decimal
 from sqlalchemy import func, select
 
 from easyminer.database import get_sync_db_session
-from easyminer.models.data import Field, Instance
+from easyminer.models.data import DataSourceInstance, Field
 from easyminer.worker import app
 
 logger = logging.getLogger(__name__)
@@ -33,13 +33,15 @@ def aggregate_field_values(
 
             stmt = (
                 select(func.count())
-                .select_from(Instance)
+                .select_from(DataSourceInstance)
                 .where(
-                    Instance.data_source_id == data_source_id,
-                    Instance.field_id == field.id,
-                    Instance.value_numeric != None,  # noqa: E711
-                    Instance.value_numeric > from_ if from_inclusive else Instance.value_numeric >= from_,
-                    Instance.value_numeric < to if to_inclusive else Instance.value_numeric <= to,
+                    DataSourceInstance.data_source_id == data_source_id,
+                    DataSourceInstance.field_id == field.id,
+                    DataSourceInstance.value_numeric != None,  # noqa: E711
+                    DataSourceInstance.value_numeric > from_
+                    if from_inclusive
+                    else DataSourceInstance.value_numeric >= from_,
+                    DataSourceInstance.value_numeric < to if to_inclusive else DataSourceInstance.value_numeric <= to,
                 )
             )
             frequency = db.execute(stmt).scalar_one()

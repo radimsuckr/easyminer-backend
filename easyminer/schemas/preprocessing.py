@@ -49,12 +49,6 @@ class DatasetSchema(BaseSchema):
     data_source_id: int = Field(..., description="Data source ID")
 
 
-class AttributeBase(BaseSchema):
-    """Base schema for attribute."""
-
-    name: str
-
-
 class AttributeCreate(BaseSchema):
     """Schema for creating an attribute."""
 
@@ -66,16 +60,12 @@ class AttributeRead(BaseSchema):
     """Schema for reading an attribute."""
 
     id: int
-    dataset: int
-    field: int
     name: str
+    dataset_id: int
+    field_id: int
     unique_values_size: int
 
-
-class AttributeUpdate(BaseSchema):
-    """Schema for updating an attribute."""
-
-    name: str
+    model_config: ConfigDict = ConfigDict(from_attributes=True)
 
 
 class AttributeValueRead(BaseSchema):
@@ -84,6 +74,8 @@ class AttributeValueRead(BaseSchema):
     id: int
     frequency: int
     value: str | None = None
+
+    model_config: ConfigDict = ConfigDict(from_attributes=True)
 
 
 class TaskStatus(BaseSchema):
