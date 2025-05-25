@@ -130,12 +130,6 @@ async def upload_chunk(
 
     if upload.state == UploadState.ready and len(content) == 0:
         upload.state = UploadState.finished
-        upload_size = await db.scalar(
-            select(func.count())
-            .select_from(DataSourceInstance)
-            .where(DataSourceInstance.data_source_id == upload.data_source.id)
-        )
-        upload.data_source.size = upload_size or 0
         result = UploadResponseSchema(
             id=upload.id,
             name=upload.name,

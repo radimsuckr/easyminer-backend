@@ -3,10 +3,10 @@ import logging
 from decimal import Decimal, InvalidOperation
 
 import pydantic
-from sqlalchemy import insert, update
+from sqlalchemy import func, insert, select, update
 
 from easyminer.database import get_sync_db_session
-from easyminer.models.data import Chunk, DataSourceInstance, Field, Upload, UploadState
+from easyminer.models.data import Chunk, DataSource, DataSourceInstance, Field, Upload, UploadState
 from easyminer.schemas.data import FieldType
 from easyminer.worker import app
 
@@ -51,7 +51,12 @@ def process_chunk(
             fields = db.query(Field).filter(Field.data_source_id == chunk.upload.data_source.id).all()
             col_fields = {field.index: field for field in fields}
 
-            row_counter = 0
+            upload_size = db.execute(
+                select(func.count())
+                .select_from(DataSourceInstance)
+                .where(DataSourceInstance.data_source_id == chunk.upload.data_source.id)
+            ).scalar_one()
+            row_counter = int(upload_size / len(fields))
             batch_size = 1000
             instance_values: list[dict[str, str | Decimal | int | None]] = []
             for row in reader:
@@ -72,6 +77,7 @@ def process_chunk(
                             "data_source_id": chunk.upload.data_source.id,
                         }
                     )
+                row_counter += 1
                 if len(instance_values) % batch_size == 0:
                     logger.debug(f"Processing batch of {len(instance_values)} instances")
                     _ = db.execute(insert(DataSourceInstance), instance_values)
@@ -84,6 +90,12 @@ def process_chunk(
         # Unlock the upload
         logger.info("Unlocking the upload")
         _ = db.execute(update(Upload).values(state=UploadState.ready).where(Upload.id == chunk.upload_id))
+        upload_size = db.execute(
+            select(func.count())
+            .select_from(DataSourceInstance)
+            .where(DataSourceInstance.data_source_id == chunk.upload.data_source.id)
+        ).scalar_one()
+        _ = db.execute(update(DataSource).values(size=upload_size).where(DataSource.id == chunk.upload.data_source.id))
         logger.info("Unlocked")
 
         db.commit()
