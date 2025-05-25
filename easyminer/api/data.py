@@ -1,4 +1,3 @@
-import itertools
 import logging
 import pathlib
 from datetime import datetime
@@ -16,7 +15,7 @@ from fastapi import (
     Request,
     status,
 )
-from sqlalchemy import delete, func, select
+from sqlalchemy import String, delete, distinct, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
@@ -282,51 +281,64 @@ async def get_instances(
     data_source = await db.get(DataSource, id, options=[joinedload(DataSource.upload)])
     if not data_source:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found")
-
     if data_source.upload.state != UploadState.finished:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Data source upload is not finished processing"
         )
+
+    # Check if data source has instances
     instances_count = (
         await db.execute(
-            select(func.count()).select_from(DataSourceInstance).where(DataSourceInstance.data_source_id == id)
+            select(func.count(distinct(DataSourceInstance.row_id)))
+            .select_from(DataSourceInstance)
+            .where(DataSourceInstance.data_source_id == id)
         )
     ).scalar_one()
+
     if instances_count == 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Data source has no instances")
 
-    fields_count = (
-        await db.execute(select(func.count()).select_from(Field).where(Field.data_source_id == id))
-    ).scalar_one()
+    # Build the main query with PostgreSQL aggregation
+    # Keep numeric and nominal values separate for proper type handling
     stmt = (
-        select(DataSourceInstance)
-        .limit(fields_count * limit)
-        .offset(fields_count * offset)
-        .options(joinedload(DataSourceInstance.field))
+        select(
+            DataSourceInstance.row_id.label("id"),
+            func.array_agg(Field.index).label("field_indices"),
+            func.array_agg(DataSourceInstance.value_nominal).label("nominal_values"),
+            func.array_agg(DataSourceInstance.value_numeric).label("numeric_values"),
+        )
+        .select_from(DataSourceInstance)
+        .join(Field, DataSourceInstance.field_id == Field.id)
+        .where(DataSourceInstance.data_source_id == id)
+        .group_by(DataSourceInstance.row_id)
+        .order_by(DataSourceInstance.row_id)
+        .limit(limit)
+        .offset(offset)
     )
+
     if field_ids:
         stmt = stmt.where(Field.index.in_(field_ids))
-    instances = (await db.execute(stmt)).scalars().all()
-    if not instances:
+
+    result = await db.execute(stmt)
+    rows = result.all()
+
+    if not rows:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No instances found")
 
-    # FIX: there's a lot of Python processing that could be done in SQL
-
-    # the response of AggregatedInstance list must be grouped by row_id
+    # Convert the aggregated arrays to response objects
     response: list[AggregatedInstance] = []
-    for key, group in itertools.groupby(instances, lambda x: x.row_id):
-        group = list(group)
-        response.append(
-            AggregatedInstance(
-                id=key,
-                values=[
-                    AggregatedInstanceValue(field=instance.field.index, value=instance.value_nominal)
-                    if instance.value_numeric is None
-                    else AggregatedInstanceValue(field=instance.field.index, value=float(instance.value_numeric))
-                    for instance in group
-                ],
-            )
-        )
+    for row in rows:
+        values = []
+        for field_index, nominal_val, numeric_val in zip(row.field_indices, row.nominal_values, row.numeric_values):
+            # Use numeric value if it exists, otherwise use nominal value
+            if numeric_val is not None:
+                value = float(numeric_val)
+            else:
+                value = nominal_val
+
+            values.append(AggregatedInstanceValue(field=field_index, value=value))
+
+        response.append(AggregatedInstance(id=row.id, values=values))
 
     return response
 
