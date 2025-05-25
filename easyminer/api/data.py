@@ -279,11 +279,7 @@ async def get_instances(
     limit: Annotated[int, Query(ge=1, le=1000)] = 100,
     field_ids: Annotated[list[int] | None, Query()] = None,
 ) -> list[AggregatedInstance]:
-    data_source = await db.get(
-        DataSource,
-        id,
-        options=[joinedload(DataSource.instances), joinedload(DataSource.fields), joinedload(DataSource.upload)],
-    )
+    data_source = await db.get(DataSource, id, options=[joinedload(DataSource.upload)])
     if not data_source:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found")
 
@@ -291,10 +287,17 @@ async def get_instances(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Data source upload is not finished processing"
         )
-    if not data_source.instances:
+    instances_count = (
+        await db.execute(
+            select(func.count()).select_from(DataSourceInstance).where(DataSourceInstance.data_source_id == id)
+        )
+    ).scalar_one()
+    if instances_count == 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Data source has no instances")
 
-    fields_count = len(data_source.fields)
+    fields_count = (
+        await db.execute(select(func.count()).select_from(Field).where(Field.data_source_id == id))
+    ).scalar_one()
     stmt = (
         select(DataSourceInstance)
         .limit(fields_count * limit)
@@ -306,8 +309,6 @@ async def get_instances(
     instances = (await db.execute(stmt)).scalars().all()
     if not instances:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No instances found")
-    if field_ids:
-        instances = filter(lambda x: x.field.index in field_ids, instances)
 
     # FIX: there's a lot of Python processing that could be done in SQL
 
