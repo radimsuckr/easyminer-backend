@@ -4,6 +4,7 @@ from sqlalchemy import func, select
 
 from easyminer.database import get_sync_db_session
 from easyminer.models.data import DataSourceInstance, Field, FieldNumericDetail
+from easyminer.schemas.data import FieldType
 from easyminer.worker import app
 
 logger = logging.getLogger(__name__)
@@ -15,6 +16,8 @@ def calculate_field_numeric_detail(field_id: int):
         field = db.get(Field, field_id)
         if not field:
             raise ValueError(f"Field with ID {field_id} not found")
+        if field.data_type != FieldType.numeric:
+            raise ValueError(f"Field {field.name} is not numeric, skipping detail calculation")
 
         logger.info(f"Calculating numeric field detail for field {field.name}")
         stats = (
