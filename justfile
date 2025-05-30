@@ -4,7 +4,8 @@ default:
 	@just --list
 
 build-docker:
-	docker build -t "{{ docker_image_name }}:latest" .
+	docker build -t "{{ docker_image_name }}:latest" --target api .
+	docker build -t "{{ docker_image_name }}-worker:latest" --target worker .
 
 dev:
 	uv run uvicorn easyminer.app:app --reload --log-level debug

@@ -2,11 +2,17 @@ FROM python:3.13-slim AS build
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends libpq5
+
+RUN groupadd --gid 1000 easyminer && useradd -m -s /usr/sbin/nologin --uid 1000 -g easyminer easyminer
+
+USER 1000:1000
+
 WORKDIR /app
 
 COPY . ./
 
-RUN uv sync
+RUN	uv sync
 
 
 FROM build AS api
