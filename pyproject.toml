@@ -6,7 +6,9 @@ authors = [{ name = "Radim Sückr", email = "sucr02@vse.cz" }]
 dependencies = [
 	"alembic>=1.13.2",
 	"celery[redis,tblib]>=5.4.0",
+	"cleverminer>=1.2.2",
 	"defusedxml>=0.7.1",
+	"efficient-apriori>=2.0.6",
 	"fastapi[standard]>=0.111.1",
 	"pandas>=2.2.3",
 	"psycopg>=3.2.6",

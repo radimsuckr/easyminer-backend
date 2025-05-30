@@ -28,7 +28,7 @@ def test_task_throws_valueerror_on_invalid_dataset_id():
 def test_task_succeeds(_get_dataset_mock):
     id = 4
     pmml = """<?xml version="1.0" encoding="UTF-8"?>
-    <PMML version="4.2" xmlns="http://www.dmg.org/PMML-4_2">
+    <PMML version="4.2" xmlns="http://www.dmg.org/PMML-4_0">
         <Header copyright="Minimal Example"/>
         <DataDictionary>
             <DataField name="SourceFieldID_or_Name" optype="categorical" dataType="string"/>

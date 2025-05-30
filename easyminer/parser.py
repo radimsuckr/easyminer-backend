@@ -144,7 +144,7 @@ Attribute = (
 class PmmlTaskParser:
     def __init__(self, xml_string: str):
         self.root: Element = ET.fromstring(xml_string)
-        self.ns: dict[str, str] = {"pmml": "http://www.dmg.org/PMML-4_2"}
+        self.ns: dict[str, str] = {"pmml": "http://www.dmg.org/PMML-4_0"}
 
     def parse(self) -> list[Attribute]:
         attributes: list[Attribute] = []
@@ -300,7 +300,7 @@ class PmmlTaskParser:
 
 if __name__ == "__main__":
     xml_payload = """<?xml version="1.0" encoding="UTF-8"?>
-<PMML version="4.2" xmlns="http://www.dmg.org/PMML-4_2">
+<PMML version="4.2" xmlns="http://www.dmg.org/PMML-4_0">
 	<Header copyright="NumericIntervals Example"/>
 	<DataDictionary>
 		<DataField name="numeric_column" optype="continuous" dataType="double"/>
