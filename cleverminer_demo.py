@@ -7,7 +7,7 @@ from sqlalchemy import select
 
 from easyminer.database import get_sync_db_session
 from easyminer.models.data import DataSourceInstance, Field
-from miner_parser import SimplePmmlParser
+from pxml import SimplePmmlParser
 
 DS_ID: int = 2
 
