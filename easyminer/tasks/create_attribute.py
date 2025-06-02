@@ -15,8 +15,8 @@ logger = logging.getLogger(__name__)
 
 
 @app.task
-def create_attributes(dataset_id: int, pmml: str):
-    if len(pmml) == 0:
+def create_attributes(dataset_id: int, xml: str):
+    if len(xml) == 0:
         raise ValueError("PMML cannot be empty")
 
     with get_sync_db_session() as db:
@@ -24,7 +24,7 @@ def create_attributes(dataset_id: int, pmml: str):
         if not dataset:
             raise ValueError(f"Dataset with id {dataset_id} not found")
 
-        parser = PmmlTaskParser(pmml)
+        parser = PmmlTaskParser(xml)
         parsed_attributes = parser.parse()
 
         attributes: dict[mprep.Attribute, Attribute] = {}
