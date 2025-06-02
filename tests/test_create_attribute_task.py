@@ -1,4 +1,4 @@
-from easyminer.parsers.pmml.preprocessing_new import (
+from easyminer.parsers.pmml.preprocessing import (
     EquidistantIntervalsAttribute,
     SimpleAttribute,
     TransformationDictionary,

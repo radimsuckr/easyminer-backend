@@ -9,7 +9,7 @@ from sqlalchemy.orm import joinedload
 from easyminer.database import get_sync_db_session
 from easyminer.models import data as mdata
 from easyminer.models import preprocessing as mprep
-from easyminer.parsers.pmml.preprocessing_new import (
+from easyminer.parsers.pmml.preprocessing import (
     Attribute,
     EquidistantIntervalsAttribute,
     EquifrequentIntervalsAttribute,
@@ -57,7 +57,7 @@ def create_attributes(dataset_id: int, xml: str):
             attr_def = create_attribute_from_pmml(field_def)
             logger.info(
                 f"Created attribute definition: {type(attr_def).__name__} - {attr_def.name} "
-                f"for field {attr_def.field_id}"
+                + f"for field {attr_def.field_id}"
             )
 
             # Validate that the source field exists in the data source
