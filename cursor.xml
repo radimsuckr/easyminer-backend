@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PMML
+	xmlns="http://www.dmg.org/PMML-4_0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns:pmml="http://www.dmg.org/PMML-4_0"
+	version="4.0"
+	xsi:schemaLocation="http://www.dmg.org/PMML-4_0 http://easyminer.eu/schemas/PMML4.0+GUHA0.1.xsd"
+>
+	<Header copyright="Copyright (c) User-Generated">
+		<Application name="CleverMinerConverter" version="1.0" />
+		<Annotation>PMML generated from cleverminer function call</Annotation>
+		<Timestamp>2023-10-27T10:00:00</Timestamp>
+		<Extension name="dataset" value="UserDataFrame" /> <!-- Placeholder for self._df -->
+		<!-- Other extensions from your reference can be added if needed, e.g., timeout -->
+	</Header>
+	<guha:AssociationModel
+		xmlns:guha="http://keg.vse.cz/ns/GUHA0.1rev1"
+		modelName="CleverMiner_District_Salary_Rules"
+		functionName="associationRules"
+		algorithmName="4ft"
+	>
+		<TaskSetting xmlns="">
+			<BBASettings>
+				<BBASetting id="bba_district">
+					<Text>District</Text>
+					<Name>district-eachone</Name>
+					<FieldRef>District</FieldRef>
+					<Coefficient>
+						<Type>One category</Type>
+						<!-- For clm_vars(["District"]), implying a single specific category of
+						District forms the item.
+                             The actual category (e.g., "North") would be instantiated during mining. -->
+						<Category>ANY_DISTRICT_VALUE</Category>
+					</Coefficient>
+				</BBASetting>
+				<BBASetting id="bba_salary">
+					<Text>Salary</Text>
+					<Name>salary-categories</Name>
+					<FieldRef>Salary</FieldRef>
+					<Coefficient>
+						<Type>Sequence</Type>
+						<!-- For clm_subset("Salary") with minlen=1, maxlen=1,
+                             implying one specific category of Salary forms the item. -->
+						<MinimalLength>1</MinimalLength>
+						<MaximalLength>1</MaximalLength>
+						<!-- <Category>ANY_SALARY_VALUE</Category> -->
+						<!-- For Type=Subset, specific categories are usually listed under <Values>
+						or implied to be all.
+                             Since minlen=1, maxlen=1, it means one value from the attribute.
+                             The reference used "One category" with <Category> for a single specific value.
+                             However, clm_subset and the reference example's ProductCategory (Subset, min/max 1)
+                             points to this structure. -->
+					</Coefficient>
+				</BBASetting>
+			</BBASettings>
+
+			<DBASettings>
+				<DBASetting id="dba_antecedent" type="Conjunction">
+					<BASettingRef>bba_district</BASettingRef>
+					<MinimalLength>1</MinimalLength> <!-- As ante is one item from District -->
+				</DBASetting>
+				<DBASetting id="dba_succedent" type="Conjunction">
+					<BASettingRef>bba_salary</BASettingRef>
+					<!-- <BASettingRef>bba_district</BASettingRef> -->
+					<MinimalLength>1</MinimalLength> <!-- From succ.minlen -->
+					<LiteralSign>+</LiteralSign>   <!-- As per your reference for consequent -->
+				</DBASetting>
+			</DBASettings>
+
+			<AntecedentSetting>dba_antecedent</AntecedentSetting>
+			<ConsequentSetting>dba_succedent</ConsequentSetting>
+
+			<InterestMeasureSetting>
+				<!-- For "Base": 75 -->
+				<InterestMeasureThreshold id="im_base">
+					<InterestMeasure>BASE</InterestMeasure>
+					<!-- Using BASE for absolute support count as per GUHA conventions and your
+					'Base' quantifier.
+                         The reference PMML used 'Support' for relative support (0.01).
+                         'Base: 75' strongly implies an absolute count. -->
+					<Threshold>75</Threshold>
+					<ThresholdType>Min</ThresholdType>
+					<CompareType>&gt;=</CompareType>
+				</InterestMeasureThreshold>
+				<!-- For "conf": 0.95 -->
+				<InterestMeasureThreshold id="im_conf">
+					<InterestMeasure>CONF</InterestMeasure>
+					<Threshold>0.95</Threshold>
+					<ThresholdType></ThresholdType> <!-- Empty as per your reference -->
+					<CompareType></CompareType>   <!-- Empty as per your reference -->
+				</InterestMeasureThreshold>
+				<!-- <InterestMeasureThreshold id="im_aad"> -->
+				<!-- 	<InterestMeasure>AAD</InterestMeasure> -->
+				<!-- 	<Threshold>0.4</Threshold> -->
+				<!-- 	<ThresholdType></ThresholdType>  -->
+				<!-- 	<CompareType></CompareType>    -->
+				<!-- </InterestMeasureThreshold> -->
+			</InterestMeasureSetting>
+		</TaskSetting>
+	</guha:AssociationModel>
+</PMML>

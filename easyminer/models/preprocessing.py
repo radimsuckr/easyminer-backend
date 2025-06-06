@@ -47,6 +47,7 @@ class DatasetInstance(Base):
     __tablename__: str = "dataset_instance"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, index=True)
+    tx_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
 
     value_id: Mapped[int] = mapped_column(ForeignKey("dataset_value.id", ondelete="CASCADE"), nullable=False)
     value: Mapped["DatasetValue"] = relationship(back_populates="instances")

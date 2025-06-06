@@ -1,6 +1,24 @@
+from enum import Enum
 from typing import Literal
 
 from pydantic_xml import BaseXmlModel, attr, element
+
+
+class LiteralSign(Enum):
+    positive = "+"
+    negative = "-"
+
+
+class CoefficientType(Enum):
+    one_category = "One category"
+    subset = "Subset"
+    nominal = "Nominal"
+    sequence = "Sequence"
+
+
+class DBASettingType(Enum):
+    conjunction = "Conjunction"
+    disjunction = "Disjunction"
 
 
 class Extension(BaseXmlModel, tag="Extension"):
@@ -9,8 +27,8 @@ class Extension(BaseXmlModel, tag="Extension"):
 
 
 class Application(BaseXmlModel, tag="Application"):
-    name: str | None = attr(default=None)
-    version: str | None = attr(default=None)
+    name: str = attr()
+    version: str = attr()
 
 
 class Header(BaseXmlModel, tag="Header"):
@@ -30,9 +48,9 @@ class Header(BaseXmlModel, tag="Header"):
 
 
 class Coefficient(BaseXmlModel, tag="Coefficient"):
-    type: str = element("Type")
-    minimal_length: int | None = element("MinimalLength", default=None)
-    maximal_length: int | None = element("MaximalLength", default=None)
+    type: CoefficientType = element("Type")
+    minimal_length: int = element("MinimalLength", default=1)
+    maximal_length: int = element("MaximalLength", default=1)
     category: str | None = element("Category", default=None)
 
 
@@ -50,10 +68,11 @@ class BBASettings(BaseXmlModel, tag="BBASettings"):
 
 class DBASetting(BaseXmlModel, tag="DBASetting"):
     id: str = attr()
-    type: str = attr()
+    type: DBASettingType = attr(default=DBASettingType.conjunction)
     ba_refs: list[str] = element("BASettingRef", default_factory=list)
-    minimal_length: int = element("MinimalLength")
-    literal_sign: str | None = element("LiteralSign", default=None)
+    minimal_length: int = element("MinimalLength", default=1)
+    maximal_length: int = element("MaximalLength", default=1)
+    literal_sign: LiteralSign = element("LiteralSign", default=LiteralSign.positive)
 
 
 class DBASettings(BaseXmlModel, tag="DBASettings"):
@@ -64,8 +83,8 @@ class InterestMeasureThreshold(BaseXmlModel, tag="InterestMeasureThreshold"):
     id: str = attr()
     interest_measure: str = element("InterestMeasure")
     threshold: float = element("Threshold")
-    threshold_type: str | None = element("ThresholdType", default=None)
-    compare_type: str | None = element("CompareType", default=None)
+    # threshold_type: str | None = element("ThresholdType", default=None)
+    # compare_type: str | None = element("CompareType", default=None)
 
 
 class InterestMeasureSetting(BaseXmlModel, tag="InterestMeasureSetting"):
@@ -80,7 +99,7 @@ class HypothesesCountMax(BaseXmlModel, tag="HypothesesCountMax"):
 
 class LispMinerExtension(BaseXmlModel, tag="Extension"):
     name: str = attr()
-    hypotheses_count_max: int | None = element("HypothesesCountMax", default=None)
+    hypotheses_count_max: int = element("HypothesesCountMax")
 
 
 # TaskSetting needs to handle xmlns="" which resets namespace to empty
@@ -97,7 +116,7 @@ class TaskSetting(BaseXmlModel, tag="TaskSetting", ns=""):
     def lispm_miner_hypotheses_max(self) -> int | None:
         """Extract hypotheses max from LISp-Miner extension"""
         for ext in self.extensions:
-            if ext.name == "LISp-Miner" and ext.hypotheses_count_max is not None:
+            if ext.name == "LISp-Miner":
                 return ext.hypotheses_count_max
         return None
 
@@ -149,135 +168,3 @@ class SimplePmmlParser:
     def parse(self) -> PMML:
         """Parse the XML string into a PMML object"""
         return PMML.from_xml(bytes(self.xml_string, "utf-8"))
-
-
-if __name__ == "__main__":
-    # Test with the provided XML string
-    xml_string = """<?xml version="1.0" encoding="UTF-8"?>
-<PMML
-	xmlns="http://www.dmg.org/PMML-4_0"
-	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-	xmlns:pmml="http://www.dmg.org/PMML-4_0"
-	version="4.0"
-	xsi:schemaLocation="http://www.dmg.org/PMML-4_0 http://easyminer.eu/schemas/PMML4.0+GUHA0.1.xsd"
->
-	<Header copyright="Copyright (c) User-Generated">
-		<Application name="CleverMinerConverter" version="1.0" />
-		<Annotation>PMML generated from cleverminer function call</Annotation>
-		<Timestamp>2023-10-27T10:00:00</Timestamp>
-		<Extension name="dataset" value="UserDataFrame" />
-	</Header>
-	<guha:AssociationModel
-		xmlns:guha="http://keg.vse.cz/ns/GUHA0.1rev1"
-		modelName="CleverMiner_District_Salary_Rules"
-		functionName="associationRules"
-		algorithmName="4ft"
-	>
-		<TaskSetting xmlns="">
-			<BBASettings>
-				<BBASetting id="bba_district">
-					<Text>District</Text>
-					<Name>District</Name>
-					<FieldRef>District</FieldRef>
-					<Coefficient>
-						<Type>One category</Type>
-						<Category>ANY_DISTRICT_VALUE</Category>
-					</Coefficient>
-				</BBASetting>
-				<BBASetting id="bba_salary">
-					<Text>Salary</Text>
-					<Name>Salary</Name>
-					<FieldRef>Salary</FieldRef>
-					<Coefficient>
-						<Type>Subset</Type>
-						<MinimalLength>1</MinimalLength>
-						<MaximalLength>1</MaximalLength>
-					</Coefficient>
-				</BBASetting>
-			</BBASettings>
-			<DBASettings>
-				<DBASetting id="dba_antecedent" type="Conjunction">
-					<BASettingRef>bba_district</BASettingRef>
-					<MinimalLength>1</MinimalLength>
-				</DBASetting>
-				<DBASetting id="dba_succedent" type="Conjunction">
-					<BASettingRef>bba_salary</BASettingRef>
-					<MinimalLength>1</MinimalLength>
-					<LiteralSign>+</LiteralSign>
-				</DBASetting>
-			</DBASettings>
-			<AntecedentSetting>dba_antecedent</AntecedentSetting>
-			<ConsequentSetting>dba_succedent</ConsequentSetting>
-			<InterestMeasureSetting>
-				<InterestMeasureThreshold id="im_base">
-					<InterestMeasure>BASE</InterestMeasure>
-					<Threshold>75</Threshold>
-					<ThresholdType>Min</ThresholdType>
-					<CompareType>&gt;=</CompareType>
-				</InterestMeasureThreshold>
-				<InterestMeasureThreshold id="im_conf">
-					<InterestMeasure>Confidence</InterestMeasure>
-					<Threshold>0.95</Threshold>
-					<ThresholdType></ThresholdType>
-					<CompareType></CompareType>
-				</InterestMeasureThreshold>
-			</InterestMeasureSetting>
-		</TaskSetting>
-	</guha:AssociationModel>
-</PMML>"""
-
-    print("--- Parsing example XML String ---")
-    try:
-        parser = SimplePmmlParser(xml_string)
-        parsed_pmml = parser.parse()
-
-        print("\n--- Parsed PMML Object ---")
-        print(parsed_pmml.model_dump_json(indent=2))
-        print("--- End Parsed PMML Object ---\n")
-
-        print("--- Quick Meaningful Results ---")
-        print(f"PMML Version: {parsed_pmml.version}")
-        print(f"Application: {parsed_pmml.header.application_name} v{parsed_pmml.header.application_version}")
-
-        # Find dataset extension
-        dataset_ext = next((ext.value for ext in parsed_pmml.header.extensions if ext.name == "dataset"), "N/A")
-        print(f"Dataset Extension: {dataset_ext}")
-
-        assoc_model = parsed_pmml.association_model
-        print(f"Association Model: {assoc_model.model_name}, Algorithm: {assoc_model.algorithm_name}")
-
-        task_settings = assoc_model.task_setting
-        if task_settings.lispm_miner_hypotheses_max is not None:
-            print(f"Max Hypotheses (LISp-Miner): {task_settings.lispm_miner_hypotheses_max}")
-
-        print("\nBBA Settings:")
-        for bba in task_settings.bba_settings:
-            print(f"  ID: {bba.id}, Name: {bba.name}, FieldRef: {bba.field_ref}, Coeff Type: {bba.coefficient.type}")
-            if bba.coefficient.type == "One category":
-                print(f"    Category: {bba.coefficient.category}")
-            elif bba.coefficient.type == "Subset":
-                print(f"    MinLen: {bba.coefficient.minimal_length}, MaxLen: {bba.coefficient.maximal_length}")
-
-        print("\nDBA Settings:")
-        for dba in task_settings.dba_settings:
-            print(f"  ID: {dba.id}, Type: {dba.type}, MinLength: {dba.minimal_length}, BA Refs: {dba.ba_refs}")
-            if dba.literal_sign:
-                print(f"    Literal Sign: {dba.literal_sign}")
-
-        if task_settings.antecedent_setting:
-            print(f"Antecedent Setting ID: {task_settings.antecedent_setting}")
-        if task_settings.consequent_setting:
-            print(f"Consequent Setting ID: {task_settings.consequent_setting}")
-
-        print("\nInterest Measure Settings:")
-        for im in task_settings.interest_measure_settings:
-            print(
-                f"  ID: {im.id}, Measure: {im.interest_measure}, Threshold: {im.threshold}, "
-                f"ThresholdType: '{im.threshold_type}', CompareType: '{im.compare_type}'"
-            )
-
-    except Exception as e:
-        print(f"An unexpected error occurred: {e.__class__.__name__}: {e}")
-        import traceback
-
-        traceback.print_exc()

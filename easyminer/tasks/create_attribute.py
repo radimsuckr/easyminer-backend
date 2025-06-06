@@ -94,7 +94,7 @@ def create_attributes(dataset_id: int, xml: str):
             logger.info(f"Processing {len(instances)} instances for attribute {attr_def.name}")
 
             # Transform values and count frequencies
-            value_frequencies: dict[str, int] = defaultdict(int)
+            value_frequencies: dict[str, list[int]] = defaultdict(list)
 
             for instance in instances:
                 # Get the raw value and prepare input for transformation based on field type
@@ -111,15 +111,25 @@ def create_attributes(dataset_id: int, xml: str):
                 transformed_value = apply_transformation(attr_def, transform_input)
 
                 # Count frequency of this transformed value
-                value_frequencies[transformed_value] += 1
+                value_frequencies[transformed_value].append(instance.row_id)
 
             # Store transformed values in database
-            for value, frequency in value_frequencies.items():
-                _ = db.execute(
+            for value, tx_ids in value_frequencies.items():
+                id = db.execute(
                     pginsert(mprep.DatasetValue)
-                    .values(value=value, frequency=frequency, attribute_id=db_attr.id)
+                    .values(value=value, frequency=len(tx_ids), attribute_id=db_attr.id)
                     .on_conflict_do_nothing()
-                )
+                    .returning(mprep.DatasetValue.id)
+                ).scalar_one()
+                while len(tx_ids) > 0:
+                    # Create instances for this value
+                    instance_tx_ids = tx_ids[:1000]
+                    tx_ids = tx_ids[1000:]
+                    instances_to_add = [
+                        {"tx_id": tx_id, "value_id": id, "attribute_id": db_attr.id} for tx_id in instance_tx_ids
+                    ]
+                    _ = db.execute(pginsert(mprep.DatasetInstance).on_conflict_do_nothing(), instances_to_add)
+                    db.flush()
 
             # Update attribute statistics
             db_attr.unique_values_size = len(value_frequencies)
