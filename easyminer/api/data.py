@@ -1,5 +1,6 @@
 import logging
 import pathlib
+from collections import defaultdict
 from datetime import datetime
 from decimal import Decimal
 from typing import Annotated
@@ -15,7 +16,7 @@ from fastapi import (
     Request,
     status,
 )
-from sqlalchemy import String, delete, distinct, func, select
+from sqlalchemy import delete, distinct, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
@@ -288,51 +289,72 @@ async def get_instances(
             .where(DataSourceInstance.data_source_id == id)
         )
     ).scalar_one()
-
     if instances_count == 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Data source has no instances")
 
-    # Build the main query with PostgreSQL aggregation
-    # Keep numeric and nominal values separate for proper type handling
-    stmt = (
-        select(
-            DataSourceInstance.row_id.label("id"),
-            func.array_agg(Field.index).label("field_indices"),
-            func.array_agg(DataSourceInstance.value_nominal).label("nominal_values"),
-            func.array_agg(DataSourceInstance.value_numeric).label("numeric_values"),
-        )
-        .select_from(DataSourceInstance)
-        .join(Field, DataSourceInstance.field_id == Field.id)
+    # First, get the row_ids for pagination
+    row_ids_stmt = (
+        select(distinct(DataSourceInstance.row_id))
         .where(DataSourceInstance.data_source_id == id)
-        .group_by(DataSourceInstance.row_id)
         .order_by(DataSourceInstance.row_id)
         .limit(limit)
         .offset(offset)
     )
 
     if field_ids:
-        stmt = stmt.where(Field.index.in_(field_ids))
+        # If filtering by field_ids, we need to ensure the row has at least one of those fields
+        row_ids_stmt = (
+            select(distinct(DataSourceInstance.row_id))
+            .select_from(DataSourceInstance)
+            .join(Field, DataSourceInstance.field_id == Field.id)
+            .where(DataSourceInstance.data_source_id == id, Field.index.in_(field_ids))
+            .order_by(DataSourceInstance.row_id)
+            .limit(limit)
+            .offset(offset)
+        )
 
-    result = await db.execute(stmt)
-    rows = result.all()
+    row_ids_result = await db.execute(row_ids_stmt)
+    row_ids: list[int] = [row[0] for row in row_ids_result.all()]
 
-    if not rows:
+    if not row_ids:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No instances found")
 
-    # Convert the aggregated arrays to response objects
+    # Now get all the data for these specific rows in a single query
+    data_stmt = (
+        select(
+            DataSourceInstance.row_id,
+            Field.index.label("field_index"),
+            DataSourceInstance.value_nominal,
+            DataSourceInstance.value_numeric,
+        )
+        .select_from(DataSourceInstance)
+        .join(Field, DataSourceInstance.field_id == Field.id)
+        .where(DataSourceInstance.data_source_id == id, DataSourceInstance.row_id.in_(row_ids))
+        .order_by(DataSourceInstance.row_id, Field.index)
+    )
+
+    if field_ids:
+        data_stmt = data_stmt.where(Field.index.in_(field_ids))
+
+    data_result = await db.execute(data_stmt)
+    data_rows = data_result.all()
+
+    # Group the results by row_id
+    instances_data: dict[int, list[AggregatedInstanceValue]] = defaultdict(list)
+    for row in data_rows:
+        # Use numeric value if it exists, otherwise use nominal value
+        if row.value_numeric is not None:
+            value = float(row.value_numeric)
+        else:
+            value = row.value_nominal
+
+        instances_data[row.row_id].append(AggregatedInstanceValue(field=row.field_index, value=value))
+
+    # Build the response maintaining the order of row_ids
     response: list[AggregatedInstance] = []
-    for row in rows:
-        values = []
-        for field_index, nominal_val, numeric_val in zip(row.field_indices, row.nominal_values, row.numeric_values):
-            # Use numeric value if it exists, otherwise use nominal value
-            if numeric_val is not None:
-                value = float(numeric_val)
-            else:
-                value = nominal_val
-
-            values.append(AggregatedInstanceValue(field=field_index, value=value))
-
-        response.append(AggregatedInstance(id=row.id, values=values))
+    for row_id in row_ids:
+        if row_id in instances_data:
+            response.append(AggregatedInstance(id=row_id, values=instances_data[row_id]))
 
     return response
 

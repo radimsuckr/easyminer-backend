@@ -28,6 +28,16 @@ services:
     ports:
       - "5432:5432"
 
+  mariadb:
+    environment:
+      MYSQL_DATABASE: easyminer
+      MYSQL_PASSWORD: easyminer
+      MYSQL_ROOT_PASSWORD: easyminer
+      MYSQL_USER: easyminer
+    image: mariadb:latest
+    ports:
+      - "3306:3306"
+
   redis:
     image: redis:alpine
     ports:

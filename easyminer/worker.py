@@ -47,62 +47,49 @@ def before_task_publish_handler(body, exchange, routing_key, *args, **kwargs):
     logger.debug(f"Task {header_id} published")
 
     with get_sync_db_session() as session:
-        query = (
-            insert(Task)
-            .values(task_id=header_id, name=header_id, status=TaskStatusEnum.pending)
-            .returning(Task.task_id)
-        )
-        task_id = session.execute(query).scalar_one_or_none()
+        query = insert(Task).values(task_id=UUID(header_id), name=header_id, status=TaskStatusEnum.pending)
+        result = session.execute(query)
         session.commit()
 
-    if not task_id:
-        logger.error(f"Task {task_id} not saved")
+    if result.rowcount == 0:
+        logger.error(f"Task {header_id} not saved")
 
 
 @after_task_publish.connect()
 def after_task_publish_handler(body, exchange: str | Exchange, routing_key, *args, **kwargs):
     logger = logging.getLogger(__name__)
-    header_id: UUID = kwargs["headers"]["id"]
+    header_id: str = kwargs["headers"]["id"]
     logger.debug(f"Task {header_id} published")
 
     with get_sync_db_session() as session:
         # TODO: we should probably also check Redis if the task exists there
-        query = (
-            update(Task)
-            .where(Task.task_id == header_id)
-            .values(status=TaskStatusEnum.scheduled)
-            .returning(Task.task_id)
-        )
-        task_id = session.execute(query).scalar_one_or_none()
+        query = update(Task).where(Task.task_id == UUID(header_id)).values(status=TaskStatusEnum.scheduled)
+        result = session.execute(query)
         session.commit()
 
-    if not task_id:
+    if result.rowcount == 0:
         logger.error(f"Task {header_id} not found")
 
 
 @task_prerun.connect()
-def task_prerun_handler(task_id: UUID, task, *args, **kwargs):
+def task_prerun_handler(task_id: str, task, *args, **kwargs):
     logger = logging.getLogger(__name__)
     with get_sync_db_session() as session:
-        update_query = (
-            update(Task).filter(Task.task_id == task_id).values(status=TaskStatusEnum.started).returning(Task.task_id)
-        )
-        t_id = session.execute(update_query)
+        update_query = update(Task).filter(Task.task_id == UUID(task_id)).values(status=TaskStatusEnum.started)
+        result = session.execute(update_query)
         session.commit()
 
-    if not t_id:
-        logger.error(f"Task with ID {t_id} not found")
+    if result.rowcount == 0:
+        logger.error(f"Task with ID {task_id} not found")
 
 
 @task_postrun.connect()
-def task_postrun_handler(task_id: UUID, task, retval, state, *args, **kwargs):
+def task_postrun_handler(task_id: str, task, retval, state, *args, **kwargs):
     logger = logging.getLogger(__name__)
     with get_sync_db_session() as session:
-        update_query = (
-            update(Task).filter(Task.task_id == task_id).values(status=TaskStatusEnum.success).returning(Task.task_id)
-        )
-        t_id = session.execute(update_query)
+        update_query = update(Task).filter(Task.task_id == UUID(task_id)).values(status=TaskStatusEnum.success)
+        result = session.execute(update_query)
         session.commit()
 
-    if not t_id:
-        logger.error(f"Task with ID {t_id} not found")
+    if result.rowcount == 0:
+        logger.error(f"Task with ID {task_id} not found")

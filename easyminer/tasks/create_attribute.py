@@ -2,8 +2,7 @@ import logging
 from collections import defaultdict
 from decimal import Decimal
 
-from sqlalchemy import exists, select
-from sqlalchemy.dialects.postgresql import insert as pginsert
+from sqlalchemy import exists, insert, select
 from sqlalchemy.orm import joinedload
 
 from easyminer.database import get_sync_db_session
@@ -116,9 +115,8 @@ def create_attributes(dataset_id: int, xml: str):
             # Store transformed values in database
             for value, tx_ids in value_frequencies.items():
                 id = db.execute(
-                    pginsert(mprep.DatasetValue)
+                    insert(mprep.DatasetValue)
                     .values(value=value, frequency=len(tx_ids), attribute_id=db_attr.id)
-                    .on_conflict_do_nothing()
                     .returning(mprep.DatasetValue.id)
                 ).scalar_one()
                 while len(tx_ids) > 0:
@@ -128,7 +126,7 @@ def create_attributes(dataset_id: int, xml: str):
                     instances_to_add = [
                         {"tx_id": tx_id, "value_id": id, "attribute_id": db_attr.id} for tx_id in instance_tx_ids
                     ]
-                    _ = db.execute(pginsert(mprep.DatasetInstance).on_conflict_do_nothing(), instances_to_add)
+                    _ = db.execute(insert(mprep.DatasetInstance), instances_to_add)
                     db.flush()
 
             # Update attribute statistics

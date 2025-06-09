@@ -24,14 +24,14 @@ celery:
 	uv run celery -A easyminer.worker worker -l INFO -O fair
 
 reinit-db:
-	docker compose kill postgres
-	docker compose rm -f postgres
-	docker compose up -d postgres
+	docker compose kill mariadb
+	docker compose rm -f mariadb
+	docker compose up -d mariadb
 
 	rm -r easyminer/alembic/versions/* || true
 
-	# check if postgres is up
-	@while ! docker compose exec postgres pg_isready -U postgres; do sleep 0.25s; done
+	# wait for mariadb to be up
+	sleep 2
 
 	uv run alembic upgrade head
 	uv run alembic revision --autogenerate -m "init"
