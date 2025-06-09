@@ -1,11 +1,14 @@
 import logging
+from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
 import lxml.etree
-from fastapi import APIRouter, Body, HTTPException, Response, status
+from fastapi import APIRouter, Body, HTTPException, Request, Response, status
 
-from easyminer.parsers.pmml.miner import PMML, SimplePmmlParser
+from easyminer.parsers.pmml.miner import SimplePmmlParser
+from easyminer.schemas.miner import Miner, MineStartResponse
+from easyminer.tasks.mine import mine as mine_task
 
 logger = logging.getLogger(__name__)
 
@@ -26,14 +29,22 @@ async def get_status():
 
 
 @router.post("/mine")
-async def mine(body: Annotated[str, Body(media_type="application/xml")]) -> PMML:
+async def mine(request: Request, body: Annotated[str, Body(media_type="application/xml")]) -> MineStartResponse:
     parser = SimplePmmlParser(body)
     try:
         pmml = parser.parse()
-        logger.info(pmml)
-        return pmml
-    except lxml.etree.XMLSyntaxError:
-        raise HTTPException(status_code=status.HTTP_418_IM_A_TEAPOT)
+        task = mine_task.delay(pmml)
+        return MineStartResponse(
+            code="200",
+            miner=Miner(
+                state=task.state,
+                task_id=UUID(task.id),
+                started=datetime.now(),
+                result_url=str(request.url_for("get_task_result", task_id=task.id)),
+            ),
+        )
+    except lxml.etree.LxmlError as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Invalid PMML: {e}") from e
 
 
 @router.get(

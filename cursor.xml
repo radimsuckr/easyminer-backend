@@ -10,7 +10,8 @@
 		<Application name="CleverMinerConverter" version="1.0" />
 		<Annotation>PMML generated from cleverminer function call</Annotation>
 		<Timestamp>2023-10-27T10:00:00</Timestamp>
-		<Extension name="dataset" value="UserDataFrame" /> <!-- Placeholder for self._df -->
+		<Extension name="dataset" value="1" /> <!-- Placeholder for self._df -->
+		<Extension name="f" value="x" />
 		<!-- Other extensions from your reference can be added if needed, e.g., timeout -->
 	</Header>
 	<guha:AssociationModel

@@ -1,4 +1,4 @@
-import sys
+import logging
 
 import pandas as pd
 from cleverminer.cleverminer import cleverminer
@@ -7,13 +7,19 @@ from sqlalchemy.orm import joinedload
 
 from easyminer.database import get_sync_db_session
 from easyminer.models.preprocessing import Attribute, DatasetInstance
-from easyminer.parsers.pmml.miner import CoefficientType, DBASettingType, SimplePmmlParser
+from easyminer.parsers.pmml.miner import PMML as PMMLInput
+from easyminer.parsers.pmml.miner import CoefficientType, DBASettingType
+from easyminer.serializers.pmml.miner import PMML as PMMLSerializer
+from easyminer.serializers.pmml.miner import create_pmml_result_from_cleverminer
+from easyminer.worker import app
+
+logger = logging.getLogger(__name__)
 
 
 class MinerService:
     def __init__(self, dataset_id: int):
-        self._df: pd.DataFrame
         self._ds_id: int = dataset_id
+        self._df: pd.DataFrame
 
     def _load_data(self) -> None:
         with get_sync_db_session() as db:
@@ -35,25 +41,29 @@ class MinerService:
         return cleverminer(df=self._df, proc="4ftMiner", quantifiers=quantifiers, ante=antecedents, succ=consequents)
 
 
-if __name__ == "__main__":
-    with open("./cursor.xml") as f:
-        parser = SimplePmmlParser(f.read())
-    pmml = parser.parse()
+@app.task(pydantic=True)
+def mine(pmml: PMMLInput) -> str:
     ts = pmml.association_model.task_setting
-    print(f"PMML Version: {pmml.version}")
-    print(f"PMML Header: {pmml.header}")
-    # print(pmml)
-    print("-" * 10)
+    logger.info(f"PMML Version: {pmml.version}")
+    logger.info(f"PMML Header: {pmml.header}")
+
+    dataset_ext = next(filter(lambda x: x.name.lower() == "dataset", pmml.header.extensions), None)
+    if not dataset_ext:
+        raise ValueError("Dataset extension not found in PMML header")
+    try:
+        dataset_id = int(dataset_ext.value)
+    except ValueError:
+        raise ValueError(f"Invalid dataset ID in Dataset extension: {dataset_ext.value}")
 
     base_candidates = list(filter(lambda x: x.interest_measure.lower() == "base", ts.interest_measure_settings))
     if len(base_candidates) > 1:
-        print("More than 1 Base candidates")
+        logger.warning("More than 1 Base candidates")
     confidence_candidates = list(filter(lambda x: x.interest_measure.lower() == "conf", ts.interest_measure_settings))
     if len(confidence_candidates) > 1:
-        print("More than 1 conf candidates")
+        logger.warning("More than 1 conf candidates")
     aad_candidates = list(filter(lambda x: x.interest_measure.lower() == "aad", ts.interest_measure_settings))
     if len(aad_candidates) > 1:
-        print("More than 1 conf candidates")
+        logger.warning("More than 1 conf candidates")
 
     quantifiers = {}
     if base_candidates:
@@ -65,13 +75,11 @@ if __name__ == "__main__":
 
     antecedent_setting_id = ts.antecedent_setting
     if not antecedent_setting_id:
-        print("Antecedent setting not found")
-        sys.exit(1)
+        raise ValueError("Antecedent setting not found")
 
     consequent_setting_id = ts.consequent_setting
     if not consequent_setting_id:
-        print("Consequent setting not found")
-        sys.exit(1)
+        raise ValueError("Consequent setting not found")
 
     antecedent = next(filter(lambda x: x.id == antecedent_setting_id, ts.dba_settings))
     consequent = next(filter(lambda x: x.id == consequent_setting_id, ts.dba_settings))
@@ -109,9 +117,8 @@ if __name__ == "__main__":
         "type": "con" if consequent.type == DBASettingType.conjunction else "dis",
     }
 
-    ds_id = int(pmml.header.extensions[0].value)
-    svc = MinerService(ds_id)  # Assuming the dataset ID is stored in the first extension
+    svc = MinerService(dataset_id)
     cm = svc.mine_4ft(quantifiers=quantifiers, antecedents=antecedents, consequents=consequents)
-    cm.print_summary()
-    cm.print_rulelist()
-    # breakpoint()
+    result = create_pmml_result_from_cleverminer(cm.result)
+    xml = result.to_xml()
+    return xml if isinstance(xml, str) else xml.decode("utf-8")
