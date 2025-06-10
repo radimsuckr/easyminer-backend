@@ -185,7 +185,7 @@ async def rename_attribute(
     db: Annotated[AsyncSession, Depends(get_db_session)],
     dataset_id: Annotated[int, Path()],
     attribute_id: Annotated[int, Path()],
-    name: Annotated[str, Body()],
+    name: Annotated[str, Body(media_type="text/plain", examples=["A New Exciting Name"])],
 ):
     """Rename this attribute of a specific dataset."""
     dataset = await db.get(Dataset, dataset_id, options=[joinedload(Dataset.attributes)])
