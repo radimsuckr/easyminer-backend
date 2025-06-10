@@ -1,13 +1,12 @@
 import sys
 import warnings
-from collections import Counter
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any
 
 import numpy as np
 import pandas as pd
 from cleverminer.cleverminer import cleverminer
-from pyarc import CBA, TransactionDB
+from pyarc import TransactionDB
 from pyarc.algorithms import M1Algorithm, M2Algorithm, createCARs
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload
@@ -15,62 +14,6 @@ from sqlalchemy.orm import joinedload
 from easyminer.database import get_sync_db_session
 from easyminer.models.preprocessing import Attribute, DatasetInstance
 from easyminer.parsers.pmml.miner import CoefficientType, DBASettingType, SimplePmmlParser
-
-# class CBA_pyARC:
-#     def __init__(self, cleverminer_rules: list[dict], algorithm: Literal["m1", "m2"] = "m1"):
-#         self.rules = cleverminer_rules
-#         self.algorithm = algorithm.lower()
-#         self.clf: M1Algorithm | M2Algorithm | None = None
-#         self.default_class: str | None = None
-#
-#     @staticmethod
-#     def _to_pyarc_transactions(rows: list[dict], class_label: str) -> TransactionDB:
-#         # TransactionDB accepts list of dicts with all attributes including class_label
-#         return TransactionDB.from_dict(rows, default_label=class_label)
-#
-#     def _to_car_list(self) -> list:
-#         """
-#         Converts CleverMiner-like rules to pyarc's internal rule format.
-#         Expected input format per rule:
-#             {
-#                 'antecedent': {'A': 'v1', 'B': 'v2'},
-#                 'consequent': 'ClassLabel',
-#                 'support': 0.15,
-#                 'confidence': 0.8
-#             }
-#         """
-#         raw = []
-#         for r in self.rules:
-#             ante = tuple(f"{k}={v}" for k, v in r["antecedent"].items())
-#             cons = f"class={r['consequent']}"
-#             raw.append((cons, ante, r["support"], r["confidence"]))
-#         return createCARs(raw)
-#
-#     def fit(self, rows: list[dict], class_label: str):
-#         txn_db = self._to_pyarc_transactions(rows, class_label)
-#         cars = self._to_car_list()
-#
-#         if self.algorithm == "m2":
-#             self.clf = M2Algorithm(cars, txn_db).build()
-#         else:
-#             self.clf = M1Algorithm(cars, txn_db).build()
-#
-#         self.default_class = Counter(r[class_label] for r in rows).most_common(1)[0][0]
-#         return self
-#
-#     def predict(self, instance: dict):
-#         if self.clf is None:
-#             raise RuntimeError("Classifier has not been fitted yet. Call fit() first.")
-#         return self.clf.predict(instance)
-#
-#     def evaluate(self, rows: list[dict], class_label: str) -> float:
-#         correct = 0
-#         for r in rows:
-#             inst = {k: v for k, v in r.items() if k != class_label}
-#             pred = self.predict(inst)
-#             if pred == r[class_label]:
-#                 correct += 1
-#         return correct / len(rows) if rows else 0
 
 
 @dataclass
@@ -192,112 +135,45 @@ class CBAClassifier:
         """Sort rules by confidence (descending), then support (descending), then length (ascending)"""
         return sorted(rules, key=lambda r: (-r.confidence, -r.support, len(r.antecedent)))
 
-    def _m1_algorithm(self, rules: list[AssociationRule], X: pd.DataFrame) -> list[AssociationRule]:
-        """
-        M1 Algorithm: Remove rules that don't improve classification accuracy
+    def _to_pyarc_cars(self, rules: list[AssociationRule], class_label: str) -> list:
+        """Converts internal AssociationRule objects to pyarc's CAR format."""
+        raw = []
+        for r in rules:
+            # Re-format antecedent from ["attr=val"] to ["attr:=:val"]
+            new_ante = []
+            for item in r.antecedent:
+                parts = item.split("=", 1)
+                if len(parts) == 2:
+                    new_ante.append(f"{parts[0]}:=:{parts[1]}")
+                else:
+                    # This case should ideally not be hit if process_cleverminer_results is correct
+                    warnings.warn(f"Skipping malformed antecedent item: '{item}' in rule ID {r.rule_id}")
 
-        Args:
-            rules: Sorted list of association rules
-            X: Training data features
+            ante = tuple(new_ante)
+            cons = f"{class_label}:=:{r.consequent}"
+            raw.append((cons, ante, r.support, r.confidence))
+        return createCARs(raw)
 
-        Returns:
-            Pruned list of rules
-        """
-        if not rules:
-            return rules
+    def _from_pyarc_cars(self, pyarc_rules: list) -> list[AssociationRule]:
+        """Converts pyarc's CARs back to internal AssociationRule objects."""
+        rules = []
+        for i, r in enumerate(pyarc_rules):
+            # In a built classifier, antecedent items are tuples of (attr, val)
+            antecedent = [f"{item[0]}={item[1]}" for item in r.antecedent]
 
-        pruned_rules = []
-        covered_cases: set[int] = set()
+            # The consequent is a pyarc.Consequent object; we need its value.
+            consequent = r.consequent.value
 
-        for rule in rules:
-            # Find cases covered by this rule
-            rule_covers = self._get_covered_cases(rule, X)
-
-            # Check if rule covers any new cases or improves accuracy
-            new_cases = rule_covers - covered_cases
-
-            if new_cases:  # Rule covers at least one new case
-                pruned_rules.append(rule)
-                covered_cases.update(rule_covers)
-
-                # Stop if all cases are covered
-                if len(covered_cases) >= len(X):
-                    break
-
-        return pruned_rules
-
-    def _m2_algorithm(self, rules: list[AssociationRule], X: pd.DataFrame, y: pd.Series) -> list[AssociationRule]:
-        """
-        M2 Algorithm: Remove rules that have lower precedence and same consequent
-
-        Args:
-            rules: list of rules from M1 algorithm
-            X: Training data features
-            y: Training data labels
-
-        Returns:
-            Further pruned list of rules
-        """
-        if not rules:
-            return rules
-
-        pruned_rules = []
-
-        for i, rule in enumerate(rules):
-            keep_rule = True
-            rule_covers = self._get_covered_cases(rule, X)
-
-            # Check against higher precedence rules
-            for j in range(i):
-                higher_rule = rules[j]
-                higher_covers = self._get_covered_cases(higher_rule, X)
-
-                # If higher precedence rule covers all cases of current rule
-                # and has same or better accuracy, remove current rule
-                if rule_covers.issubset(higher_covers):
-                    rule_accuracy = self._calculate_rule_accuracy(rule, X, y, rule_covers)
-                    higher_accuracy = self._calculate_rule_accuracy(higher_rule, X, y, higher_covers)
-
-                    if higher_accuracy >= rule_accuracy:
-                        keep_rule = False
-                        break
-
-            if keep_rule:
-                pruned_rules.append(rule)
-
-        return pruned_rules
-
-    def _get_covered_cases(self, rule: AssociationRule, X: pd.DataFrame) -> set:
-        """Get indices of cases covered by a rule"""
-        covered = set(range(len(X)))
-
-        for condition in rule.antecedent:
-            if "=" in condition:
-                attr, value = condition.split("=", 1)
-                if attr in X.columns:
-                    mask = X[attr].astype(str) == value
-                    covered = covered.intersection(set(X[mask].index))
-            else:
-                # Handle boolean conditions or other formats
-                if condition in X.columns:
-                    mask = X[condition]
-                    covered = covered.intersection(set(X[mask].index))
-
-        return covered
-
-    def _calculate_rule_accuracy(
-        self, rule: AssociationRule, X: pd.DataFrame, y: pd.Series, covered_cases: set
-    ) -> float:
-        """Calculate accuracy of a rule on covered cases"""
-        if not covered_cases:
-            return 0.0
-
-        correct_predictions = 0
-        for idx in covered_cases:
-            if str(y.iloc[idx]) == rule.consequent:
-                correct_predictions += 1
-
-        return correct_predictions / len(covered_cases)
+            rule = AssociationRule(
+                antecedent=antecedent,
+                consequent=str(consequent),
+                confidence=r.confidence,
+                support=r.support,
+                lift=getattr(r, "lift", 1.0),
+                rule_id=getattr(r, "rid", i),
+            )
+            rules.append(rule)
+        return rules
 
     def fit(self, X: pd.DataFrame, y: pd.Series, rules: list[AssociationRule] | None = None):
         """
@@ -337,62 +213,33 @@ class CBAClassifier:
 
         # Apply M1 and M2 pruning algorithms if enabled
         if self.use_m1_m2:
-            print("Applying M1/M2 pruning algorithms...")
-            m1_rules = self._m1_algorithm(self.rules, X)
-            print(f"M1 pruning: {len(self.rules)} → {len(m1_rules)} rules")
+            print("Applying M1/M2 pruning algorithms using pyarc...")
 
-            self.pruned_rules = self._m2_algorithm(m1_rules, X, y)
-            print(f"M2 pruning: {len(m1_rules)} → {len(self.pruned_rules)} rules")
+            # Prepare data for pyarc
+            target_col_name = str(y.name or "class")
+            df_for_pyarc = X.copy()
+            df_for_pyarc[target_col_name] = y
+            txn_db = TransactionDB.from_DataFrame(df_for_pyarc, target=target_col_name)
+
+            # Convert our AssociationRule objects to pyarc's CAR format
+            pyarc_rules = self._to_pyarc_cars(self.rules, target_col_name)
+
+            # Build the classifier with M1/M2 from pyarc
+            m1_clf = M1Algorithm(pyarc_rules, txn_db).build()
+            print(f"M1 pruning: {len(self.rules)} → {len(m1_clf.rules)} rules")
+
+            # M2 takes the M1-pruned rules
+            m2_clf = M2Algorithm(m1_clf.rules, txn_db).build()
+            print(f"M2 pruning: {len(m1_clf.rules)} → {len(m2_clf.rules)} rules")
+
+            # Convert the pruned pyarc rules back to our AssociationRule format
+            self.pruned_rules = self._from_pyarc_cars(m2_clf.rules)
         else:
             print("Skipping M1/M2 pruning")
             self.pruned_rules = self.rules.copy()
 
         print(f"Final classifier uses {len(self.pruned_rules)} rules with default class: {self.default_class}")
         self.is_fitted = True
-
-    def _generate_rules_with_pyarc(self, X: pd.DataFrame, y: pd.Series):
-        """
-        Generate association rules using pyARC library
-
-        This is an alternative to using cleverminer rules. pyARC can automatically
-        mine association rules from your training data using the Apriori algorithm.
-        """
-        try:
-            # Prepare data for pyARC (requires specific format)
-            df = X.copy()
-            df["class"] = y
-
-            # Create transaction database
-            txns = TransactionDB.from_DataFrame(df)
-
-            # Generate classification rules using CBA approach
-            cba = CBA(support=self.min_support, confidence=self.min_confidence, maxlen=self.max_rule_length)
-
-            # Fit and extract rules
-            cba.fit(txns)
-
-            # Convert pyARC rules to our format
-            self.rules = []
-            for i, rule in enumerate(cba.rules):
-                antecedent = [str(item) for item in rule.antecedent]
-                consequent = str(rule.consequent)
-
-                self.rules.append(
-                    AssociationRule(
-                        antecedent=antecedent,
-                        consequent=consequent,
-                        confidence=rule.confidence,
-                        support=rule.support,
-                        lift=getattr(rule, "lift", 1.0),
-                        rule_id=i,
-                    )
-                )
-
-            print(f"Generated {len(self.rules)} rules using pyARC")
-
-        except Exception as e:
-            warnings.warn(f"Error generating rules with pyARC: {e}")
-            self.rules = []
 
     def predict(self, X: pd.DataFrame) -> list[str]:
         """
@@ -445,6 +292,25 @@ class CBAClassifier:
                     return False
 
         return True
+
+    def evaluate(self, X: pd.DataFrame, y: pd.Series) -> float:
+        """
+        Evaluate the classifier's accuracy on a test set.
+
+        Args:
+            X: Test data features
+            y: Test data labels
+
+        Returns:
+            Accuracy score
+        """
+        if not self.is_fitted:
+            raise ValueError("Classifier must be fitted before evaluation")
+
+        predictions = self.predict(X)
+        correct = sum(1 for pred, actual in zip(predictions, y) if pred == actual)
+
+        return correct / len(y) if len(y) > 0 else 0.0
 
     def predict_proba(self, X: pd.DataFrame) -> np.ndarray:
         """
@@ -508,25 +374,6 @@ class CBAClassifier:
             )
 
         return pd.DataFrame(summary_data)
-
-    def evaluate(self, X: pd.DataFrame, y: pd.Series) -> float:
-        """
-        Evaluate the classifier's accuracy on a test set.
-
-        Args:
-            X: Test data features
-            y: Test data labels
-
-        Returns:
-            Accuracy score
-        """
-        if not self.is_fitted:
-            raise ValueError("Classifier must be fitted before evaluation")
-
-        predictions = self.predict(X)
-        correct = sum(1 for pred, actual in zip(predictions, y) if pred == actual)
-
-        return correct / len(y) if len(y) > 0 else 0.0
 
 
 class MinerService:
@@ -680,6 +527,15 @@ if __name__ == "__main__":
         prediction = cba.predict(X.head(1))
         print(f"Predicted class: {prediction[0]}")
         print(f"Actual class:    {y.iloc[0]}")
+
+    for i in range(1, 10):
+        if i < len(X):
+            print(f"\nPrediction for row {i}:")
+            print("Input features:")
+            print(X.iloc[i].to_string())
+            prediction = cba.predict(X.iloc[[i]])
+            print(f"Predicted class: {prediction[0]}")
+            print(f"Actual class:    {y.iloc[i]}")
 
     # Evaluate the classifier's accuracy on the entire dataset.
     accuracy = cba.evaluate(X, y)
