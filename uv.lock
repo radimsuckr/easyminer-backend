@@ -314,6 +314,7 @@ dependencies = [
     { name = "efficient-apriori" },
     { name = "fastapi", extra = ["standard"] },
     { name = "pandas" },
+    { name = "pyarc" },
     { name = "pydantic-settings" },
     { name = "pydantic-xml", extra = ["lxml"] },
     { name = "pyhumps" },
@@ -344,6 +345,7 @@ requires-dist = [
     { name = "efficient-apriori", specifier = ">=2.0.6" },
     { name = "fastapi", extras = ["standard"], specifier = ">=0.111.1" },
     { name = "pandas", specifier = ">=2.2.3" },
+    { name = "pyarc", specifier = ">=1.1.4" },
     { name = "pydantic-settings", specifier = ">=2.4.0" },
     { name = "pydantic-xml", extras = ["lxml"], specifier = ">=2.17.0" },
     { name = "pyhumps", specifier = ">=3.8.0" },
@@ -948,6 +950,21 @@ wheels = [
 ]
 
 [[package]]
+name = "pyarc"
+version = "1.1.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+    { name = "pandas" },
+    { name = "pyfim" },
+    { name = "sklearn" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/3d/45/3461d987932d1165ccb83b44882e88a1d9ab299ff212ac4a378479623c13/pyarc-1.1.4.tar.gz", hash = "sha256:3d7587313c09c762700fe3c9cef46d3a498fde67d3de4055557cb5f047d63a32", size = 25755, upload-time = "2020-12-09T10:32:59.959Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/91/09/32560e0df50f084e03f344bb57196bbcfbeec90a8f7aa982043be6bc7f45/pyarc-1.1.4-py2.py3-none-any.whl", hash = "sha256:beb5669262637eb2dc92b01839e4ca576c87d0424926a818e39f235bb11b4a7e", size = 36109, upload-time = "2020-12-09T10:32:58.51Z" },
+]
+
+[[package]]
 name = "pycodestyle"
 version = "2.13.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1030,6 +1047,12 @@ wheels = [
 lxml = [
     { name = "lxml" },
 ]
+
+[[package]]
+name = "pyfim"
+version = "6.28"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/b4/af/6a0e2e9cb2dad10f94859ce198a81c2d9e98af75263a14a912ff9a0cdb75/pyfim-6.28.tar.gz", hash = "sha256:76d199d9ca8317c2242e344f5435f2c2f9ab4b1533e11e60ff4c73dd52d75285", size = 357255, upload-time = "2020-01-31T04:40:37.764Z" }
 
 [[package]]
 name = "pyflakes"
@@ -1277,6 +1300,12 @@ sdist = { url = "https://files.pythonhosted.org/packages/94/e7/b2c673351809dca68
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b7/ce/149a00dd41f10bc29e5921b496af8b574d8413afcd5e30dfa0ed46c2cc5e/six-1.17.0-py2.py3-none-any.whl", hash = "sha256:4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274", size = 11050, upload-time = "2024-12-04T17:35:26.475Z" },
 ]
+
+[[package]]
+name = "sklearn"
+version = "0.0.post12"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/46/1c/395a83ee7b2d2ad7a05b453872053d41449564477c81dc356f720b16eac4/sklearn-0.0.post12.tar.gz", hash = "sha256:54cff9e20839b7b202321178228af4d9388bedf78425d9299fd9ee170d68802e", size = 2578, upload-time = "2023-12-01T14:30:39.945Z" }
 
 [[package]]
 name = "sniffio"
