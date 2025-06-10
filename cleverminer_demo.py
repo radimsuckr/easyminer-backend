@@ -13,7 +13,7 @@ from sqlalchemy.orm import joinedload
 
 from easyminer.database import get_sync_db_session
 from easyminer.models.preprocessing import Attribute, DatasetInstance
-from easyminer.parsers.pmml.miner import CoefficientType, DBASettingType, SimplePmmlParser
+from easyminer.parsers.pmml.miner import BBASetting, CoefficientType, DBASetting, DBASettingType, SimplePmmlParser
 
 
 @dataclass
@@ -378,13 +378,16 @@ class CBAClassifier:
 
 class MinerService:
     def __init__(self, dataset_id: int):
-        self._df: pd.DataFrame
-        self._ds_id: int = dataset_id
+        self.df: pd.DataFrame | None = None
+        self.ds_id: int = dataset_id
 
-    def _load_data(self) -> None:
+    def load_data(self) -> None:
         with get_sync_db_session() as db:
-            attributes = db.scalars(select(Attribute).where(Attribute.dataset_id == self._ds_id)).all()
-            self._df = pd.DataFrame(columns=tuple(f.name for f in attributes))
+            attributes = db.scalars(select(Attribute).where(Attribute.dataset_id == self.ds_id)).all()
+            if not attributes:
+                raise ValueError(f"No attributes found for dataset ID {self.ds_id}")
+            column_names = [f.name for f in attributes]
+            self.df = pd.DataFrame(columns=column_names)
             for attribute in attributes:
                 instances = db.scalars(
                     select(DatasetInstance)
@@ -392,13 +395,14 @@ class MinerService:
                     .order_by(DatasetInstance.tx_id)
                     .options(joinedload(DatasetInstance.value))
                 ).all()
-                self._df[attribute.name] = [i.value.value for i in instances]
+                self.df[attribute.name] = [i.value.value for i in instances]
 
     def mine_4ft(
         self, quantifiers: dict[str, float], antecedents: dict[str, Any], consequents: dict[str, Any]
     ) -> cleverminer:
-        self._load_data()
-        return cleverminer(df=self._df, proc="4ftMiner", quantifiers=quantifiers, ante=antecedents, succ=consequents)
+        if self.df is None:
+            raise ValueError("Dataframe not loaded. Call load_data() first.")
+        return cleverminer(df=self.df, proc="4ftMiner", quantifiers=quantifiers, ante=antecedents, succ=consequents)
 
 
 if __name__ == "__main__":
@@ -408,19 +412,11 @@ if __name__ == "__main__":
     ts = pmml.association_model.task_setting
     print(f"PMML Version: {pmml.version}")
     print(f"PMML Header: {pmml.header}")
-    # print(pmml)
     print("-" * 10)
 
     base_candidates = list(filter(lambda x: x.interest_measure.lower() == "base", ts.interest_measure_settings))
-    if len(base_candidates) > 1:
-        print("More than 1 Base candidates")
     confidence_candidates = list(filter(lambda x: x.interest_measure.lower() == "conf", ts.interest_measure_settings))
-    if len(confidence_candidates) > 1:
-        print("More than 1 conf candidates")
     aad_candidates = list(filter(lambda x: x.interest_measure.lower() == "aad", ts.interest_measure_settings))
-    if len(aad_candidates) > 1:
-        print("More than 1 conf candidates")
-
     quantifiers: dict[str, float] = {}
     if base_candidates:
         quantifiers["Base"] = base_candidates[0].threshold
@@ -429,65 +425,76 @@ if __name__ == "__main__":
     if aad_candidates:
         quantifiers["aad"] = aad_candidates[0].threshold
 
-    antecedent_setting_id = ts.antecedent_setting
-    if not antecedent_setting_id:
-        print("Antecedent setting not found")
-        sys.exit(1)
-
-    consequent_setting_id = ts.consequent_setting
-    if not consequent_setting_id:
-        print("Consequent setting not found")
-        sys.exit(1)
-
-    antecedent = next(filter(lambda x: x.id == antecedent_setting_id, ts.dba_settings))
-    consequent = next(filter(lambda x: x.id == consequent_setting_id, ts.dba_settings))
-
-    antecedents = {
-        "attributes": [
-            {
-                "name": next(filter(lambda x: x.id == bba_ref, ts.bba_settings)).name,
-                "type": "seq"
-                if next(filter(lambda x: x.id == bba_ref, ts.bba_settings)).coefficient.type == CoefficientType.sequence
-                else "subset",
-                "minlen": next(filter(lambda x: x.id == bba_ref, ts.bba_settings)).coefficient.minimal_length,
-                "maxlen": next(filter(lambda x: x.id == bba_ref, ts.bba_settings)).coefficient.maximal_length,
-            }
-            for bba_ref in antecedent.ba_refs
-        ],
-        "minlen": antecedent.minimal_length,
-        "maxlen": antecedent.maximal_length,
-        "type": "con" if antecedent.type == DBASettingType.conjunction else "dis",
-    }
-    consequents = {
-        "attributes": [
-            {
-                "name": next(filter(lambda x: x.id == bba_ref, ts.bba_settings)).name,
-                "type": "seq"
-                if next(filter(lambda x: x.id == bba_ref, ts.bba_settings)).coefficient.type == CoefficientType.sequence
-                else "subset",
-                "minlen": next(filter(lambda x: x.id == bba_ref, ts.bba_settings)).coefficient.minimal_length,
-                "maxlen": next(filter(lambda x: x.id == bba_ref, ts.bba_settings)).coefficient.maximal_length,
-            }
-            for bba_ref in consequent.ba_refs
-        ],
-        "minlen": consequent.minimal_length,
-        "maxlen": consequent.maximal_length,
-        "type": "con" if consequent.type == DBASettingType.conjunction else "dis",
-    }
-
     ds_id = int(pmml.header.extensions[0].value)
-    svc = MinerService(ds_id)  # Assuming the dataset ID is stored in the first extension
+    svc = MinerService(ds_id)
+    svc.load_data()
+    if svc.df is None:
+        print("Dataframe could not be loaded.")
+        sys.exit(1)
+    all_attribute_names = list(svc.df.columns)
+
+    antecedent_setting_id = ts.antecedent_setting
+    consequent_setting_id = ts.consequent_setting
+
+    def build_dba_dict(dba_setting: DBASetting, bba_settings: list[BBASetting]) -> dict[str, Any]:
+        return {
+            "attributes": [
+                {
+                    "name": next(filter(lambda x: x.id == bba_ref, bba_settings)).name,
+                    "type": "seq"
+                    if next(filter(lambda x: x.id == bba_ref, bba_settings)).coefficient.type
+                    == CoefficientType.sequence
+                    else "subset",
+                    "minlen": next(filter(lambda x: x.id == bba_ref, bba_settings)).coefficient.minimal_length,
+                    "maxlen": next(filter(lambda x: x.id == bba_ref, bba_settings)).coefficient.maximal_length,
+                }
+                for bba_ref in dba_setting.ba_refs
+            ],
+            "minlen": dba_setting.minimal_length,
+            "maxlen": dba_setting.maximal_length,
+            "type": "con" if dba_setting.type == DBASettingType.conjunction else "dis",
+        }
+
+    if antecedent_setting_id and consequent_setting_id:
+        print("Constraint: Antecedent and Consequent")
+        antecedent_dba = next(filter(lambda x: x.id == antecedent_setting_id, ts.dba_settings))
+        consequent_dba = next(filter(lambda x: x.id == consequent_setting_id, ts.dba_settings))
+        antecedents = build_dba_dict(antecedent_dba, ts.bba_settings)
+        consequents = build_dba_dict(consequent_dba, ts.bba_settings)
+    elif antecedent_setting_id:
+        print("Constraint: Antecedent only (Consequent can be any attribute)")
+        antecedent_dba = next(filter(lambda x: x.id == antecedent_setting_id, ts.dba_settings))
+        antecedents = build_dba_dict(antecedent_dba, ts.bba_settings)
+        consequents = {
+            "attributes": [{"name": attr, "type": "subset", "minlen": 1, "maxlen": 1} for attr in all_attribute_names],
+            "minlen": 1,
+            "maxlen": 1,
+            "type": "con",
+        }
+    elif consequent_setting_id:
+        print("Constraint: Consequent only (Antecedent can be any attribute)")
+        consequent_dba = next(filter(lambda x: x.id == consequent_setting_id, ts.dba_settings))
+        consequents = build_dba_dict(consequent_dba, ts.bba_settings)
+        antecedents = {
+            "attributes": [{"name": attr, "type": "subset", "minlen": 1, "maxlen": 1} for attr in all_attribute_names],
+            "minlen": 1,
+            "maxlen": 1,
+            "type": "con",
+        }
+    else:
+        print("Constraint: None (any attribute can be on any side)")
+        antecedents = {
+            "attributes": [{"name": attr, "type": "subset", "minlen": 1, "maxlen": 1} for attr in all_attribute_names],
+            "minlen": 1,
+            "maxlen": 1,
+            "type": "con",
+        }
+        consequents = antecedents.copy()
+
     cm = svc.mine_4ft(quantifiers=quantifiers, antecedents=antecedents, consequents=consequents)
     cm.print_summary()
     cm.print_rulelist()
 
-    # The more feature-complete CBAClassifier is used here instead of the simpler CBA_pyARC wrapper.
-    # This part demonstrates how to use it with the data and rules from cleverminer.
-
-    # The data is already loaded in the MinerService instance.
-    df = svc._df
-
-    # The target variable for classification is the consequent from the mining task.
     if (
         not isinstance(consequents, dict)
         or "attributes" not in consequents
@@ -498,28 +505,22 @@ if __name__ == "__main__":
         sys.exit(1)
 
     target_attribute = consequents["attributes"][0]["name"]
-    X = df.drop(columns=[target_attribute])
-    y = df[target_attribute]
+    X = svc.df.drop(columns=[target_attribute])
+    y = svc.df[target_attribute]
 
-    # Initialize the CBA classifier with parameters from the mining task.
-    # cleverminer's 'Base' is an absolute count, so we convert it to relative support.
-    min_support = quantifiers.get("Base", 75.0) / len(df) if len(df) > 0 else 0.01
+    min_support = quantifiers.get("Base", 75.0) / len(svc.df) if len(svc.df) > 0 else 0.01
     cba = CBAClassifier(min_confidence=quantifiers.get("conf", 0.95), min_support=min_support)
 
-    # The 'result' attribute of the cleverminer object contains the rules in a processed format.
     if "rules" not in cm.result:
         print("No 'rules' key found in cleverminer result.")
         sys.exit(1)
     rules = cba.process_cleverminer_results(cm.result["rules"])
 
-    # Fit the classifier with the data and the processed rules.
     cba.fit(X, y, rules=rules)
 
-    # Display a summary of the rules that the classifier will use.
     print("\nCBA Classifier Rule Summary:")
     print(cba.get_rule_summary())
 
-    # Show an example of predicting a single instance.
     if not X.empty:
         print("\nExample prediction for the first row of the dataset:")
         print("Input features (first row):")
@@ -528,17 +529,5 @@ if __name__ == "__main__":
         print(f"Predicted class: {prediction[0]}")
         print(f"Actual class:    {y.iloc[0]}")
 
-    for i in range(1, 10):
-        if i < len(X):
-            print(f"\nPrediction for row {i}:")
-            print("Input features:")
-            print(X.iloc[i].to_string())
-            prediction = cba.predict(X.iloc[[i]])
-            print(f"Predicted class: {prediction[0]}")
-            print(f"Actual class:    {y.iloc[i]}")
-
-    # Evaluate the classifier's accuracy on the entire dataset.
     accuracy = cba.evaluate(X, y)
     print(f"\nOverall Classifier Accuracy: {accuracy:.2%}")
-
-    # breakpoint()
