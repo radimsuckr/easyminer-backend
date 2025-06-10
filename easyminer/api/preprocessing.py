@@ -221,5 +221,13 @@ async def list_values(
     if not attribute:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Attribute not found")
 
-    values = (await db.execute(select(DatasetValue).offset(offset).limit(limit))).scalars().all()
+    values = (
+        (
+            await db.execute(
+                select(DatasetValue).where(DatasetValue.attribute_id == attribute.id).offset(offset).limit(limit)
+            )
+        )
+        .scalars()
+        .all()
+    )
     return [AttributeValueRead.model_validate(value) for value in values]
