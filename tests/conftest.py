@@ -15,10 +15,10 @@ from easyminer.models import *  # noqa: F401,F403
 
 # Database connection parameters
 DB_HOST = "localhost"
-DB_PORT = 5432
-DB_USER = "easyminer"
+DB_PORT = 3306
+DB_USER = "root"
 DB_PASSWORD = "easyminer"
-DB_NAME = "postgres"  # Connect to default database initially
+DB_NAME = "easyminer"  # Connect to default database initially
 TEST_DB_NAME = "easyminer_test"
 
 
@@ -27,7 +27,7 @@ TEST_DB_NAME = "easyminer_test"
 def database_url():
     """Create and drop the test database using SQLAlchemy primitives."""
     # Connection string to default database for creating/dropping test database
-    admin_url = f"postgresql+psycopg://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+    admin_url = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
     # Create a synchronous engine for database administration
     admin_engine = create_engine(admin_url)
@@ -44,23 +44,14 @@ def database_url():
         pytest.fail(f"Failed to create test database: {e}")
 
     # Return the URLs for the test database
-    async_db_url = f"postgresql+psycopg://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{TEST_DB_NAME}"
-    sync_db_url = f"postgresql+psycopg://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{TEST_DB_NAME}"
+    async_db_url = f"mysql+aiomysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{TEST_DB_NAME}"
+    sync_db_url = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{TEST_DB_NAME}"
 
     yield {"async": async_db_url, "sync": sync_db_url}
 
     try:
         with admin_engine.connect() as conn:
             conn.execution_options(isolation_level="AUTOCOMMIT")
-            # Terminate any connections to the test database
-            conn.execute(
-                text(f"""
-                SELECT pg_terminate_backend(pg_stat_activity.pid)
-                FROM pg_stat_activity
-                WHERE pg_stat_activity.datname = '{TEST_DB_NAME}'
-                AND pid <> pg_backend_pid()
-            """)
-            )
             # Drop the test database
             conn.execute(text(f"DROP DATABASE IF EXISTS {TEST_DB_NAME}"))
     except Exception as e:
@@ -185,4 +176,3 @@ def client(setup_db, override_get_async_db, override_get_sync_db):
 test_engine = async_test_engine
 test_session_local = async_session_local
 override_get_db = override_get_async_db
-
