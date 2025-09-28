@@ -11,7 +11,8 @@ dependencies = [
 	"efficient-apriori>=2.0.6",
 	"fastapi[standard]>=0.111.1",
 	"pandas>=2.2.3",
-	"pyarc>=1.1.4",
+	# "pyARC @ file:///Users/radimsuckr/Work/pyARC",
+	"pyARC @ https://github.com/radimsuckr/pyARC.git",
 	"pydantic-settings>=2.4.0",
 	"pydantic-xml[lxml]>=2.17.0",
 	"pyhumps>=3.8.0",
@@ -35,15 +36,15 @@ dev = [
 	"ruff>=0.9.10",
 ]
 
-[tool.pyright]
-extraPaths = ["./.venv/lib/python3.13/site-packages/"]
-
 [tool.ruff]
 target-version = "py313"
 line-length = 120
 
+[tool.ruff.format]
+line-ending = "lf"
+
 [tool.ruff.lint]
-select = ["E4", "E7", "E9", "F", "FAST", "I", "INP", "UP"]
+extend-select = ["E4", "E7", "E9", "F", "FAST", "I", "INP", "UP"]
 
 [tool.pytest.ini_options]
 asyncio_default_fixture_loop_scope = "function"
