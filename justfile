@@ -1,6 +1,7 @@
 docker_image_name := "easyminer-backend"
 
-default:
+[default]
+list:
 	@just --list
 
 build-docker:
