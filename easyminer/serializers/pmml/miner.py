@@ -56,7 +56,10 @@ class AssociationModel(
     BaseXmlModel,
     tag="AssociationModel",
     ns="guha",
-    nsmap={"guha": "http://keg.vse.cz/ns/GUHA0.1rev1", "": "http://www.dmg.org/PMML-4_0"},
+    nsmap={
+        "guha": "http://keg.vse.cz/ns/GUHA0.1rev1",
+        "": "http://www.dmg.org/PMML-4_0",
+    },
 ):
     model_name: str = attr(name="modelName", default="c402d7406a440a39029c9296fe105eba")
     function_name: str = attr(name="functionName", default="associationRules")
@@ -94,7 +97,12 @@ def create_pmml_result(
     number_of_rules: int,
     bbas_data: list[dict[Literal["id", "text", "name", "value"], str]],
     dbas_data: list[dict[Literal["id", "text", "barefs"], str | list[str]]],
-    arules_data: list[dict[Literal["id", "id_antecedent", "id_consequent", "a", "b", "c", "d", "text"], str | int]],
+    arules_data: list[
+        dict[
+            Literal["id", "id_antecedent", "id_consequent", "a", "b", "c", "d", "text"],
+            str | int,
+        ]
+    ],
     headers_data: list[dict[str, str]] | None = None,
 ) -> PMML:
     """
@@ -176,7 +184,14 @@ def create_pmml_result_from_cleverminer(cleverminer_output: dict, headers_data: 
         bba_id = str(i)
         bba_lookup[(attr_name, value)] = bba_id
 
-        bbas.append(BBA(id=bba_id, text=f"{attr_name}({value})", field_ref=attr_name, cat_ref=value))
+        bbas.append(
+            BBA(
+                id=bba_id,
+                text=f"{attr_name}({value})",
+                field_ref=attr_name,
+                cat_ref=value,
+            )
+        )
 
     # Create DBAs and Association Rules
     dbas = []
@@ -198,7 +213,13 @@ def create_pmml_result_from_cleverminer(cleverminer_output: dict, headers_data: 
                 for value in values:
                     ante_ba_refs.append(bba_lookup[(attr_name, value)])
 
-            dbas.append(DBA(id=antecedent_dba_id, text=rule["cedents_str"]["ante"], ba_refs=ante_ba_refs))
+            dbas.append(
+                DBA(
+                    id=antecedent_dba_id,
+                    text=rule["cedents_str"]["ante"],
+                    ba_refs=ante_ba_refs,
+                )
+            )
 
         # Create DBA for consequent
         consequent_dba_id = str(dba_counter)
@@ -210,7 +231,13 @@ def create_pmml_result_from_cleverminer(cleverminer_output: dict, headers_data: 
             for value in values:
                 succ_ba_refs.append(bba_lookup[(attr_name, value)])
 
-        dbas.append(DBA(id=consequent_dba_id, text=rule["cedents_str"]["succ"], ba_refs=succ_ba_refs))
+        dbas.append(
+            DBA(
+                id=consequent_dba_id,
+                text=rule["cedents_str"]["succ"],
+                ba_refs=succ_ba_refs,
+            )
+        )
 
         # Extract fourfold table data
         fourfold = rule["params"]["fourfold"]
@@ -254,9 +281,13 @@ def create_pmml_result_from_cleverminer(cleverminer_output: dict, headers_data: 
         extensions = [
             Extension(name="task_type", value=cleverminer_output["taskinfo"]["task_type"]),
             Extension(
-                name="total_verifications", value=str(cleverminer_output["summary_statistics"]["total_verifications"])
+                name="total_verifications",
+                value=str(cleverminer_output["summary_statistics"]["total_verifications"]),
             ),
-            Extension(name="processing_time", value=str(cleverminer_output["summary_statistics"]["time_processing"])),
+            Extension(
+                name="processing_time",
+                value=str(cleverminer_output["summary_statistics"]["time_processing"]),
+            ),
             Extension(name="algorithm", value="cleverminer-4ft"),
         ]
         header = Header(extensions=extensions)

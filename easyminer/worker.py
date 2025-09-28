@@ -19,11 +19,7 @@ from easyminer.models.task import Task, TaskStatusEnum
 
 logger = logging.getLogger(__name__)
 
-app = Celery(
-    "easyminer-backend-worker",
-    broker=celery_broker,
-    backend=celery_backend,
-)
+app = Celery("easyminer-backend-worker", broker=celery_broker, backend=celery_backend)
 app.conf.update(
     broker_connection_retry_on_startup=True,
     accept_content={"pickle"},

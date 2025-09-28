@@ -26,7 +26,10 @@ def calculate_field_numeric_detail(field_id: int):
                     func.min(DataSourceInstance.value_numeric).label("min_value"),
                     func.max(DataSourceInstance.value_numeric).label("max_value"),
                     func.avg(DataSourceInstance.value_numeric).label("avg_value"),
-                ).where(DataSourceInstance.field_id == field.id, DataSourceInstance.value_numeric.is_not(None))
+                ).where(
+                    DataSourceInstance.field_id == field.id,
+                    DataSourceInstance.value_numeric.is_not(None),
+                )
             )
             .tuples()
             .one()

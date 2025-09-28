@@ -9,7 +9,6 @@ from easyminer.database import get_sync_db_session
 from easyminer.models.preprocessing import Attribute, DatasetInstance
 from easyminer.parsers.pmml.miner import PMML as PMMLInput
 from easyminer.parsers.pmml.miner import CoefficientType, DBASettingType
-from easyminer.serializers.pmml.miner import PMML as PMMLSerializer
 from easyminer.serializers.pmml.miner import create_pmml_result_from_cleverminer
 from easyminer.worker import app
 
@@ -35,10 +34,19 @@ class MinerService:
                 self._df[attribute.name] = [i.value.value for i in instances]
 
     def mine_4ft(
-        self, quantifiers: dict[str, float], antecedents: dict[str, str | int], consequents: dict[str, str | int]
+        self,
+        quantifiers: dict[str, float],
+        antecedents: dict[str, str | int],
+        consequents: dict[str, str | int],
     ) -> cleverminer:
         self._load_data()
-        return cleverminer(df=self._df, proc="4ftMiner", quantifiers=quantifiers, ante=antecedents, succ=consequents)
+        return cleverminer(
+            df=self._df,
+            proc="4ftMiner",
+            quantifiers=quantifiers,
+            ante=antecedents,
+            succ=consequents,
+        )
 
 
 @app.task(pydantic=True)

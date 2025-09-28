@@ -12,7 +12,13 @@ logger = logging.getLogger(__name__)
 
 @app.task
 def aggregate_field_values(
-    data_source_id: int, field_id: int, bins: int, min: Decimal, max: Decimal, min_inclusive: bool, max_inclusive: bool
+    data_source_id: int,
+    field_id: int,
+    bins: int,
+    min: Decimal,
+    max: Decimal,
+    min_inclusive: bool,
+    max_inclusive: bool,
 ) -> list[dict[str, Decimal | bool | int]]:
     logger.info(
         f"Aggregating field values for data_source_id={data_source_id}, field_id={field_id}, bins={bins}, min={min}, max={max}, min_inclusive={min_inclusive}, max_inclusive={max_inclusive}"

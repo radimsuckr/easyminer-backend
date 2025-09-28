@@ -6,7 +6,14 @@ import pydantic
 from sqlalchemy import func, insert, select, update
 
 from easyminer.database import get_sync_db_session
-from easyminer.models.data import Chunk, DataSource, DataSourceInstance, Field, Upload, UploadState
+from easyminer.models.data import (
+    Chunk,
+    DataSource,
+    DataSourceInstance,
+    Field,
+    Upload,
+    UploadState,
+)
 from easyminer.schemas.data import FieldType
 from easyminer.worker import app
 
@@ -20,7 +27,11 @@ class ProcessChunkResult(pydantic.BaseModel):
 
 @app.task(pydantic=True)
 def process_chunk(
-    chunk_id: int, original_state: UploadState, separator: str, quote_char: str, escape_char: str
+    chunk_id: int,
+    original_state: UploadState,
+    separator: str,
+    quote_char: str,
+    escape_char: str,
 ) -> ProcessChunkResult:
     with get_sync_db_session() as db:
         chunk = db.get(Chunk, chunk_id)
@@ -30,12 +41,7 @@ def process_chunk(
         logger.info(f"Processing chunk {chunk_id} with path {chunk.path}")
 
         with open(chunk.path, encoding="utf-8") as file:
-            reader = csv.reader(
-                file,
-                delimiter=separator,
-                quotechar=quote_char,
-                escapechar=escape_char,
-            )
+            reader = csv.reader(file, delimiter=separator, quotechar=quote_char, escapechar=escape_char)
             if original_state == UploadState.initialized:
                 # Parse first row from CSV as header
                 header = next(reader)
@@ -44,7 +50,10 @@ def process_chunk(
                 for i, col in enumerate(header):
                     logger.info(f"Processing header column: {col}")
                     field = Field(
-                        name=col, index=i, data_type=FieldType.numeric, data_source_id=chunk.upload.data_source.id
+                        name=col,
+                        index=i,
+                        data_type=FieldType.numeric,
+                        data_source_id=chunk.upload.data_source.id,
                     )
                     db.add(field)
                 db.flush()
@@ -100,7 +109,4 @@ def process_chunk(
 
         db.commit()
 
-    return ProcessChunkResult(
-        chunk_id=chunk_id,
-        status="processed",
-    )
+    return ProcessChunkResult(chunk_id=chunk_id, status="processed")

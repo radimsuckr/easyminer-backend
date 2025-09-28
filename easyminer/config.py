@@ -51,17 +51,12 @@ if not easyminer_modules.issubset(_allowed_modules):
     raise ValueError(f'Invalid module in "EASYMINER_MODULES". Choose from {_allowed_modules}')
 
 
-settings = Settings(
-    database_url=database_url,
-    database_url_sync=database_url_sync,
-)
+settings = Settings(database_url=database_url, database_url_sync=database_url_sync)
 
 logging_config = {
     "version": 1,
     "disable_existing_loggers": False,
-    "formatters": {
-        "standard": {"format": "%(asctime)s [%(levelname)s] %(name)s: %(message)s"},
-    },
+    "formatters": {"standard": {"format": "%(asctime)s [%(levelname)s] %(name)s: %(message)s"}},
     "handlers": {
         "default": {
             "level": "DEBUG" if settings.debug_logs else "INFO",

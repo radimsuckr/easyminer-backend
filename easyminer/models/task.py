@@ -33,10 +33,7 @@ class Task(Base):
     data_source_id: Mapped[int | None] = mapped_column(ForeignKey("data_source.id", ondelete="CASCADE"), nullable=True)
     data_source: Mapped["DataSource"] = relationship("DataSource", back_populates="tasks")
     result_id: Mapped[int | None] = mapped_column(ForeignKey("task_result.id", ondelete="CASCADE"), nullable=True)
-    result: Mapped["TaskResult"] = relationship(
-        "TaskResult",
-        back_populates="task",
-    )
+    result: Mapped["TaskResult"] = relationship("TaskResult", back_populates="task")
 
 
 class TaskResult(Base):
@@ -47,8 +44,4 @@ class TaskResult(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     value: Mapped[JSON] = mapped_column(JSON())
 
-    task: Mapped[list["Task"]] = relationship(
-        "Task",
-        back_populates="result",
-        cascade="all, delete-orphan",
-    )
+    task: Mapped[list["Task"]] = relationship("Task", back_populates="result", cascade="all, delete-orphan")

@@ -63,7 +63,8 @@ def create_attributes(dataset_id: int, xml: str):
             field_exists = db.execute(
                 select(
                     exists().where(
-                        mdata.Field.data_source_id == dataset.data_source_id, mdata.Field.id == attr_def.field_id
+                        mdata.Field.data_source_id == dataset.data_source_id,
+                        mdata.Field.id == attr_def.field_id,
                     )
                 )
             ).scalar_one()
@@ -157,10 +158,10 @@ def apply_transformation(attr_def: Attribute, value: float | str | None) -> str:
         elif isinstance(
             attr_def,
             (
-                EquidistantIntervalsAttribute,
-                EquifrequentIntervalsAttribute,
-                EquisizedIntervalsAttribute,
-                NumericIntervalsAttribute,
+                EquidistantIntervalsAttribute
+                | EquifrequentIntervalsAttribute
+                | EquisizedIntervalsAttribute
+                | NumericIntervalsAttribute
             ),
         ):
             # Pyright warns about unnecessary isinstance call but it's only because the current

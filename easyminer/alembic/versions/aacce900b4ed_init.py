@@ -25,7 +25,11 @@ def upgrade() -> None:
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
         sa.Column("uuid", sa.UUID(), nullable=False),
         sa.Column("max_lines", sa.Integer(), nullable=False),
-        sa.Column("compression", sa.Enum("zip", "gzip", "bzip2", name="compressiontype"), nullable=True),
+        sa.Column(
+            "compression",
+            sa.Enum("zip", "gzip", "bzip2", name="compressiontype"),
+            nullable=True,
+        ),
         sa.Column("media_type", sa.Enum("csv", name="mediatype"), nullable=False),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("uuid"),
@@ -48,9 +52,17 @@ def upgrade() -> None:
         sa.Column("quotes_char", sa.String(length=1), nullable=False),
         sa.Column("escape_char", sa.String(length=1), nullable=False),
         sa.Column("locale", sa.String(length=20), nullable=False),
-        sa.Column("compression", sa.Enum("zip", "gzip", "bzip2", name="compressiontype"), nullable=True),
+        sa.Column(
+            "compression",
+            sa.Enum("zip", "gzip", "bzip2", name="compressiontype"),
+            nullable=True,
+        ),
         sa.Column("preview_max_lines", sa.Integer(), nullable=True),
-        sa.Column("state", sa.Enum("initialized", "locked", "ready", "finished", name="uploadstate"), nullable=False),
+        sa.Column(
+            "state",
+            sa.Enum("initialized", "locked", "ready", "finished", name="uploadstate"),
+            nullable=False,
+        ),
         sa.Column("last_change_at", sa.DateTime(), nullable=False),
         sa.PrimaryKeyConstraint("id"),
     )
@@ -127,7 +139,14 @@ def upgrade() -> None:
         sa.Column("name", sa.String(length=100), nullable=False),
         sa.Column(
             "status",
-            sa.Enum("pending", "scheduled", "started", "success", "failure", name="taskstatusenum"),
+            sa.Enum(
+                "pending",
+                "scheduled",
+                "started",
+                "success",
+                "failure",
+                name="taskstatusenum",
+            ),
             nullable=False,
         ),
         sa.Column("status_message", sa.String(length=255), nullable=True),

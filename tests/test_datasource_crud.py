@@ -4,7 +4,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from easyminer.crud.aio.data import create_upload
 from easyminer.models.data import Upload
-from easyminer.schemas.data import DbType, FieldType, MediaType, StartUploadSchema, UploadFormat
+from easyminer.schemas.data import (
+    DbType,
+    FieldType,
+    MediaType,
+    StartUploadSchema,
+    UploadFormat,
+)
 
 
 @pytest.mark.asyncio

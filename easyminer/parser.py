@@ -248,7 +248,11 @@ class PmmlTaskParser:
             and max_value is not None
         ):
             return EquidistantIntervalsAttribute(
-                name=name, field_id=field_id, bins=bins, min_value=min_value, max_value=max_value
+                name=name,
+                field_id=field_id,
+                bins=bins,
+                min_value=min_value,
+                max_value=max_value,
             )
         return None
 
@@ -294,7 +298,11 @@ class PmmlTaskParser:
             and max_value is not None
         ):
             return EquisizedIntervalsAttribute(
-                name=name, field_id=field_id, support=support, min_value=min_value, max_value=max_value
+                name=name,
+                field_id=field_id,
+                support=support,
+                min_value=min_value,
+                max_value=max_value,
             )
         return None
 
@@ -414,7 +422,9 @@ if __name__ == "__main__":
     sample_attributes: list[Attribute] = [
         SimpleAttribute(name="simple_field", field_id=1),
         NominalEnumerationAttribute(
-            name="color_category", field_id=2, bins=[{"warm": ["red", "orange"]}, {"cool": ["blue", "green"]}]
+            name="color_category",
+            field_id=2,
+            bins=[{"warm": ["red", "orange"]}, {"cool": ["blue", "green"]}],
         ),
         EquidistantIntervalsAttribute(name="age_groups", field_id=3, bins=3, min_value=0.0, max_value=90.0),
         NumericIntervalsAttribute(
@@ -425,7 +435,10 @@ if __name__ == "__main__":
                     bin_value="low",
                     intervals=[
                         NumericIntervalsAttribute.Interval(
-                            from_value=0.0, from_inclusive=True, to_value=50.0, to_inclusive=False
+                            from_value=0.0,
+                            from_inclusive=True,
+                            to_value=50.0,
+                            to_inclusive=False,
                         )
                     ],
                 ),
@@ -433,7 +446,10 @@ if __name__ == "__main__":
                     bin_value="high",
                     intervals=[
                         NumericIntervalsAttribute.Interval(
-                            from_value=50.0, from_inclusive=True, to_value=100.0, to_inclusive=True
+                            from_value=50.0,
+                            from_inclusive=True,
+                            to_value=100.0,
+                            to_inclusive=True,
                         )
                     ],
                 ),

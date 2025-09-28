@@ -54,7 +54,4 @@ if EasyMinerModules.miner in easyminer_modules:
 async def database_exception_handler(_: Request, exc: sqlalchemy.exc.OperationalError):
     logger = logging.getLogger(__name__)
     logger.error(f"Database error: {exc}")
-    raise HTTPException(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        detail="Database error",
-    )
+    raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database error")

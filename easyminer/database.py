@@ -72,10 +72,7 @@ async def get_db_session() -> AsyncGenerator[AsyncSession]:
 
 @contextlib.contextmanager
 def get_sync_db_session() -> Generator[Session]:
-    sync_engine = create_engine(
-        settings.database_url_sync,
-        echo=settings.echo_sql,
-    )
+    sync_engine = create_engine(settings.database_url_sync, echo=settings.echo_sql)
     session = sessionmaker(sync_engine)()
     try:
         yield session

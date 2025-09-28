@@ -1,16 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import (
-    APIRouter,
-    Body,
-    Depends,
-    Form,
-    HTTPException,
-    Path,
-    Query,
-    status,
-)
+from fastapi import APIRouter, Body, Depends, Form, HTTPException, Path, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
@@ -32,7 +23,9 @@ router = APIRouter(prefix=API_V1_PREFIX, tags=["Preprocessing"])
 
 
 @router.get("/dataset")
-async def list_datasets(db: Annotated[AsyncSession, Depends(get_db_session)]) -> list[DatasetRead]:
+async def list_datasets(
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+) -> list[DatasetRead]:
     """Display a list of all datasets within the user data space."""
     datasets = (await db.execute(select(Dataset).options(joinedload(Dataset.data_source)))).scalars().all()
     return [DatasetRead.model_validate(dataset) for dataset in datasets]
@@ -57,9 +50,7 @@ async def create_dataset_api(dataSource: Annotated[int, Form()], name: Annotated
 @router.get(
     "/dataset/{id}",
     response_model=DatasetRead,
-    responses={
-        status.HTTP_404_NOT_FOUND: {},
-    },
+    responses={status.HTTP_404_NOT_FOUND: {}},
 )
 async def get_dataset(db: Annotated[AsyncSession, Depends(get_db_session)], id: Annotated[int, Path()]):
     """Get detail information about a dataset."""
@@ -83,10 +74,7 @@ async def delete_dataset(db: Annotated[AsyncSession, Depends(get_db_session)], i
 
 @router.put(
     "/dataset/{id}",
-    responses={
-        status.HTTP_204_NO_CONTENT: {},
-        status.HTTP_404_NOT_FOUND: {},
-    },
+    responses={status.HTTP_204_NO_CONTENT: {}, status.HTTP_404_NOT_FOUND: {}},
     status_code=status.HTTP_204_NO_CONTENT,
 )
 async def rename_dataset(
@@ -105,7 +93,8 @@ async def rename_dataset(
 
 @router.get("/dataset/{dataset_id}/attribute")
 async def list_attributes(
-    db: Annotated[AsyncSession, Depends(get_db_session)], dataset_id: Annotated[int, Path()]
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+    dataset_id: Annotated[int, Path()],
 ) -> list[AttributeRead]:
     """Display a list of all attributes/columns for a specific dataset."""
     dataset = await db.get(Dataset, dataset_id, options=[joinedload(Dataset.attributes)])

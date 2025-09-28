@@ -18,12 +18,12 @@ router = APIRouter(prefix=API_V1_PREFIX, tags=["Tasks"])
 @router.get(
     "/task-status/{task_id}",
     status_code=status.HTTP_202_ACCEPTED,
-    responses={
-        status.HTTP_404_NOT_FOUND: {},
-    },
+    responses={status.HTTP_404_NOT_FOUND: {}},
 )
 async def get_task_status(
-    db: Annotated[AsyncSession, Depends(get_db_session)], request: Request, task_id: Annotated[UUID, Path()]
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+    request: Request,
+    task_id: Annotated[UUID, Path()],
 ) -> TaskStatus:
     task = await db.scalar(select(Task).where(Task.task_id == task_id))
     if not task:

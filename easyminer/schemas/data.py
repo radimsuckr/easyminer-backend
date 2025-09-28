@@ -65,10 +65,7 @@ class StartUploadSchema(BaseSchema):
     compression: CompressionType | None = Field(None, description="Compression type (none, gzip, etc.)")
     null_values: list[str] = Field([], description="List of null value representations")
     data_types: list["FieldType"] = Field([FieldType.nominal], description="List of data types")
-    format: UploadFormat | None = Field(
-        None,
-        description="RDF format. **NOT USED. Kept only for compatibility.**",
-    )
+    format: UploadFormat | None = Field(None, description="RDF format. **NOT USED. Kept only for compatibility.**")
 
 
 class DataSourceBase(BaseSchema):

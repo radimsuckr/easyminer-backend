@@ -21,11 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from easyminer.config import API_V1_PREFIX
-from easyminer.crud.aio.data import (
-    create_chunk,
-    create_preview_upload,
-    create_upload,
-)
+from easyminer.crud.aio.data import create_chunk, create_preview_upload, create_upload
 from easyminer.database import get_db_session
 from easyminer.models.data import (
     DataSource,
@@ -50,7 +46,9 @@ from easyminer.schemas.data import (
 from easyminer.schemas.task import TaskStatus
 from easyminer.storage import DiskStorage
 from easyminer.tasks.aggregate_field_values import aggregate_field_values
-from easyminer.tasks.calculate_field_numeric_detail import calculate_field_numeric_detail
+from easyminer.tasks.calculate_field_numeric_detail import (
+    calculate_field_numeric_detail,
+)
 from easyminer.tasks.process_chunk import process_chunk
 
 # Maximum chunk size for preview uploads (1MB)
@@ -110,7 +108,8 @@ async def upload_chunk(
     db: Annotated[AsyncSession, Depends(get_db_session)],
     upload_id: Annotated[UUID, Path()],
     content: Annotated[
-        str, Body(examples=[_csv_upload_example], media_type="text/plain")  # NOTE: text/csv could possibly be used here
+        str,
+        Body(examples=[_csv_upload_example], media_type="text/plain"),  # NOTE: text/csv could possibly be used here
     ] = "",
 ):
     if len(content) > MAX_CHUNK_SIZE:
@@ -127,7 +126,10 @@ async def upload_chunk(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Upload already closed")
 
     if upload.state == UploadState.locked:
-        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Upload is locked, try again later")
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Upload is locked, try again later",
+        )
 
     if upload.state == UploadState.ready and len(content) == 0:
         upload.state = UploadState.finished
@@ -192,14 +194,17 @@ async def upload_preview_chunk(
     db: Annotated[AsyncSession, Depends(get_db_session)],
     upload_id: Annotated[UUID, Path()],
     content: Annotated[
-        str, Body(examples=[_csv_upload_example], media_type="text/plain")  # NOTE: text/csv could possibly be used here
+        str,
+        Body(examples=[_csv_upload_example], media_type="text/plain"),  # NOTE: text/csv could possibly be used here
     ] = "",
 ):
     raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED)
 
 
 @router.get("/datasource")
-async def list_data_sources(db: Annotated[AsyncSession, Depends(get_db_session)]) -> list[DataSourceRead]:
+async def list_data_sources(
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+) -> list[DataSourceRead]:
     """List all data sources."""
     data_sources = (await db.execute(select(DataSource).options(joinedload(DataSource.upload)))).scalars().all()
     return [DataSourceRead.model_validate(ds) for ds in data_sources]
@@ -278,7 +283,8 @@ async def get_instances(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found")
     if data_source.upload.state != UploadState.finished:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Data source upload is not finished processing"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Data source upload is not finished processing",
         )
 
     # Check if data source has instances
@@ -290,7 +296,10 @@ async def get_instances(
         )
     ).scalar_one()
     if instances_count == 0:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Data source has no instances")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Data source has no instances",
+        )
 
     # First, get the row_ids for pagination
     row_ids_stmt = (
@@ -329,7 +338,10 @@ async def get_instances(
         )
         .select_from(DataSourceInstance)
         .join(Field, DataSourceInstance.field_id == Field.id)
-        .where(DataSourceInstance.data_source_id == id, DataSourceInstance.row_id.in_(row_ids))
+        .where(
+            DataSourceInstance.data_source_id == id,
+            DataSourceInstance.row_id.in_(row_ids),
+        )
         .order_by(DataSourceInstance.row_id, Field.index)
     )
 
@@ -370,12 +382,17 @@ async def get_fields(
     db: Annotated[AsyncSession, Depends(get_db_session)], id: Annotated[int, Path()]
 ) -> list[FieldRead]:
     """List all fields for a data source."""
-    data_source = await db.get(DataSource, id, options=[joinedload(DataSource.fields), joinedload(DataSource.upload)])
+    data_source = await db.get(
+        DataSource,
+        id,
+        options=[joinedload(DataSource.fields), joinedload(DataSource.upload)],
+    )
     if not data_source:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found")
     if data_source.upload.state != UploadState.finished:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Data source upload is not finished processing"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Data source upload is not finished processing",
         )
     return [FieldRead.model_validate(field) for field in data_source.fields]
 
@@ -388,7 +405,9 @@ async def get_fields(
     },
 )
 async def delete_field(
-    db: Annotated[AsyncSession, Depends(get_db_session)], id: Annotated[int, Path()], field_id: Annotated[int, Path()]
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+    id: Annotated[int, Path()],
+    field_id: Annotated[int, Path()],
 ):
     data_source = await db.get(DataSource, id)
     if not data_source:
@@ -462,7 +481,9 @@ async def rename_field(
     },
 )
 async def toggle_field_type(
-    db: Annotated[AsyncSession, Depends(get_db_session)], id: Annotated[int, Path()], field_id: Annotated[int, Path()]
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+    id: Annotated[int, Path()],
+    field_id: Annotated[int, Path()],
 ):
     data_source = await db.get(DataSource, id)
     if not data_source:
@@ -555,7 +576,9 @@ async def get_field_values(
                 )
                 .where(DataSourceInstance.field_id == field.id)
                 .group_by(
-                    DataSourceInstance.field_id, DataSourceInstance.value_nominal, DataSourceInstance.value_numeric
+                    DataSourceInstance.field_id,
+                    DataSourceInstance.value_nominal,
+                    DataSourceInstance.value_numeric,
                 )
                 .limit(limit)
                 .offset(offset)

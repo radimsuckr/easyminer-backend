@@ -4,15 +4,7 @@ from decimal import Decimal
 from typing import TYPE_CHECKING, final
 from uuid import UUID as pyUUID
 
-from sqlalchemy import (
-    DECIMAL,
-    UUID,
-    DateTime,
-    Enum,
-    ForeignKey,
-    Integer,
-    String,
-)
+from sqlalchemy import DECIMAL, UUID, DateTime, Enum, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from easyminer.database import Base

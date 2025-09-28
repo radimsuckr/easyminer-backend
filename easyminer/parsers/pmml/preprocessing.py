@@ -6,7 +6,7 @@ from pydantic_xml import BaseXmlModel, attr, element
 
 PMML_NS: str = "http://www.dmg.org/PMML-4_2"
 NSMAP: dict[str, str] = {
-    "": PMML_NS,  # Default namespace
+    "": PMML_NS  # Default namespace
 }
 
 
@@ -320,7 +320,10 @@ def create_attribute_from_pmml(
                 if len(set(bin_values)) == len(bin_values) and len(discretize_bins) > 1:
                     # Sort bins by left margin to check if they are consecutive
                     # Since we already checked that left_margin is not None, we can safely cast
-                    sorted_bins = sorted(discretize_bins, key=lambda b: float(cast(Decimal, b.interval.left_margin)))
+                    sorted_bins = sorted(
+                        discretize_bins,
+                        key=lambda b: float(cast(Decimal, b.interval.left_margin)),
+                    )
 
                     # Check if intervals are consecutive with no gaps
                     is_consecutive = True
