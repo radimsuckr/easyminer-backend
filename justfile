@@ -16,7 +16,7 @@ run:
 
 [working-directory: "tools"]
 fake_server:
-	uv run python fake_server.py
+	uv run fake_server.py
 
 test:
 	uv run pytest tests/
