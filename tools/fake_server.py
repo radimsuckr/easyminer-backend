@@ -14,12 +14,12 @@ class MockServerHandler(BaseHTTPRequestHandler):
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         # Get request headers
-        headers = {}
+        headers: dict[str, str] = {}
         for header in self.headers:
             headers[header] = self.headers[header]
 
         # Build request info
-        request_info = {
+        request_info: dict[str, str | dict[str, str]] = {
             "timestamp": timestamp,
             "method": self.command,
             "path": self.path,
@@ -44,7 +44,7 @@ class MockServerHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         # Dump the request details
-        self.dump_request()
+        _ = self.dump_request()
 
         # Set headers for JSON responses
         self.send_response(200)
@@ -62,7 +62,7 @@ class MockServerHandler(BaseHTTPRequestHandler):
                     "owner:2325",
                 ],
             }
-            self.wfile.write(json.dumps(response, indent=2).encode("utf-8"))
+            _ = self.wfile.write(json.dumps(response, indent=2).encode("utf-8"))
 
         # Handle /databases/{dbType} endpoint with regex pattern
         elif re.match(r"/api/databases/\w+", self.path):
@@ -74,14 +74,16 @@ class MockServerHandler(BaseHTTPRequestHandler):
                 "database": "easyminer",
                 # Removed nested "database" object
             }
-            self.wfile.write(json.dumps(response, indent=2).encode("utf-8"))
+            _ = self.wfile.write(json.dumps(response, indent=2).encode("utf-8"))
 
         else:
             # If path doesn't match any endpoint, return a 404
             self.send_error(404, "Not Found")
 
 
-def run(port: int, server_class=HTTPServer, handler_class=MockServerHandler):
+def run(
+    port: int, server_class: type[HTTPServer] = HTTPServer, handler_class: type[MockServerHandler] = MockServerHandler
+):
     server_address = ("", port)
     httpd = server_class(server_address, handler_class)
     print(f"Starting mock server at http://localhost:{port}")
@@ -97,6 +99,6 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="Run the mock server")
-    parser.add_argument("--port", type=int, default=8001, help="Port to run the server on")
+    _ = parser.add_argument("--port", type=int, default=8001, help="Port to run the server on")
     args = parser.parse_args()
     run(port=args.port)
