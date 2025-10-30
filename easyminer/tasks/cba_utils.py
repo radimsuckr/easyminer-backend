@@ -1,10 +1,3 @@
-"""
-CBA (Classification Based on Associations) utilities for mining tasks.
-
-This module provides functionality to apply CBA classification to association rules
-discovered by cleverminer, using the M1/M2 pruning algorithms from pyarc.
-"""
-
 import logging
 import warnings
 from dataclasses import dataclass
@@ -24,8 +17,6 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class AssociationRule:
-    """Represents an association rule from cleverminer"""
-
     antecedent: list[str]
     consequent: str
     confidence: float
@@ -36,8 +27,6 @@ class AssociationRule:
 
 @dataclass
 class CBAResult:
-    """Result of CBA classification"""
-
     accuracy: float
     pruned_rules_count: int
     original_rules_count: int
@@ -48,15 +37,6 @@ class CBAResult:
 
 
 def process_cleverminer_results(cleverminer_rules: list[dict[str, Any]]) -> list[AssociationRule]:
-    """
-    Process results from cleverminer module into AssociationRule objects
-
-    Args:
-        cleverminer_rules: list of dictionaries containing rule information
-
-    Returns:
-        list of AssociationRule objects
-    """
     rules = []
 
     for i, res_rule in enumerate(cleverminer_rules):
@@ -100,11 +80,6 @@ def process_cleverminer_results(cleverminer_rules: list[dict[str, Any]]) -> list
 
 
 def _filter_rules(rules: list[AssociationRule], max_rule_length: int) -> list[AssociationRule]:
-    """
-    Filter rules based on antecedent length threshold.
-
-    Note: Confidence and support filtering is already done by cleverminer during 4ft mining.
-    """
     filtered_rules = []
 
     for rule in rules:
@@ -115,12 +90,10 @@ def _filter_rules(rules: list[AssociationRule], max_rule_length: int) -> list[As
 
 
 def _sort_rules(rules: list[AssociationRule]) -> list[AssociationRule]:
-    """Sort rules by confidence (descending), then support (descending), then length (ascending)"""
     return sorted(rules, key=lambda r: (-r.confidence, -r.support, len(r.antecedent)))
 
 
 def _to_pyarc_cars(rules: list[AssociationRule], class_label: str) -> list[Any]:
-    """Converts internal AssociationRule objects to pyarc's CAR format."""
     raw = []
     for r in rules:
         # Re-format antecedent from ["attr=val"] to ["attr:=:val"]
@@ -139,17 +112,8 @@ def _to_pyarc_cars(rules: list[AssociationRule], class_label: str) -> list[Any]:
     return createCARs(raw)
 
 
-def load_dataset_dataframe(dataset_id: int) -> pd.DataFrame:
-    """
-    Load dataset from database into a pandas DataFrame
-
-    Args:
-        dataset_id: The dataset ID to load
-
-    Returns:
-        DataFrame with the dataset
-    """
-    with get_sync_db_session() as db:
+def load_dataset_dataframe(dataset_id: int, db_url: str | None = None) -> pd.DataFrame:
+    with get_sync_db_session(db_url) as db:
         attributes = db.scalars(select(Attribute).where(Attribute.dataset_id == dataset_id)).all()
         if not attributes:
             raise ValueError(f"No attributes found for dataset ID {dataset_id}")
@@ -175,20 +139,9 @@ def apply_cba_classification(
     target_attribute: str,
     max_rule_length: int = 10,
     use_m1_m2: bool = True,
+    db_url: str | None = None,
 ) -> CBAResult:
     """
-    Apply CBA (Classification Based on Associations) to cleverminer rules
-
-    Args:
-        cleverminer_result: The cleverminer result dictionary (rules already filtered by cleverminer)
-        dataset_id: The dataset ID to load for training
-        target_attribute: The target attribute for classification
-        max_rule_length: Maximum length of rule antecedent (default: 10)
-        use_m1_m2: Whether to use M1/M2 pruning algorithms (default: True)
-
-    Returns:
-        CBAResult with classification metrics
-
     Note:
         Confidence and support filtering is already done by cleverminer's 4ft algorithm.
         CBA only applies additional filtering by rule antecedent length, M1/M2 pruning, and accuracy calculation.
@@ -196,7 +149,7 @@ def apply_cba_classification(
     logger.info(f"Applying CBA classification with target attribute: {target_attribute}")
 
     # Load dataset
-    df = load_dataset_dataframe(dataset_id)
+    df = load_dataset_dataframe(dataset_id, db_url)
     logger.info(f"Loaded dataset with {len(df)} rows and {len(df.columns)} columns")
 
     # Validate target attribute exists
@@ -289,18 +242,6 @@ def apply_cba_classification(
 
 
 def _calculate_accuracy(rules: list[AssociationRule], X: pd.DataFrame, y: pd.Series, default_class: str) -> float:
-    """
-    Calculate accuracy of rules on the dataset
-
-    Args:
-        rules: List of rules to use for classification
-        X: Features
-        y: Target labels
-        default_class: Default class for unmatched instances
-
-    Returns:
-        Accuracy score
-    """
     if len(y) == 0:
         return 0.0
 
@@ -322,7 +263,6 @@ def _calculate_accuracy(rules: list[AssociationRule], X: pd.DataFrame, y: pd.Ser
 
 
 def _rule_matches_instance(rule: AssociationRule, instance: pd.DataFrame) -> bool:
-    """Check if a rule matches a single instance"""
     for condition in rule.antecedent:
         if "=" in condition:
             attr, value = condition.split("=", 1)

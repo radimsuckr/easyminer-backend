@@ -22,7 +22,8 @@ from sqlalchemy.orm import joinedload
 
 from easyminer.config import API_V1_PREFIX
 from easyminer.crud.aio.data import create_chunk, create_preview_upload, create_upload
-from easyminer.database import get_db_session
+from easyminer.database import get_database_config, get_db_session
+from easyminer.dependencies import ApiKey, AuthenticatedSession
 from easyminer.models.data import (
     DataSource,
     DataSourceInstance,
@@ -65,7 +66,7 @@ _csv_upload_example = """a,b,c
 
 
 @router.post("/upload/start")
-async def start_upload(db: Annotated[AsyncSession, Depends(get_db_session)], settings: StartUploadSchema) -> UUID:
+async def start_upload(db: AuthenticatedSession, settings: StartUploadSchema) -> UUID:
     """Start a new upload process."""
     if settings.media_type != "csv":
         raise HTTPException(
@@ -79,9 +80,7 @@ async def start_upload(db: Annotated[AsyncSession, Depends(get_db_session)], set
 
 
 @router.post("/upload/preview/start")
-async def start_preview_upload(
-    db: Annotated[AsyncSession, Depends(get_db_session)], settings: PreviewUploadSchema
-) -> UUID:
+async def start_preview_upload(db: AuthenticatedSession, settings: PreviewUploadSchema) -> UUID:
     if settings.media_type != "csv":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -105,7 +104,8 @@ async def start_preview_upload(
     },
 )
 async def upload_chunk(
-    db: Annotated[AsyncSession, Depends(get_db_session)],
+    db: AuthenticatedSession,
+    api_key: ApiKey,
     upload_id: Annotated[UUID, Path()],
     content: Annotated[
         str,
@@ -146,8 +146,13 @@ async def upload_chunk(
             )
         ).all()
         await db.commit()
+
+        # Get database config to pass to Celery tasks
+        db_config = await get_database_config(api_key)
+        db_url = db_config.get_sync_url()
+
         for field_id in field_ids:
-            _ = calculate_field_numeric_detail.delay(field_id=field_id)
+            _ = calculate_field_numeric_detail.delay(field_id=field_id, db_url=db_url)
         return result
 
     if len(content) == 0:
@@ -172,12 +177,17 @@ async def upload_chunk(
     escape_char = upload.escape_char
     await db.commit()
 
+    # Get database config to pass to Celery task
+    db_config = await get_database_config(api_key)
+    db_url = db_config.get_sync_url()
+
     _ = process_chunk.delay(
         chunk_id,
         original_state,
         separator=separator,
         quote_char=quote_char,
         escape_char=escape_char,
+        db_url=db_url,
     )
 
 
@@ -626,7 +636,8 @@ async def get_field_values(
     },
 )
 async def get_aggregated_values(
-    db: Annotated[AsyncSession, Depends(get_db_session)],
+    db: AuthenticatedSession,
+    api_key: ApiKey,
     request: Request,
     id: Annotated[int, Path()],
     field_id: Annotated[int, Path()],
@@ -674,6 +685,10 @@ async def get_aggregated_values(
             )
         max = field_max
 
+    # Get database config to pass to Celery task
+    db_config = await get_database_config(api_key)
+    db_url = db_config.get_sync_url()
+
     task = aggregate_field_values.delay(
         data_source_id=data_source.id,
         field_id=field.id,
@@ -682,6 +697,7 @@ async def get_aggregated_values(
         max=max,
         min_inclusive=min_inclusive,
         max_inclusive=max_inclusive,
+        db_url=db_url,
     )
 
     return TaskStatus(

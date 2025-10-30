@@ -67,7 +67,7 @@ class MockServerHandler(BaseHTTPRequestHandler):
         # Handle /databases/{dbType} endpoint with regex pattern
         elif re.match(r"/api/databases/\w+", self.path):
             response = {
-                "server": "192.168.88.253",
+                "server": "localhost",
                 "port": 3306,  # Added port field as integer
                 "username": "easyminer",
                 "password": "easyminer",

@@ -17,12 +17,13 @@ logger = logging.getLogger(__name__)
 
 
 class MinerService:
-    def __init__(self, dataset_id: int):
+    def __init__(self, dataset_id: int, db_url: str | None = None):
         self._ds_id: int = dataset_id
+        self._db_url: str | None = db_url
         self._df: pd.DataFrame
 
     def _load_data(self) -> None:
-        with get_sync_db_session() as db:
+        with get_sync_db_session(self._db_url) as db:
             attributes = db.scalars(select(Attribute).where(Attribute.dataset_id == self._ds_id)).all()
             self._df = pd.DataFrame(columns=tuple(f.name for f in attributes))
             for attribute in attributes:
@@ -51,7 +52,7 @@ class MinerService:
 
 
 @app.task(pydantic=True)
-def mine(pmml: PMMLInput) -> str:
+def mine(pmml: PMMLInput, db_url: str | None = None) -> str:
     ts = pmml.association_model.task_setting
     logger.info(f"PMML Version: {pmml.version}")
     logger.info(f"PMML Header: {pmml.header}")
@@ -133,7 +134,7 @@ def mine(pmml: PMMLInput) -> str:
         "type": "con" if consequent.type == DBASettingType.conjunction else "dis",
     }
 
-    svc = MinerService(dataset_id)
+    svc = MinerService(dataset_id, db_url)
     cm = svc.mine_4ft(quantifiers=quantifiers, antecedents=antecedents, consequents=consequents)
 
     # Apply CBA if requested
@@ -154,6 +155,7 @@ def mine(pmml: PMMLInput) -> str:
                 cleverminer_result=cm.result,
                 dataset_id=dataset_id,
                 target_attribute=target_attr,
+                db_url=db_url,
             )
 
             # Prepare extensions with CBA results

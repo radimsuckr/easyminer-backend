@@ -5,6 +5,7 @@ description = "Easyminer backend"
 authors = [{ name = "Radim Sückr", email = "sucr02@vse.cz" }]
 dependencies = [
 	"alembic>=1.13.2",
+	"cachetools>=6.2.1",
 	"celery[redis,tblib]>=5.4.0",
 	"cleverminer>=1.2.2",
 	"defusedxml>=0.7.1",
@@ -32,6 +33,7 @@ dev = [
 	"pytest-asyncio>=0.25.3",
 	"pytest-cov>=6.0.0",
 	"ruff>=0.9.10",
+	"types-cachetools>=6.2.0.20251022",
 ]
 
 [tool.ruff]

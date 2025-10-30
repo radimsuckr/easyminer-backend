@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     project_name: str = "EasyMiner Backend"
     debug_logs: bool = False
     version: str = "0.1.0"
+    easyminer_center_url: str = "http://localhost:8001"  # URL of the EasyMiner Center server
 
 
 database_url = os.getenv("DATABASE_URL")

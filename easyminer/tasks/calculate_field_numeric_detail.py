@@ -11,8 +11,8 @@ logger = logging.getLogger(__name__)
 
 
 @app.task
-def calculate_field_numeric_detail(field_id: int):
-    with get_sync_db_session() as db:
+def calculate_field_numeric_detail(field_id: int, db_url: str | None = None):
+    with get_sync_db_session(db_url) as db:
         field = db.get(Field, field_id)
         if not field:
             raise ValueError(f"Field with ID {field_id} not found")

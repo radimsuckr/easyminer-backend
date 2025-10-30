@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 @app.task
-def create_attributes(dataset_id: int, xml: str):
+def create_attributes(dataset_id: int, xml: str, db_url: str | None = None):
     """Create dataset attributes from PMML transformation definitions.
 
     This task:
@@ -38,20 +38,17 @@ def create_attributes(dataset_id: int, xml: str):
     if len(xml) == 0:
         raise ValueError("PMML cannot be empty")
 
-    # Parse PMML to get transformation definitions
     pmml = TransformationDictionary.from_xml_string(xml)
 
     if not pmml.derived_fields:
         logger.warning("No derived fields found in PMML")
         return
 
-    with get_sync_db_session() as db:
-        # Get dataset and validate it exists
+    with get_sync_db_session(db_url) as db:
         dataset = db.get(mprep.Dataset, dataset_id, options=[joinedload(mprep.Dataset.data_source)])
         if not dataset:
             raise ValueError(f"Dataset with id {dataset_id} not found")
 
-        # Process each derived field from PMML
         for field_def in pmml.derived_fields:
             attr_def = create_attribute_from_pmml(field_def)
             logger.info(
@@ -59,7 +56,6 @@ def create_attributes(dataset_id: int, xml: str):
                 + f"for field {attr_def.field_id}"
             )
 
-            # Validate that the source field exists in the data source
             field_exists = db.execute(
                 select(
                     exists().where(
@@ -74,12 +70,10 @@ def create_attributes(dataset_id: int, xml: str):
                     f"Field with ID {attr_def.field_id} does not exist in data source ID {dataset.data_source_id}"
                 )
 
-            # Create database attribute record
             db_attr = mprep.Attribute(name=attr_def.name, dataset_id=dataset.id, field_id=attr_def.field_id)
             db.add(db_attr)
             db.flush()  # Get the ID
 
-            # Get all instances for this field with field information
             instances_query = (
                 select(mdata.DataSourceInstance)
                 .options(joinedload(mdata.DataSourceInstance.field))
@@ -93,27 +87,20 @@ def create_attributes(dataset_id: int, xml: str):
 
             logger.info(f"Processing {len(instances)} instances for attribute {attr_def.name}")
 
-            # Transform values and count frequencies
             value_frequencies: dict[str, list[int]] = defaultdict(list)
 
             for instance in instances:
-                # Get the raw value and prepare input for transformation based on field type
                 if instance.field.data_type == FieldType.numeric:
-                    # For numeric fields, convert Decimal to float for transformation
                     transform_input: float | str | None = (
                         float(instance.value_numeric) if instance.value_numeric is not None else None
                     )
                 else:
-                    # For nominal fields, use the string value directly
                     transform_input = instance.value_nominal
 
-                # Apply transformation
                 transformed_value = apply_transformation(attr_def, transform_input)
 
-                # Count frequency of this transformed value
                 value_frequencies[transformed_value].append(instance.row_id)
 
-            # Store transformed values in database
             for value, tx_ids in value_frequencies.items():
                 id = db.execute(
                     insert(mprep.DatasetValue)
@@ -121,7 +108,6 @@ def create_attributes(dataset_id: int, xml: str):
                     .returning(mprep.DatasetValue.id)
                 ).scalar_one()
                 while len(tx_ids) > 0:
-                    # Create instances for this value
                     instance_tx_ids = tx_ids[:1000]
                     tx_ids = tx_ids[1000:]
                     instances_to_add = [
@@ -130,7 +116,6 @@ def create_attributes(dataset_id: int, xml: str):
                     _ = db.execute(insert(mprep.DatasetInstance), instances_to_add)
                     db.flush()
 
-            # Update attribute statistics
             db_attr.unique_values_size = len(value_frequencies)
 
             logger.info(
@@ -143,7 +128,6 @@ def create_attributes(dataset_id: int, xml: str):
 
 
 def apply_transformation(attr_def: Attribute, value: float | str | None) -> str:
-    """Apply transformation to a value, handling None values and type conversions."""
     if value is None:
         return "None"
 
@@ -180,7 +164,6 @@ def apply_transformation(attr_def: Attribute, value: float | str | None) -> str:
             logger.error(f"Unknown attribute type: {type(attr_def)}")
             raise ValueError(f"Unknown attribute type: {type(attr_def)}")
 
-        # Convert result to string, handle None
         if transformed is None:
             logger.warning(f"Transformation returned None for value {value}")
             return "None"
