@@ -11,6 +11,7 @@ from easyminer.parsers.pmml.miner import PMML as PMMLInput
 from easyminer.parsers.pmml.miner import CoefficientType, DBASettingType
 from easyminer.serializers.pmml.miner import create_pmml_result_from_cleverminer
 from easyminer.tasks.cba_utils import apply_cba_classification
+from easyminer.validators.miner import validate_mining_task
 from easyminer.worker import app
 
 logger = logging.getLogger(__name__)
@@ -53,6 +54,9 @@ class MinerService:
 
 @app.task(pydantic=True)
 def mine(pmml: PMMLInput, db_url: str | None = None) -> str:
+    # Validate the mining task first (Scala compatibility)
+    validate_mining_task(pmml)
+
     ts = pmml.association_model.task_setting
     logger.info(f"PMML Version: {pmml.version}")
     logger.info(f"PMML Header: {pmml.header}")
@@ -69,26 +73,73 @@ def mine(pmml: PMMLInput, db_url: str | None = None) -> str:
     # CBA is enabled via InterestMeasure "CBA" in TaskSetting (Scala-compatible)
     cba_requested = any(im.interest_measure.lower() == "cba" for im in ts.interest_measure_settings)
 
+    # Check if AUTO_CONF_SUPP is requested (automatic confidence/support detection)
+    auto_conf_supp = any(im.interest_measure.lower() == "auto_conf_supp" for im in ts.interest_measure_settings)
+
     if cba_requested:
         logger.info("CBA requested via InterestMeasure")
 
+    if auto_conf_supp:
+        logger.warning(
+            "AUTO_CONF_SUPP requested but not fully supported in CleverMiner. "
+            "This feature requires R arules integration. Using default confidence/support values."
+        )
+
+    # Extract interest measures
     base_candidates = list(filter(lambda x: x.interest_measure.lower() == "base", ts.interest_measure_settings))
     if len(base_candidates) > 1:
         logger.warning("More than 1 Base candidates")
-    confidence_candidates = list(filter(lambda x: x.interest_measure.lower() == "conf", ts.interest_measure_settings))
+
+    # Support both CONF and FUI (Scala uses FUI for confidence)
+    confidence_candidates = list(
+        filter(
+            lambda x: x.interest_measure.lower() in ["conf", "fui"],
+            ts.interest_measure_settings,
+        )
+    )
     if len(confidence_candidates) > 1:
-        logger.warning("More than 1 conf candidates")
+        logger.warning("More than 1 confidence candidates")
+
+    # Support SUPP for support
+    support_candidates = list(filter(lambda x: x.interest_measure.lower() == "supp", ts.interest_measure_settings))
+    if len(support_candidates) > 1:
+        logger.warning("More than 1 support candidates")
+
     aad_candidates = list(filter(lambda x: x.interest_measure.lower() == "aad", ts.interest_measure_settings))
     if len(aad_candidates) > 1:
-        logger.warning("More than 1 conf candidates")
+        logger.warning("More than 1 aad candidates")
 
+    # Extract RULE_LENGTH (max rule length)
+    rule_length_candidates = list(
+        filter(lambda x: x.interest_measure.lower() == "rule_length", ts.interest_measure_settings)
+    )
+    max_rule_length = None
+    if rule_length_candidates:
+        max_rule_length = int(rule_length_candidates[0].threshold) if rule_length_candidates[0].threshold else None
+        logger.info(f"Max rule length constraint: {max_rule_length}")
+
+    # Build quantifiers dictionary
     quantifiers = {}
-    if base_candidates:
+    if base_candidates and base_candidates[0].threshold is not None:
         quantifiers["Base"] = base_candidates[0].threshold
-    if confidence_candidates:
+    if confidence_candidates and confidence_candidates[0].threshold is not None:
         quantifiers["conf"] = confidence_candidates[0].threshold
-    if aad_candidates:
+    if support_candidates and support_candidates[0].threshold is not None:
+        # CleverMiner uses "Base" for support in 4ft-Miner
+        # Only add if not already set by base_candidates
+        if "Base" not in quantifiers:
+            quantifiers["Base"] = support_candidates[0].threshold
+    if aad_candidates and aad_candidates[0].threshold is not None:
         quantifiers["aad"] = aad_candidates[0].threshold
+
+    # For AUTO_CONF_SUPP mode, use default values if not specified
+    if auto_conf_supp:
+        if "conf" not in quantifiers:
+            quantifiers["conf"] = 0.5  # Default confidence
+            logger.info("AUTO_CONF_SUPP: Using default confidence 0.5")
+        if "Base" not in quantifiers:
+            quantifiers["Base"] = 0.01  # Default support
+            logger.info("AUTO_CONF_SUPP: Using default support 0.01")
 
     antecedent_setting_id = ts.antecedent_setting
     if not antecedent_setting_id:
@@ -137,6 +188,29 @@ def mine(pmml: PMMLInput, db_url: str | None = None) -> str:
     svc = MinerService(dataset_id, db_url)
     cm = svc.mine_4ft(quantifiers=quantifiers, antecedents=antecedents, consequents=consequents)
 
+    # Apply max rule length filtering if specified
+    if max_rule_length is not None:
+        original_count = len(cm.result.get("rules", []))
+        filtered_rules = []
+
+        for rule in cm.result.get("rules", []):
+            # Calculate rule length: count items in antecedent + consequent
+            ante_items = len(rule.get("ante", "").split(",")) if rule.get("ante") else 0
+            succ_items = len(rule.get("succ", "").split(",")) if rule.get("succ") else 0
+            rule_length = ante_items + succ_items
+
+            if rule_length <= max_rule_length:
+                filtered_rules.append(rule)
+
+        cm.result["rules"] = filtered_rules
+        filtered_count = len(filtered_rules)
+
+        if filtered_count < original_count:
+            logger.info(
+                f"RULE_LENGTH filter: Removed {original_count - filtered_count} rules "
+                f"(kept {filtered_count}/{original_count} rules with length <= {max_rule_length})"
+            )
+
     # Apply CBA if requested
     cba_extensions = []
     if cba_requested:
@@ -171,7 +245,7 @@ def mine(pmml: PMMLInput, db_url: str | None = None) -> str:
 
             logger.info(
                 f"CBA classification complete: accuracy={cba_result.accuracy:.2%}, "
-                f"rules={cba_result.original_rules_count}→{cba_result.filtered_rules_count}→{cba_result.pruned_rules_count}"
+                f"rules={cba_result.original_rules_count}?{cba_result.filtered_rules_count}?{cba_result.pruned_rules_count}"
             )
 
             # Filter cleverminer result to only include pruned rules (Scala compatibility)

@@ -91,7 +91,7 @@ class DBASettings(BaseXmlModel, tag="DBASettings", nsmap=EMPTY_NSMAP):
 class InterestMeasureThreshold(BaseXmlModel, tag="InterestMeasureThreshold", nsmap=EMPTY_NSMAP):
     id: str = attr()
     interest_measure: str = element("InterestMeasure")
-    threshold: float = element("Threshold")
+    threshold: float | None = element("Threshold", default=None)
 
 
 class InterestMeasureSetting(BaseXmlModel, tag="InterestMeasureSetting", nsmap=EMPTY_NSMAP):

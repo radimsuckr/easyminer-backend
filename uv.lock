@@ -364,7 +364,6 @@ dependencies = [
     { name = "celery", extra = ["redis", "tblib"] },
     { name = "cleverminer" },
     { name = "defusedxml" },
-    { name = "efficient-apriori" },
     { name = "fastapi", extra = ["standard"] },
     { name = "pandas" },
     { name = "pyarc" },
@@ -395,7 +394,6 @@ requires-dist = [
     { name = "celery", extras = ["redis", "tblib"], specifier = ">=5.4.0" },
     { name = "cleverminer", specifier = ">=1.2.2" },
     { name = "defusedxml", specifier = ">=0.7.1" },
-    { name = "efficient-apriori", specifier = ">=2.0.6" },
     { name = "fastapi", extras = ["standard"], specifier = ">=0.111.1" },
     { name = "pandas", specifier = ">=2.2.3" },
     { name = "pyarc", git = "https://github.com/radimsuckr/pyARC.git" },
@@ -417,15 +415,6 @@ dev = [
     { name = "pytest-cov", specifier = ">=6.0.0" },
     { name = "ruff", specifier = ">=0.9.10" },
     { name = "types-cachetools", specifier = ">=6.2.0.20251022" },
-]
-
-[[package]]
-name = "efficient-apriori"
-version = "2.0.6"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/ec/eb/3a3049d64fae1b51f116a31d37bf81d40cfc5a397f492bc71ee0cc999d39/efficient_apriori-2.0.6.tar.gz", hash = "sha256:5ad8ce4b4f8aee53cc0ef99a804145071bd8bdd652fdfb78cdf2e43831baad6e", size = 14736, upload-time = "2025-05-25T08:53:54.613Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/8a/f2/fe62e78214643e2b187fcbf7462dc17eb8071da2f04e1a3349a3297df799/efficient_apriori-2.0.6-py3-none-any.whl", hash = "sha256:dad484bb1fb55966a4890f2dc8c7f51515ad3638b64b01580744435c1d46181b", size = 14797, upload-time = "2025-05-25T08:53:52.927Z" },
 ]
 
 [[package]]
