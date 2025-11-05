@@ -36,6 +36,7 @@ from easyminer.schemas.data import (
     AggregatedInstance,
     AggregatedInstanceValue,
     DataSourceRead,
+    DbType,
     FieldRead,
     FieldStatsSchema,
     FieldType,
@@ -131,6 +132,10 @@ async def upload_chunk(
             detail="Upload is locked, try again later",
         )
 
+    # Get database config to pass to Celery tasks
+    db_config = await get_database_config(api_key, DbType.limited)
+    db_url = db_config.get_sync_url()
+
     if upload.state == UploadState.ready and len(content) == 0:
         upload.state = UploadState.finished
         result = UploadResponseSchema(
@@ -146,10 +151,6 @@ async def upload_chunk(
             )
         ).all()
         await db.commit()
-
-        # Get database config to pass to Celery tasks
-        db_config = await get_database_config(api_key)
-        db_url = db_config.get_sync_url()
 
         for field_id in field_ids:
             _ = calculate_field_numeric_detail.delay(field_id=field_id, db_url=db_url)
@@ -176,10 +177,6 @@ async def upload_chunk(
     quote_char = upload.quotes_char
     escape_char = upload.escape_char
     await db.commit()
-
-    # Get database config to pass to Celery task
-    db_config = await get_database_config(api_key)
-    db_url = db_config.get_sync_url()
 
     _ = process_chunk.delay(
         chunk_id,

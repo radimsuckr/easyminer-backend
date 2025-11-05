@@ -14,7 +14,7 @@ async def get_authenticated_db_session(
     api_key: Annotated[str, Depends(get_api_key)],
     db_type: DbType,
 ) -> AsyncGenerator[AsyncSession]:
-    async for session in get_user_db_session(api_key, db_type.value):
+    async for session in get_user_db_session(api_key, db_type):
         yield session
 
 
