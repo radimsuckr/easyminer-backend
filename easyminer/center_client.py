@@ -1,7 +1,8 @@
 import logging
 
 import httpx
-from cachetools import TTLCache, cached
+from asyncache import cached
+from cachetools import TTLCache
 from fastapi import HTTPException, status
 
 from easyminer.config import settings
@@ -19,7 +20,7 @@ class EasyMinerCenterClient:
     async def close(self) -> None:
         await self.client.aclose()
 
-    @cached(cache=TTLCache(maxsize=8, ttl=300))
+    @cached(cache=TTLCache(maxsize=8, ttl=30))
     async def get_user_info(self, api_key: str) -> UserInfo:
         try:
             response = await self.client.get(
@@ -46,9 +47,9 @@ class EasyMinerCenterClient:
                 detail="Failed to connect to EasyMiner Center",
             )
 
-    @cached(cache=TTLCache(maxsize=8, ttl=300))
+    @cached(cache=TTLCache(maxsize=8, ttl=30))
     async def get_database_config(self, api_key: str, db_type: DbType) -> DatabaseConfig:
-        if db_type.value != DbType.limited:
+        if db_type != DbType.limited:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Only 'limited' database type is supported",
@@ -56,7 +57,7 @@ class EasyMinerCenterClient:
 
         try:
             response = await self.client.get(
-                f"/api/databases/{db_type.value}",
+                f"/api/databases/{db_type}",
                 headers={"Authorization": f"Bearer {api_key}"},
             )
             _ = response.raise_for_status()
