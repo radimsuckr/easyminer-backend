@@ -145,9 +145,12 @@ async def upload_chunk(
             size=upload.data_source.size,
         )
 
+        # Only calculate numeric details for numeric fields
         field_ids = (
             await db.scalars(
-                select(Field.id).where(Field.data_source_id == upload.data_source.id).order_by(Field.index)
+                select(Field.id)
+                .where(Field.data_source_id == upload.data_source.id, Field.data_type == FieldType.numeric)
+                .order_by(Field.index)
             )
         ).all()
         await db.commit()

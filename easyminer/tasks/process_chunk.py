@@ -61,6 +61,10 @@ def process_chunk(
             fields = db.query(Field).filter(Field.data_source_id == chunk.upload.data_source.id).all()
             col_fields = {field.index: field for field in fields}
 
+            # Track whether all values are numeric for each field
+            # Start with assumption that all fields are numeric
+            field_all_numeric = {field.index: True for field in fields}
+
             upload_size = db.execute(
                 select(func.count())
                 .select_from(DataSourceInstance)
@@ -76,7 +80,8 @@ def process_chunk(
                     try:
                         col_decimal = Decimal(col)
                     except InvalidOperation:
-                        pass
+                        # Mark this field as having non-numeric values
+                        field_all_numeric[i] = False
                     instance_values.append(
                         {
                             "row_id": row_counter,
@@ -96,6 +101,14 @@ def process_chunk(
                 logger.debug(f"Processing last batch of {len(instance_values)} instances")
                 _ = db.execute(insert(DataSourceInstance), instance_values)
                 instance_values.clear()
+
+            # Update field types based on actual data
+            for field_index, is_all_numeric in field_all_numeric.items():
+                field = col_fields[field_index]
+                detected_type = FieldType.numeric if is_all_numeric else FieldType.nominal
+                if field.data_type != detected_type:
+                    logger.info(f"Updating field {field.name} type to {detected_type}")
+                    field.data_type = detected_type
 
         # Unlock the upload
         logger.info("Unlocking the upload")

@@ -20,6 +20,21 @@ def calculate_field_numeric_detail(field_id: int, db_url: str | None = None):
             raise ValueError(f"Field {field.name} is not numeric, skipping detail calculation")
 
         logger.info(f"Calculating numeric field detail for field {field.name}")
+
+        # Check if there are any numeric values
+        numeric_count = db.execute(
+            select(func.count())
+            .select_from(DataSourceInstance)
+            .where(
+                DataSourceInstance.field_id == field.id,
+                DataSourceInstance.value_numeric.is_not(None),
+            )
+        ).scalar_one()
+
+        if numeric_count == 0:
+            logger.warning(f"Field {field.name} (id={field.id}) has no numeric values, skipping detail calculation")
+            return
+
         stats = (
             db.execute(
                 select(
