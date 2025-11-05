@@ -7,7 +7,6 @@ dependencies = [
 	"alembic>=1.13.2",
 	"cachetools>=6.2.1",
 	"celery[redis,tblib]>=5.4.0",
-	"cleverminer>=1.2.2",
 	"defusedxml>=0.7.1",
 	"fastapi[standard]>=0.111.1",
 	"pandas>=2.2.3",

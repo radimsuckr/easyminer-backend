@@ -1,5 +1,6 @@
 from typing import Literal
 
+import pandas as pd
 from pydantic_xml import BaseXmlModel, attr, element
 
 
@@ -150,230 +151,212 @@ def create_pmml_result(
     return PMML(header=header, association_model=association_model)
 
 
-def create_pmml_result_from_cleverminer(cleverminer_output: dict, headers_data: list[dict] | None = None) -> PMML:
+# ============================================================================
+# Current Production Functions - pyARC/fim based
+# ============================================================================
+
+
+def calculate_fourfold_table(rule, transactions_df: pd.DataFrame, total_transactions: int) -> dict[str, int]:
+    # Extract rule components
+    antecedent_items = rule.antecedent
+    consequent_attr = rule.consequent.attribute
+    consequent_val = rule.consequent.value
+
+    support = rule.support / 100.0  # Convert to decimal
+    confidence = rule.confidence / 100.0
+
+    # Cell a: both antecedent and consequent are TRUE
+    # Formula: a = support ? N
+    a = int(round(support * total_transactions))
+
+    # Cell b: antecedent TRUE, consequent FALSE
+    # Formula: b = (a / confidence) - a
+    # Derived from: confidence = a / (a+b)
+    if confidence > 0:
+        a_plus_b = a / confidence
+        b = int(round(a_plus_b - a))
+    else:
+        b = 0
+
+    # Cell c: antecedent FALSE, consequent TRUE
+    # Direct count from dataset (GUHA definition)
+    mask_consequent = transactions_df[consequent_attr] == consequent_val
+    mask_antecedent = pd.Series([True] * len(transactions_df), index=transactions_df.index)
+
+    for attr, val in antecedent_items:
+        mask_antecedent &= transactions_df[attr] == val
+
+    c = int((mask_consequent & ~mask_antecedent).sum())
+
+    # Cell d: both antecedent and consequent are FALSE
+    # Formula: d = N - a - b - c
+    d = total_transactions - a - b - c
+
+    # Validation
+    if a < 0 or b < 0 or c < 0 or d < 0:
+        raise ValueError(f"Invalid contingency table: negative values detected. a={a}, b={b}, c={c}, d={d}")
+
+    total = a + b + c + d
+    if total != total_transactions:
+        raise ValueError(f"Invalid contingency table: sum mismatch. a+b+c+d={total}, expected={total_transactions}")
+
+    return {"a": a, "b": b, "c": c, "d": d}
+
+
+def create_pmml_result_from_pyarc(
+    rules: list,
+    transactions_df: pd.DataFrame,
+    total_transactions: int,
+    total_attributes: int,
+    headers_data: list[dict] | None = None,
+) -> PMML:
     """
-    Create PMML result from cleverminer algorithm output
+    Create PMML result from pyARC mining results (fim.arules or pyARC CARs).
+
+    This function handles both:
+    - fim.arules output: list of (consequent, antecedent, support, confidence) tuples
+    - pyARC CARs: list of CAR objects with .antecedent, .consequent, .support, .confidence
 
     Args:
-        cleverminer_output: Direct output dictionary from cleverminer
+        rules: List of rules (fim tuples or pyARC CAR objects)
+        transactions_df: Original DataFrame with all transactions (needed for 4ft calculation)
+        total_transactions: Total number of transactions
+        total_attributes: Total number of attribute values (for numberOfCategories)
         headers_data: Optional list of header extension dictionaries with keys: name, value
+
+    Returns:
+        PMML object ready for XML serialization
     """
+    number_of_rules = len(rules)
 
-    # Extract basic information
-    number_of_rules = len(cleverminer_output["rules"])
-
-    # Collect all unique attribute-value combinations for BBAs
-    attribute_value_combinations: set[tuple[str, str]] = set()
-
-    for rule in cleverminer_output["rules"]:
-        # Process antecedent
-        for attr_name, values in rule["cedents_struct"]["ante"].items():
-            for value in values:
-                attribute_value_combinations.add((attr_name, value))
-
-        # Process consequent
-        for attr_name, values in rule["cedents_struct"]["succ"].items():
-            for value in values:
-                attribute_value_combinations.add((attr_name, value))
-
-    # Create BBAs with sequential IDs
-    bbas = []
-    bba_lookup = {}  # (attr_name, value) -> bba_id
-
-    for i, (attr_name, value) in enumerate(sorted(attribute_value_combinations), 1):
-        bba_id = str(i)
-        bba_lookup[(attr_name, value)] = bba_id
-
-        bbas.append(
-            BBA(
-                id=bba_id,
-                text=f"{attr_name}({value})",
-                field_ref=attr_name,
-                cat_ref=value,
-            )
+    # Detect rule format (fim tuples vs pyARC CARs)
+    if not rules:
+        bbas = []
+        dbas = []
+        arules = []
+    elif isinstance(rules[0], tuple):
+        # fim.arules format: (consequent, antecedent, support, confidence)
+        raise NotImplementedError(
+            "fim.arules tuple format not yet implemented. Please convert to pyARC CARs using createCARs() first."
         )
+    else:
+        # pyARC CAR format
+        # Collect all unique attribute-value combinations for BBAs
+        attribute_value_combinations: set[tuple[str, str]] = set()
 
-    # Create DBAs and Association Rules
-    dbas = []
-    arules = []
-    dba_counter = len(bbas) + 1
+        for rule in rules:
+            # Process antecedent
+            for attr, value in rule.antecedent:
+                attribute_value_combinations.add((attr, value))
 
-    for rule in cleverminer_output["rules"]:
-        rule_id = str(rule["rule_id"])
+            # Process consequent
+            attribute_value_combinations.add((rule.consequent.attribute, rule.consequent.value))
 
-        # Create DBA for antecedent (if not empty)
-        antecedent_dba_id = None
-        if rule["cedents_struct"]["ante"]:
-            antecedent_dba_id = str(dba_counter)
-            dba_counter += 1
+        # Create BBAs with sequential IDs
+        bbas = []
+        bba_lookup = {}  # (attr_name, value) -> bba_id
 
-            # Collect BA references for antecedent
-            ante_ba_refs = []
-            for attr_name, values in rule["cedents_struct"]["ante"].items():
-                for value in values:
-                    ante_ba_refs.append(bba_lookup[(attr_name, value)])
+        for i, (attr_name, value) in enumerate(sorted(attribute_value_combinations), 1):
+            bba_id = str(i)
+            bba_lookup[(attr_name, value)] = bba_id
 
-            dbas.append(
-                DBA(
-                    id=antecedent_dba_id,
-                    text=rule["cedents_str"]["ante"],
-                    ba_refs=ante_ba_refs,
+            bbas.append(
+                BBA(
+                    id=bba_id,
+                    text=f"{attr_name}({value})",
+                    field_ref=attr_name,
+                    cat_ref=value,
                 )
             )
 
-        # Create DBA for consequent
-        consequent_dba_id = str(dba_counter)
-        dba_counter += 1
+        # Create DBAs and Association Rules
+        dbas = []
+        arules = []
+        dba_counter = len(bbas) + 1
 
-        # Collect BA references for consequent
-        succ_ba_refs = []
-        for attr_name, values in rule["cedents_struct"]["succ"].items():
-            for value in values:
-                succ_ba_refs.append(bba_lookup[(attr_name, value)])
+        for rule_idx, rule in enumerate(rules, 1):
+            rule_id = str(rule_idx)
 
-        dbas.append(
-            DBA(
-                id=consequent_dba_id,
-                text=rule["cedents_str"]["succ"],
-                ba_refs=succ_ba_refs,
+            # Create DBA for antecedent (if not empty)
+            antecedent_dba_id = None
+            if rule.antecedent:
+                antecedent_dba_id = str(dba_counter)
+                dba_counter += 1
+
+                # Collect BA references for antecedent
+                ante_ba_refs = []
+                ante_texts = []
+                for attr, value in rule.antecedent:
+                    ante_ba_refs.append(bba_lookup[(attr, value)])
+                    ante_texts.append(f"{attr}({value})")
+
+                dbas.append(
+                    DBA(
+                        id=antecedent_dba_id,
+                        text=" AND ".join(ante_texts),
+                        ba_refs=ante_ba_refs,
+                    )
+                )
+
+            # Create DBA for consequent
+            consequent_dba_id = str(dba_counter)
+            dba_counter += 1
+
+            cons_attr = rule.consequent.attribute
+            cons_value = rule.consequent.value
+
+            dbas.append(
+                DBA(
+                    id=consequent_dba_id,
+                    text=f"{cons_attr}({cons_value})",
+                    ba_refs=[bba_lookup[(cons_attr, cons_value)]],
+                )
             )
-        )
 
-        # Extract fourfold table data
-        fourfold = rule["params"]["fourfold"]
-
-        # Create Association Rule
-        arules.append(
-            AssociationRule(
-                id=rule_id,
-                antecedent=antecedent_dba_id,
-                consequent=consequent_dba_id,
-                text=f"{rule['cedents_str']['ante']} => {rule['cedents_str']['succ']}",
-                four_ft_table=FourFtTable(
-                    a=fourfold[0],  # True antecedent, True consequent
-                    b=fourfold[1],  # True antecedent, False consequent
-                    c=fourfold[2],  # False antecedent, True consequent
-                    d=fourfold[3],  # False antecedent, False consequent
-                ),
+            fourfold = calculate_fourfold_table(
+                rule=rule, transactions_df=transactions_df, total_transactions=total_transactions
             )
-        )
 
-    # Create association rules container
+            if rule.antecedent:
+                ante_text = " AND ".join([f"{attr}({value})" for attr, value in rule.antecedent])
+                rule_text = f"{ante_text} => {cons_attr}({cons_value})"
+            else:
+                rule_text = f"=> {cons_attr}({cons_value})"
+
+            arules.append(
+                AssociationRule(
+                    id=rule_id,
+                    antecedent=antecedent_dba_id,
+                    consequent=consequent_dba_id,
+                    text=rule_text,
+                    four_ft_table=FourFtTable(
+                        a=fourfold["a"],
+                        b=fourfold["b"],
+                        c=fourfold["c"],
+                        d=fourfold["d"],
+                    ),
+                )
+            )
+
     association_rules = AssociationRules(bbas=bbas, dbas=dbas, arules=arules)
 
-    # Create association model with cleverminer task info
     association_model = AssociationModel(
-        algorithm_name="4ft",  # cleverminer uses 4ft natively
-        number_of_transactions=cleverminer_output["taskinfo"]["rowcount"],
-        number_of_categories=sum(len(categories) for categories in cleverminer_output["datalabels"]["catnames"]),
+        algorithm_name="4ft",  # Standard GUHA 4ft
+        number_of_transactions=total_transactions,
+        number_of_categories=total_attributes,
         number_of_rules=number_of_rules,
         association_rules=association_rules,
     )
 
-    # Create header if extensions provided
     header = None
     if headers_data:
         extensions = [Extension(name=h["name"], value=h["value"]) for h in headers_data]
         header = Header(extensions=extensions)
-
-    # Add cleverminer metadata to headers if no custom headers provided
-    if not headers_data:
+    else:
         extensions = [
-            Extension(name="task_type", value=cleverminer_output["taskinfo"]["task_type"]),
-            Extension(
-                name="total_verifications",
-                value=str(cleverminer_output["summary_statistics"]["total_verifications"]),
-            ),
-            Extension(
-                name="processing_time",
-                value=str(cleverminer_output["summary_statistics"]["time_processing"]),
-            ),
-            Extension(name="algorithm", value="cleverminer-4ft"),
+            Extension(name="algorithm", value="pyarc-fim"),
+            Extension(name="implementation", value="easyminer-python"),
         ]
         header = Header(extensions=extensions)
 
-    # Create PMML root
     return PMML(header=header, association_model=association_model)
-
-
-# Helper function to extract rule quality metrics
-def extract_rule_metrics(cleverminer_output: dict) -> list[dict]:
-    """
-    Extract rule quality metrics from cleverminer output for analysis
-    """
-    metrics = []
-    for rule in cleverminer_output["rules"]:
-        metrics.append(
-            {
-                "rule_id": rule["rule_id"],
-                "base": rule["params"]["base"],
-                "confidence": rule["params"]["conf"],
-                "relative_base": rule["params"]["rel_base"],
-                "aad": rule["params"]["aad"],
-                "antecedent": rule["cedents_str"]["ante"],
-                "consequent": rule["cedents_str"]["succ"],
-                "fourfold_table": rule["params"]["fourfold"],
-            }
-        )
-    return metrics
-
-
-# Usage example with your cleverminer output:
-if __name__ == "__main__":
-    # Your cleverminer_output dict goes here...
-    import json
-
-    with open("cm_result.json") as f:
-        cleverminer_output = json.load(f)
-
-    # Create PMML from cleverminer output
-    pmml = create_pmml_result_from_cleverminer(cleverminer_output)
-
-    # Serialize to XML
-    xml_output = pmml.to_xml(xml_declaration=True, encoding="UTF-8", pretty_print=True)
-
-    with open("output.pmml", "w") as f:
-        f.write(str(xml_output, "utf-8"))
-
-    # Extract metrics for analysis
-    metrics = extract_rule_metrics(cleverminer_output)
-    print(f"\nExtracted {len(metrics)} rules with metrics")
-
-
-# Example usage:
-# if __name__ == "__main__":
-#     # Sample data
-#     bbas_data = [
-#         {"id": "1", "text": "age(young)", "name": "age", "value": "young"},
-#         {"id": "2", "text": "income(high)", "name": "income", "value": "high"},
-#     ]
-#
-#     dbas_data = [
-#         {"id": "10", "text": "age(young)", "barefs": ["1"]},
-#         {"id": "20", "text": "income(high)", "barefs": ["2"]},
-#     ]
-#
-#     arules_data = [
-#         {
-#             "id": "r1",
-#             "id_antecedent": "10",
-#             "id_consequent": "20",
-#             "text": "age(young) => income(high)",
-#             "a": 150,
-#             "b": 50,
-#             "c": 100,
-#             "d": 700,
-#         }
-#     ]
-#
-#     headers_data = [{"name": "dataset", "value": "customer_data"}, {"name": "algorithm", "value": "4ft-miner"}]
-#
-#     # Create PMML
-#     pmml = create_pmml_result(
-#         number_of_rules=1, bbas_data=bbas_data, dbas_data=dbas_data, arules_data=arules_data, headers_data=headers_data
-#     )
-#
-#     # Serialize to XML
-#     xml_output = pmml.to_xml(xml_declaration=True, encoding="UTF-8", pretty_print=True)
-#
-#     print(xml_output)

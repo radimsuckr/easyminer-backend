@@ -19,9 +19,7 @@ class MinerTaskValidator:
     def __init__(self, pmml: PMML):
         self.pmml = pmml
         self.task_setting = pmml.association_model.task_setting
-        self.interest_measures = {
-            im.interest_measure.upper(): im for im in self.task_setting.interest_measure_settings
-        }
+        self.interest_measures = {im.interest_measure.upper(): im for im in self.task_setting.interest_measure_settings}
 
     def _has_measure(self, measure_name: str) -> bool:
         """Check if a specific interest measure is present"""

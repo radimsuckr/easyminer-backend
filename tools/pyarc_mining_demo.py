@@ -183,7 +183,7 @@ def mine_with_cba_top_rules(
     print(f"  Training accuracy: {accuracy:.2%}")
 
     # Convert to our AssociationRule format
-    rules = convert_pyarc_cars_to_association_rules(cba.clf.rules)
+    rules = convert_pyarc_cars_to_rules(cba.clf.rules)
 
     return rules, accuracy
 
