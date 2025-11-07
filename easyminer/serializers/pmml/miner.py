@@ -157,40 +157,34 @@ def create_pmml_result(
 
 
 def calculate_fourfold_table(rule, transactions_df: pd.DataFrame, total_transactions: int) -> dict[str, int]:
-    # Extract rule components
+    """
+    Calculate fourfold table by directly counting from data (GUHA definition).
+
+    This matches Scala behavior by calculating exact counts rather than using
+    potentially inaccurate pyARC percentage values.
+
+    GUHA 4ft table definition:
+        a = rows where antecedent TRUE and consequent TRUE
+        b = rows where antecedent TRUE and consequent FALSE
+        c = rows where antecedent FALSE and consequent TRUE
+        d = rows where antecedent FALSE and consequent FALSE
+    """
     antecedent_items = rule.antecedent
     consequent_attr = rule.consequent.attribute
     consequent_val = rule.consequent.value
 
-    support = rule.support / 100.0  # Convert to decimal
-    confidence = rule.confidence / 100.0
-
-    # Cell a: both antecedent and consequent are TRUE
-    # Formula: a = support ? N
-    a = int(round(support * total_transactions))
-
-    # Cell b: antecedent TRUE, consequent FALSE
-    # Formula: b = (a / confidence) - a
-    # Derived from: confidence = a / (a+b)
-    if confidence > 0:
-        a_plus_b = a / confidence
-        b = int(round(a_plus_b - a))
-    else:
-        b = 0
-
-    # Cell c: antecedent FALSE, consequent TRUE
-    # Direct count from dataset (GUHA definition)
+    # Create masks for antecedent and consequent
     mask_consequent = transactions_df[consequent_attr] == consequent_val
     mask_antecedent = pd.Series([True] * len(transactions_df), index=transactions_df.index)
 
-    for attr, val in antecedent_items:
-        mask_antecedent &= transactions_df[attr] == val
+    for k, v in antecedent_items:
+        mask_antecedent &= transactions_df[k] == v
 
-    c = int((mask_consequent & ~mask_antecedent).sum())
-
-    # Cell d: both antecedent and consequent are FALSE
-    # Formula: d = N - a - b - c
-    d = total_transactions - a - b - c
+    # Count all four cells directly from data
+    a = int((mask_antecedent & mask_consequent).sum())  # Both TRUE
+    b = int((mask_antecedent & ~mask_consequent).sum())  # Ante TRUE, Cons FALSE
+    c = int((~mask_antecedent & mask_consequent).sum())  # Ante FALSE, Cons TRUE
+    d = int((~mask_antecedent & ~mask_consequent).sum())  # Both FALSE
 
     # Validation
     if a < 0 or b < 0 or c < 0 or d < 0:
