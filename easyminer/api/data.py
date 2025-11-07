@@ -686,7 +686,7 @@ async def get_aggregated_values(
         max = field_max
 
     # Get database config to pass to Celery task
-    db_config = await get_database_config(api_key)
+    db_config = await get_database_config(api_key, DbType.limited)
     db_url = db_config.get_sync_url()
 
     task = aggregate_field_values.delay(

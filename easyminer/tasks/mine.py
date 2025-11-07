@@ -10,7 +10,6 @@ from sqlalchemy.orm import joinedload
 from easyminer.database import get_sync_db_session
 from easyminer.models.preprocessing import Attribute, DatasetInstance
 from easyminer.parsers.pmml.miner import PMML as PMMLInput
-from easyminer.parsers.pmml.miner import CoefficientType, DBASettingType
 from easyminer.serializers.pmml.miner import create_pmml_result_from_pyarc
 from easyminer.validators.miner import validate_mining_task
 from easyminer.worker import app
@@ -131,7 +130,7 @@ class MinerService:
         _, transactions = self._prepare_transaction_db(target_col)
 
         # Build appearance constraints
-        appearance = self._build_appearance_constraints(target_col, antecedent_attrs, consequent_attrs)
+        appearance = self._build_appearance_constraints(antecedent_attrs, consequent_attrs)
 
         # Mine with fim.arules
         logger.info("Mining with fim.arules()...")
@@ -190,7 +189,7 @@ class MinerService:
         _, transactions = self._prepare_transaction_db(target_col)
 
         # Build appearance constraints
-        appearance = self._build_appearance_constraints(target_col, antecedent_attrs, consequent_attrs)
+        appearance = self._build_appearance_constraints(antecedent_attrs, consequent_attrs)
 
         # Mine with pyARC top_rules (automatic threshold detection)
         logger.info("Mining with pyARC top_rules() (automatic threshold detection)...")
@@ -322,39 +321,6 @@ def mine(pmml: PMMLInput, db_url: str | None = None) -> str:
 
     antecedent = next(filter(lambda x: x.id == antecedent_setting_id, ts.dba_settings))
     consequent = next(filter(lambda x: x.id == consequent_setting_id, ts.dba_settings))
-
-    antecedents = {
-        "attributes": [
-            {
-                "name": next(filter(lambda x: x.id == bba_ref, ts.bba_settings)).name,
-                "type": "seq"
-                if next(filter(lambda x: x.id == bba_ref, ts.bba_settings)).coefficient.type == CoefficientType.sequence
-                else "subset",
-                "minlen": next(filter(lambda x: x.id == bba_ref, ts.bba_settings)).coefficient.minimal_length,
-                "maxlen": next(filter(lambda x: x.id == bba_ref, ts.bba_settings)).coefficient.maximal_length,
-            }
-            for bba_ref in antecedent.ba_refs
-        ],
-        "minlen": antecedent.minimal_length,
-        "maxlen": antecedent.maximal_length,
-        "type": "con" if antecedent.type == DBASettingType.conjunction else "dis",
-    }
-    consequents = {
-        "attributes": [
-            {
-                "name": next(filter(lambda x: x.id == bba_ref, ts.bba_settings)).name,
-                "type": "seq"
-                if next(filter(lambda x: x.id == bba_ref, ts.bba_settings)).coefficient.type == CoefficientType.sequence
-                else "subset",
-                "minlen": next(filter(lambda x: x.id == bba_ref, ts.bba_settings)).coefficient.minimal_length,
-                "maxlen": next(filter(lambda x: x.id == bba_ref, ts.bba_settings)).coefficient.maximal_length,
-            }
-            for bba_ref in consequent.ba_refs
-        ],
-        "minlen": consequent.minimal_length,
-        "maxlen": consequent.maximal_length,
-        "type": "con" if consequent.type == DBASettingType.conjunction else "dis",
-    }
 
     svc = MinerService(dataset_id, db_url)
 
