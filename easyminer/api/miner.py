@@ -6,8 +6,7 @@ from uuid import UUID
 import lxml.etree
 from fastapi import APIRouter, Body, HTTPException, Request, Response, status
 
-from easyminer.database import get_database_config
-from easyminer.dependencies import ApiKey
+from easyminer.dependencies import ApiKey, get_database_config
 from easyminer.parsers.pmml.miner import SimplePmmlParser
 from easyminer.schemas.data import DbType
 from easyminer.schemas.miner import Miner, MineStartResponse
@@ -38,11 +37,10 @@ async def mine(
     try:
         pmml = parser.parse()
 
-        # Get database config to pass to Celery task
         db_config = await get_database_config(api_key, DbType.limited)
         db_url = db_config.get_sync_url()
 
-        task = mine_task.delay(pmml, db_url)
+        task = mine_task.apply_async(args=(pmml, db_url), headers={"db_url": db_url})
         return MineStartResponse(
             code="200",
             miner=Miner(

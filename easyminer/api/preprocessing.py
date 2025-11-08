@@ -7,8 +7,7 @@ from sqlalchemy.orm import joinedload
 
 from easyminer.api.task import router as task_router
 from easyminer.config import API_V1_PREFIX
-from easyminer.database import get_database_config
-from easyminer.dependencies import ApiKey, AuthenticatedSession
+from easyminer.dependencies import ApiKey, AuthenticatedSession, get_database_config
 from easyminer.models.preprocessing import Attribute, Dataset, DatasetValue
 from easyminer.schemas.data import DbType
 from easyminer.schemas.preprocessing import (
@@ -40,7 +39,7 @@ async def create_dataset_api(
     db_config = await get_database_config(api_key, DbType.limited)
     db_url = db_config.get_sync_url()
 
-    task = create_dataset.delay(dataSource, name, db_url)
+    task = create_dataset.apply_async(args=(dataSource, name, db_url), headers={"db_url": db_url})
     if task:
         return TaskStatus(
             task_id=UUID(task.task_id),
@@ -126,7 +125,7 @@ async def create_attribute(
     db_config = await get_database_config(api_key, DbType.limited)
     db_url = db_config.get_sync_url()
 
-    task = create_attributes.delay(dataset_id, body, db_url)
+    task = create_attributes.apply_async(args=(dataset_id, body, db_url), headers={"db_url": db_url})
     if task:
         return TaskStatus(
             task_id=UUID(task.task_id),

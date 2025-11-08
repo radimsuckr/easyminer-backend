@@ -9,7 +9,6 @@ from uuid import UUID
 from fastapi import (
     APIRouter,
     Body,
-    Depends,
     HTTPException,
     Path,
     Query,
@@ -17,13 +16,11 @@ from fastapi import (
     status,
 )
 from sqlalchemy import delete, distinct, func, select
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from easyminer.config import API_V1_PREFIX
 from easyminer.crud.aio.data import create_chunk, create_preview_upload, create_upload
-from easyminer.database import get_database_config, get_db_session
-from easyminer.dependencies import ApiKey, AuthenticatedSession
+from easyminer.dependencies import ApiKey, AuthenticatedSession, get_database_config
 from easyminer.models.data import (
     DataSource,
     DataSourceInstance,
@@ -156,7 +153,9 @@ async def upload_chunk(
         await db.commit()
 
         for field_id in field_ids:
-            _ = calculate_field_numeric_detail.delay(field_id=field_id, db_url=db_url)
+            _ = calculate_field_numeric_detail.apply_async(
+                kwargs={"field_id": field_id, "db_url": db_url}, headers={"db_url": db_url}
+            )
         return result
 
     if len(content) == 0:
@@ -181,13 +180,10 @@ async def upload_chunk(
     escape_char = upload.escape_char
     await db.commit()
 
-    _ = process_chunk.delay(
-        chunk_id,
-        original_state,
-        separator=separator,
-        quote_char=quote_char,
-        escape_char=escape_char,
-        db_url=db_url,
+    _ = process_chunk.apply_async(
+        args=(chunk_id, original_state),
+        kwargs={"separator": separator, "quote_char": quote_char, "escape_char": escape_char, "db_url": db_url},
+        headers={"db_url": db_url},
     )
 
 
@@ -201,7 +197,7 @@ async def upload_chunk(
     },
 )
 async def upload_preview_chunk(
-    db: Annotated[AsyncSession, Depends(get_db_session)],
+    db: AuthenticatedSession,
     upload_id: Annotated[UUID, Path()],
     content: Annotated[
         str,
@@ -213,7 +209,7 @@ async def upload_preview_chunk(
 
 @router.get("/datasource")
 async def list_data_sources(
-    db: Annotated[AsyncSession, Depends(get_db_session)],
+    db: AuthenticatedSession,
 ) -> list[DataSourceRead]:
     """List all data sources."""
     data_sources = (await db.execute(select(DataSource).options(joinedload(DataSource.upload)))).scalars().all()
@@ -228,7 +224,7 @@ async def list_data_sources(
         status.HTTP_500_INTERNAL_SERVER_ERROR: {},
     },
 )
-async def delete_data_source(db: Annotated[AsyncSession, Depends(get_db_session)], id: Annotated[int, Path()]) -> None:
+async def delete_data_source(db: AuthenticatedSession, id: Annotated[int, Path()]) -> None:
     """Delete a data source."""
     result = await db.execute(delete(DataSource).where(DataSource.id == id))
     if result.rowcount != 1:
@@ -242,9 +238,7 @@ async def delete_data_source(db: Annotated[AsyncSession, Depends(get_db_session)
         status.HTTP_500_INTERNAL_SERVER_ERROR: {},
     },
 )
-async def get_data_source(
-    db: Annotated[AsyncSession, Depends(get_db_session)], id: Annotated[int, Path()]
-) -> DataSourceRead:
+async def get_data_source(db: AuthenticatedSession, id: Annotated[int, Path()]) -> DataSourceRead:
     """Get a specific data source."""
     data_source = await db.get(DataSource, id, options=[joinedload(DataSource.upload)])
     if not data_source:
@@ -261,7 +255,7 @@ async def get_data_source(
     },
 )
 async def rename_data_source(
-    db: Annotated[AsyncSession, Depends(get_db_session)],
+    db: AuthenticatedSession,
     id: Annotated[int, Path()],
     name: Annotated[str, Body(examples=["A New Exciting Name"], media_type="text/plain")],
 ) -> None:
@@ -282,7 +276,7 @@ async def rename_data_source(
     },
 )
 async def get_instances(
-    db: Annotated[AsyncSession, Depends(get_db_session)],
+    db: AuthenticatedSession,
     id: Annotated[int, Path()],
     offset: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=1000)] = 100,
@@ -388,9 +382,7 @@ async def get_instances(
         status.HTTP_500_INTERNAL_SERVER_ERROR: {},
     },
 )
-async def get_fields(
-    db: Annotated[AsyncSession, Depends(get_db_session)], id: Annotated[int, Path()]
-) -> list[FieldRead]:
+async def get_fields(db: AuthenticatedSession, id: Annotated[int, Path()]) -> list[FieldRead]:
     """List all fields for a data source."""
     data_source = await db.get(
         DataSource,
@@ -415,7 +407,7 @@ async def get_fields(
     },
 )
 async def delete_field(
-    db: Annotated[AsyncSession, Depends(get_db_session)],
+    db: AuthenticatedSession,
     id: Annotated[int, Path()],
     field_id: Annotated[int, Path()],
 ):
@@ -441,7 +433,7 @@ async def delete_field(
 async def get_field(
     id: Annotated[int, Path()],
     field_id: Annotated[int, Path()],
-    db: Annotated[AsyncSession, Depends(get_db_session)],
+    db: AuthenticatedSession,
 ) -> FieldRead:
     """Get metadata for a specific field."""
     data_source = await db.get(DataSource, id)
@@ -464,7 +456,7 @@ async def get_field(
     },
 )
 async def rename_field(
-    db: Annotated[AsyncSession, Depends(get_db_session)],
+    db: AuthenticatedSession,
     id: Annotated[int, Path()],
     field_id: Annotated[int, Path()],
     name: Annotated[str, Body(examples=["New Field Name"], media_type="text/plain")],
@@ -491,7 +483,7 @@ async def rename_field(
     },
 )
 async def toggle_field_type(
-    db: Annotated[AsyncSession, Depends(get_db_session)],
+    db: AuthenticatedSession,
     id: Annotated[int, Path()],
     field_id: Annotated[int, Path()],
 ):
@@ -520,7 +512,7 @@ async def toggle_field_type(
 async def get_field_stats(
     id: Annotated[int, Path()],
     field_id: Annotated[int, Path()],
-    db: Annotated[AsyncSession, Depends(get_db_session)],
+    db: AuthenticatedSession,
 ) -> FieldStatsSchema:
     data_source = (await db.execute(select(DataSource).where(DataSource.id == id))).scalar_one_or_none()
     if not data_source:
@@ -560,7 +552,7 @@ async def get_field_stats(
     },
 )
 async def get_field_values(
-    db: Annotated[AsyncSession, Depends(get_db_session)],
+    db: AuthenticatedSession,
     id: Annotated[int, Path()],
     field_id: Annotated[int, Path()],
     offset: Annotated[int, Query(ge=0)] = 0,
@@ -689,15 +681,18 @@ async def get_aggregated_values(
     db_config = await get_database_config(api_key, DbType.limited)
     db_url = db_config.get_sync_url()
 
-    task = aggregate_field_values.delay(
-        data_source_id=data_source.id,
-        field_id=field.id,
-        bins=bins,
-        min=min,
-        max=max,
-        min_inclusive=min_inclusive,
-        max_inclusive=max_inclusive,
-        db_url=db_url,
+    task = aggregate_field_values.apply_async(
+        kwargs={
+            "data_source_id": data_source.id,
+            "field_id": field.id,
+            "bins": bins,
+            "min": min,
+            "max": max,
+            "min_inclusive": min_inclusive,
+            "max_inclusive": max_inclusive,
+            "db_url": db_url,
+        },
+        headers={"db_url": db_url},
     )
 
     return TaskStatus(

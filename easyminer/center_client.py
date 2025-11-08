@@ -22,7 +22,7 @@ class EasyMinerCenterClient:
     async def close(self) -> None:
         await self.client.aclose()
 
-    @cached(cache=TTLCache(maxsize=8, ttl=30))
+    @cached(cache=TTLCache(maxsize=100, ttl=settings.user_session_ttl))
     async def get_user_info(self, api_key: str) -> UserInfo:
         try:
             response = await self.client.get(
@@ -49,7 +49,7 @@ class EasyMinerCenterClient:
                 detail="Failed to connect to EasyMiner Center",
             )
 
-    @cached(cache=TTLCache(maxsize=8, ttl=30))
+    @cached(cache=TTLCache(maxsize=100, ttl=settings.user_session_ttl))
     async def get_database_config(self, api_key: str, db_type: DbType) -> DatabaseConfig:
         if db_type.value != DbType.limited.value:
             raise HTTPException(

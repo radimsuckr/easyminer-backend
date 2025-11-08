@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import logging.config
 from contextlib import asynccontextmanager
@@ -15,7 +16,7 @@ from easyminer.config import (
     logging_config,
     settings,
 )
-from easyminer.database import sessionmanager
+from easyminer.database import get_session_manager
 
 logging.config.dictConfig(logging_config)
 
@@ -26,10 +27,18 @@ async def lifespan(_: FastAPI):
     Function that handles startup and shutdown events.
     To understand more, read https://fastapi.tiangolo.com/advanced/events/
     """
+    session_manager = get_session_manager()
+    cleanup_task = asyncio.create_task(session_manager.cleanup_expired_sessions())
+
     yield
-    if sessionmanager._engine is not None:
-        # Close the DB connection
-        await sessionmanager.close()
+
+    # Shutdown: cancel cleanup task and close all sessions
+    __ = cleanup_task.cancel()
+    try:
+        await cleanup_task
+    except asyncio.CancelledError:
+        pass
+    await session_manager.close_all()
 
 
 app = FastAPI(

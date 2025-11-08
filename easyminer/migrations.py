@@ -1,33 +1,46 @@
-import asyncio
 import logging
 
 from alembic import command
 from alembic.config import Config
 
-from easyminer.config import ROOT_DIR
+from easyminer.config import ROOT_DIR, settings
 
 logger = logging.getLogger(__name__)
 
-# Track which databases have been migrated this session
 _migrated_dbs: set[str] = set()
 
 
-async def run_migrations(db_url: str) -> None:
-    # Skip if already migrated this session
+def run_migrations(db_url: str) -> None:
+    if settings.skip_migrations:
+        logger.warning("Migrations are disabled via SKIP_MIGRATIONS setting")
+        return
+
     if db_url in _migrated_dbs:
+        logger.debug("Database already migrated this session, skipping")
         return
 
     logger.info("Running database migrations")
 
-    # Configure Alembic
-    alembic_ini = ROOT_DIR / "alembic.ini"
-    alembic_cfg = Config(str(alembic_ini))
-    alembic_cfg.set_main_option("sqlalchemy.url", db_url)
-    alembic_cfg.set_main_option("script_location", str(ROOT_DIR / "easyminer" / "alembic"))
+    try:
+        alembic_ini = ROOT_DIR / "alembic.ini"
+        if not alembic_ini.exists():
+            raise FileNotFoundError(f"alembic.ini not found at {alembic_ini}")
 
-    # Run migrations in thread pool (alembic is sync but uses async connections)
-    await asyncio.to_thread(command.upgrade, alembic_cfg, "head")
+        logger.debug(f"Loading alembic config from {alembic_ini}")
+        alembic_cfg = Config(str(alembic_ini))
+        alembic_cfg.set_main_option("sqlalchemy.url", db_url)
+        alembic_cfg.set_main_option("script_location", str(ROOT_DIR / "easyminer" / "alembic"))
 
-    # Mark as migrated
-    _migrated_dbs.add(db_url)
-    logger.info("Database migrations completed")
+        # Suppress alembic's own logging to stdout
+        alembic_cfg.set_main_option("output_encoding", "utf-8")
+        alembic_cfg.attributes["configure_logger"] = False
+
+        logger.debug("Running alembic upgrade")
+        command.upgrade(alembic_cfg, "head")
+        logger.info("Alembic upgrade completed")
+
+        _migrated_dbs.add(db_url)
+        logger.info("Database migrations completed successfully")
+    except Exception as e:
+        logger.error(f"Database migration failed: {e}", exc_info=True)
+        raise

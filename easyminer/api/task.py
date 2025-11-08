@@ -3,25 +3,20 @@ from typing import Annotated
 from uuid import UUID
 
 import celery.result
-from fastapi import APIRouter, Depends, HTTPException, Path, Request, status
+from fastapi import APIRouter, HTTPException, Path, Request, status
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from easyminer.config import API_V1_PREFIX
-from easyminer.database import get_db_session
+from easyminer.dependencies import AuthenticatedSession
 from easyminer.models.task import Task
 from easyminer.schemas.task import TaskStatus
 
 router = APIRouter(prefix=API_V1_PREFIX, tags=["Tasks"])
 
 
-@router.get(
-    "/task-status/{task_id}",
-    status_code=status.HTTP_202_ACCEPTED,
-    responses={status.HTTP_404_NOT_FOUND: {}},
-)
+@router.get("/task-status/{task_id}", status_code=status.HTTP_202_ACCEPTED, responses={status.HTTP_404_NOT_FOUND: {}})
 async def get_task_status(
-    db: Annotated[AsyncSession, Depends(get_db_session)],
+    db: AuthenticatedSession,
     request: Request,
     task_id: Annotated[UUID, Path()],
 ) -> TaskStatus:
@@ -42,7 +37,7 @@ async def get_task_status(
 async def get_task_result(task_id: Annotated[UUID, Path()]):
     logger = logging.getLogger(__name__)
 
-    ares = celery.result.AsyncResult(str(task_id))
+    ares: celery.result.AsyncResult[str] = celery.result.AsyncResult(str(task_id))
     if not ares.ready():
         raise HTTPException(status_code=status.HTTP_202_ACCEPTED, detail="Task not ready")
     try:

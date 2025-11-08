@@ -1,16 +1,11 @@
+import asyncio
 import contextlib
 import logging
-from collections.abc import AsyncGenerator, AsyncIterator, Generator
-from typing import Any, final
+from collections.abc import AsyncGenerator, Generator
+from datetime import datetime, timedelta
 
 from sqlalchemy import create_engine
-from sqlalchemy.ext.asyncio import (
-    AsyncConnection,
-    AsyncEngine,
-    AsyncSession,
-    async_sessionmaker,
-    create_async_engine,
-)
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from easyminer.center_client import get_center_client
@@ -25,104 +20,138 @@ class Base(DeclarativeBase):
     pass
 
 
-@final
-class DatabaseSessionManager:
-    def __init__(self, host: str, engine_kwargs: dict[str, Any] | None = None):
-        if engine_kwargs is None:
-            engine_kwargs = {}
+class UserSession:
+    def __init__(self, api_key: str, db_config: DatabaseConfig, engine: AsyncEngine):
+        self.api_key: str = api_key
+        self.db_config: DatabaseConfig = db_config
+        self.engine: AsyncEngine = engine
+        self.last_activity: datetime = datetime.now()
+        self.created_at: datetime = datetime.now()
 
-        self._engine = create_async_engine(host, **engine_kwargs)
-        self._sessionmaker = async_sessionmaker(self._engine)
+    def touch(self):
+        """Update last activity time."""
+        self.last_activity = datetime.now()
 
-    async def close(self):
-        if self._engine is None:
-            raise Exception("DatabaseSessionManager is not initialized")
-        await self._engine.dispose()
+    def is_expired(self, ttl_seconds: int) -> bool:
+        return datetime.now() - self.last_activity > timedelta(seconds=ttl_seconds)
 
-        self._engine = None
-        self._sessionmaker = None
 
-    @contextlib.asynccontextmanager
-    async def connect(self) -> AsyncIterator[AsyncConnection]:
-        if self._engine is None:
-            raise Exception("DatabaseSessionManager is not initialized")
+class UserSessionManager:
+    """
+    Manages per-user database sessions with activity-based expiry.
+    Mimics Scala's UserService actor lifecycle (5-minute sliding window).
+    """
 
-        async with self._engine.begin() as connection:
-            try:
-                yield connection
-            except Exception:
-                await connection.rollback()
-                raise
+    def __init__(self, ttl_seconds: int = settings.user_session_ttl):
+        self._sessions: dict[str, UserSession] = {}
+        self._lock: asyncio.Lock = asyncio.Lock()
+        self.ttl_seconds: int = ttl_seconds
 
-    @contextlib.asynccontextmanager
-    async def session(self) -> AsyncIterator[AsyncSession]:
-        if self._sessionmaker is None:
-            raise Exception("DatabaseSessionManager is not initialized")
+    async def get_or_create_session(self, api_key: str) -> UserSession:
+        async with self._lock:
+            if api_key in self._sessions:
+                session = self._sessions[api_key]
+                if not session.is_expired(self.ttl_seconds):
+                    session.touch()  # Extend TTL
+                    logger.debug("Reusing cached session for user (activity extended)")
+                    return session
+                else:
+                    logger.info("Session expired for user, disposing engine")
+                    await session.engine.dispose()
+                    del self._sessions[api_key]
 
-        session = self._sessionmaker()
+        logger.info("Creating new session for user")
+
+        try:
+            client = get_center_client()
+            db_config = await client.get_database_config(api_key, DbType.limited)
+            logger.debug(
+                f"Got database config from EM Center: {db_config.server}:{db_config.port}/{db_config.database}"
+            )
+
+            from easyminer.migrations import run_migrations
+
+            run_migrations(db_config.get_sync_url())
+            logger.debug("Migrations completed, creating engine")
+
+            engine = create_async_engine(
+                db_config.get_async_url(), echo=settings.echo_sql, pool_pre_ping=True, pool_size=5, max_overflow=10
+            )
+            logger.debug("Engine created successfully")
+
+            session = UserSession(api_key, db_config, engine)
+
+            async with self._lock:
+                self._sessions[api_key] = session
+
+            logger.info("Session created and cached for user")
+            return session
+        except Exception as e:
+            logger.error(f"Failed to create user session: {e}", exc_info=True)
+            raise
+
+    async def cleanup_expired_sessions(self):
+        while True:
+            await asyncio.sleep(60)  # Check every minute
+            async with self._lock:
+                expired_keys = [key for key, session in self._sessions.items() if session.is_expired(self.ttl_seconds)]
+
+            for key in expired_keys:
+                session = self._sessions[key]
+                logger.info("Cleaning up expired session for user")
+                await session.engine.dispose()
+                async with self._lock:
+                    del self._sessions[key]
+
+    async def close_all(self):
+        """Close all sessions."""
+        async with self._lock:
+            sessions_to_close = list(self._sessions.values())
+            self._sessions.clear()
+
+        for session in sessions_to_close:
+            await session.engine.dispose()
+
+
+_session_manager: UserSessionManager | None = None
+
+
+def get_session_manager() -> UserSessionManager:
+    global _session_manager
+    if _session_manager is None:
+        _session_manager = UserSessionManager(ttl_seconds=settings.user_session_ttl)
+    return _session_manager
+
+
+async def get_user_db_session(api_key: str) -> AsyncGenerator[AsyncSession]:
+    logger.debug("Getting user DB session for api_key")
+
+    try:
+        session_manager = get_session_manager()
+        user_session = await session_manager.get_or_create_session(api_key)
+        logger.debug("Got user session from manager")
+
+        session_maker = async_sessionmaker(user_session.engine)
+        session = session_maker()
+        logger.debug("Created database session")
+
         try:
             yield session
-        except Exception:
+        except Exception as e:
+            logger.error(f"Error during session use: {e}", exc_info=True)
             await session.rollback()
             raise
         finally:
             await session.close()
-
-
-sessionmanager = DatabaseSessionManager(settings.database_url, {"echo": settings.echo_sql})
-
-
-async def get_db_session() -> AsyncGenerator[AsyncSession]:
-    async with sessionmanager.session() as session:
-        yield session
-
-
-# Cache for database engines to avoid creating new engines for each request
-_engine_cache: dict[str, AsyncEngine] = {}
-
-
-async def get_database_config(api_key: str, db_type: DbType) -> DatabaseConfig:
-    client = get_center_client()
-    db_config = await client.get_database_config(api_key, db_type)
-    return db_config
-
-
-def get_db_url_from_config(db_config: DatabaseConfig, sync: bool = True) -> str:
-    if sync:
-        return db_config.get_sync_url()
-    return db_config.get_async_url()
-
-
-async def get_user_db_session(api_key: str, db_type: DbType) -> AsyncGenerator[AsyncSession]:
-    db_config = await get_database_config(api_key, db_type)
-    db_url = db_config.get_async_url()
-
-    if db_url not in _engine_cache:
-        logger.info(f"Creating new database engine for {db_config.server}:{db_config.port}/{db_config.database}")
-
-        # Run migrations on first connection
-        from easyminer.migrations import run_migrations
-
-        await run_migrations(db_config.get_sync_url())
-
-        _engine_cache[db_url] = create_async_engine(db_url, echo=settings.echo_sql, pool_pre_ping=True)
-
-    engine = _engine_cache[db_url]
-    session_maker = async_sessionmaker(engine)
-    session = session_maker()
-    try:
-        yield session
-    except Exception:
-        await session.rollback()
+            logger.debug("Database session closed")
+    except Exception as e:
+        logger.error(f"Failed to get user DB session: {e}", exc_info=True)
         raise
-    finally:
-        await session.close()
 
 
 @contextlib.contextmanager
-def get_sync_db_session(db_url: str | None = None) -> Generator[Session]:
-    url = db_url or settings.database_url_sync
-    sync_engine = create_engine(url, echo=settings.echo_sql, pool_pre_ping=True)
+def get_sync_db_session(db_url: str) -> Generator[Session]:
+    sync_engine = create_engine(db_url, echo=settings.echo_sql, pool_pre_ping=True)
     session = sessionmaker(sync_engine)()
     try:
         yield session
@@ -132,10 +161,3 @@ def get_sync_db_session(db_url: str | None = None) -> Generator[Session]:
     finally:
         session.close()
         sync_engine.dispose()
-
-
-async def close_all_engines():
-    for url, engine in _engine_cache.items():
-        logger.info(f"Closing database engine for {url}")
-        await engine.dispose()
-    _engine_cache.clear()

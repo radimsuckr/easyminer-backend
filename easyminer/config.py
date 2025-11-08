@@ -13,22 +13,15 @@ ROOT_DIR: Path = Path(os.path.dirname(os.path.abspath(__file__)) + "/..").resolv
 
 
 class Settings(BaseSettings):
-    database_url: str
-    database_url_sync: str
     echo_sql: bool = False
     test: bool = False
     project_name: str = "EasyMiner Backend"
     debug_logs: bool = False
     version: str = "0.1.0"
     easyminer_center_url: str = "http://localhost:8001"  # URL of the EasyMiner Center server
+    user_session_ttl: int = 300
+    skip_migrations: bool = False
 
-
-database_url = os.getenv("DATABASE_URL")
-if not database_url:
-    raise ValueError('Set "DATABASE_URL" environment variable')
-database_url_sync = os.getenv("DATABASE_URL_SYNC")
-if not database_url_sync:
-    raise ValueError('Set "DATABASE_URL_SYNC" environment variable')
 
 celery_broker = os.getenv("CELERY_BROKER")
 if not celery_broker:
@@ -52,7 +45,7 @@ if not easyminer_modules.issubset(_allowed_modules):
     raise ValueError(f'Invalid module in "EASYMINER_MODULES". Choose from {_allowed_modules}')
 
 
-settings = Settings(database_url=database_url, database_url_sync=database_url_sync)
+settings = Settings()
 
 logging_config = {
     "version": 1,
