@@ -49,7 +49,7 @@ class EasyMinerCenterClient:
 
     @cached(cache=TTLCache(maxsize=8, ttl=30))
     async def get_database_config(self, api_key: str, db_type: DbType) -> DatabaseConfig:
-        if db_type != DbType.limited:
+        if db_type.value != DbType.limited.value:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Only 'limited' database type is supported",
@@ -57,7 +57,7 @@ class EasyMinerCenterClient:
 
         try:
             response = await self.client.get(
-                f"/api/databases/{db_type}",
+                f"/api/databases/{db_type.value}",
                 headers={"Authorization": f"Bearer {api_key}"},
             )
             _ = response.raise_for_status()
