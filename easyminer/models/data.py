@@ -138,6 +138,44 @@ class Field(Base):
     data_source_id: Mapped[int] = mapped_column(ForeignKey("data_source.id", ondelete="CASCADE"))
     data_source: Mapped["DataSource"] = relationship("DataSource", back_populates="fields")
     attributes: Mapped[list["Attribute"]] = relationship(back_populates="field", cascade="all, delete-orphan")
+    numeric_detail: Mapped["FieldNumericDetail | None"] = relationship(
+        "FieldNumericDetail", back_populates="field", uselist=False
+    )
+
+    @property
+    def unique_count(self) -> int | None:
+        """Return unique count based on field type."""
+        if self.data_type == FieldType.numeric:
+            return self.unique_values_size_numeric if self.unique_values_size_numeric > 0 else None
+        return self.unique_values_size_nominal if self.unique_values_size_nominal > 0 else None
+
+    @property
+    def support(self) -> int | None:
+        """Return support based on field type."""
+        if self.data_type == FieldType.numeric:
+            return self.support_numeric if self.support_numeric > 0 else None
+        return self.support_nominal if self.support_nominal > 0 else None
+
+    @property
+    def min_value(self) -> float | None:
+        """Return minimum value for numeric fields."""
+        if self.data_type == FieldType.numeric and self.numeric_detail:
+            return float(self.numeric_detail.min_value)
+        return None
+
+    @property
+    def max_value(self) -> float | None:
+        """Return maximum value for numeric fields."""
+        if self.data_type == FieldType.numeric and self.numeric_detail:
+            return float(self.numeric_detail.max_value)
+        return None
+
+    @property
+    def avg_value(self) -> float | None:
+        """Return average value for numeric fields."""
+        if self.data_type == FieldType.numeric and self.numeric_detail:
+            return float(self.numeric_detail.avg_value)
+        return None
 
 
 class FieldNumericDetail(Base):
@@ -149,6 +187,8 @@ class FieldNumericDetail(Base):
     min_value: Mapped[Decimal] = mapped_column(DECIMAL)
     max_value: Mapped[Decimal] = mapped_column(DECIMAL)
     avg_value: Mapped[Decimal] = mapped_column(DECIMAL)
+
+    field: Mapped["Field"] = relationship("Field", back_populates="numeric_detail")
 
 
 class DataSourceInstance(Base):

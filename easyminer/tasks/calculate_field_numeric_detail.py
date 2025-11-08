@@ -11,33 +11,19 @@ logger = logging.getLogger(__name__)
 
 
 @app.task
-def calculate_field_numeric_detail(field_id: int, db_url: str | None = None):
+def calculate_field_numeric_detail(field_id: int, db_url: str):
     with get_sync_db_session(db_url) as db:
         field = db.get(Field, field_id)
         if not field:
             raise ValueError(f"Field with ID {field_id} not found")
-        if field.data_type != FieldType.numeric:
-            raise ValueError(f"Field {field.name} is not numeric, skipping detail calculation")
 
-        logger.info(f"Calculating numeric field detail for field {field.name}")
+        logger.info(f"Calculating statistics for field {field.name} (type: {field.data_type})")
 
-        # Check if there are any numeric values
-        numeric_count = db.execute(
-            select(func.count())
-            .select_from(DataSourceInstance)
-            .where(
-                DataSourceInstance.field_id == field.id,
-                DataSourceInstance.value_numeric.is_not(None),
-            )
-        ).scalar_one()
-
-        if numeric_count == 0:
-            logger.warning(f"Field {field.name} (id={field.id}) has no numeric values, skipping detail calculation")
-            return
-
-        stats = (
-            db.execute(
+        if field.data_type == FieldType.numeric:
+            stats = db.execute(
                 select(
+                    func.count(func.distinct(DataSourceInstance.value_numeric)).label("unique_count"),
+                    func.count(DataSourceInstance.value_numeric).label("support"),
                     func.min(DataSourceInstance.value_numeric).label("min_value"),
                     func.max(DataSourceInstance.value_numeric).label("max_value"),
                     func.avg(DataSourceInstance.value_numeric).label("avg_value"),
@@ -45,19 +31,44 @@ def calculate_field_numeric_detail(field_id: int, db_url: str | None = None):
                     DataSourceInstance.field_id == field.id,
                     DataSourceInstance.value_numeric.is_not(None),
                 )
-            )
-            .tuples()
-            .one()
-        )
+            ).one()
 
-        field_numeric_detail = db.get(FieldNumericDetail, field.id)
-        if not field_numeric_detail:
-            field_numeric_detail = FieldNumericDetail(
-                id=field.id, min_value=stats[0], max_value=stats[1], avg_value=stats[2]
+            field.unique_values_size_numeric = stats.unique_count
+            field.support_numeric = stats.support
+
+            logger.info(
+                f"Field {field.name} numeric stats: unique={stats.unique_count}, "
+                + f"support={stats.support}, min={stats.min_value}, max={stats.max_value}, avg={stats.avg_value}"
             )
-            db.add(field_numeric_detail)
+
+            if stats.support > 0:
+                field_numeric_detail = db.get(FieldNumericDetail, field.id)
+                if not field_numeric_detail:
+                    field_numeric_detail = FieldNumericDetail(
+                        id=field.id, min_value=stats.min_value, max_value=stats.max_value, avg_value=stats.avg_value
+                    )
+                    db.add(field_numeric_detail)
+                else:
+                    field_numeric_detail.min_value = stats.min_value
+                    field_numeric_detail.max_value = stats.max_value
+                    field_numeric_detail.avg_value = stats.avg_value
+            else:
+                logger.warning(f"Field {field.name} (id={field.id}) has no numeric values")
         else:
-            field_numeric_detail.min_value = stats[0]
-            field_numeric_detail.max_value = stats[1]
-            field_numeric_detail.avg_value = stats[2]
+            stats = db.execute(
+                select(
+                    func.count(func.distinct(DataSourceInstance.value_nominal)).label("unique_count"),
+                    func.count(DataSourceInstance.value_nominal).label("support"),
+                ).where(
+                    DataSourceInstance.field_id == field.id,
+                    DataSourceInstance.value_nominal.is_not(None),
+                )
+            ).one()
+
+            field.unique_values_size_nominal = stats.unique_count
+            field.support_nominal = stats.support
+
+            logger.info(f"Field {field.name} nominal stats: unique={stats.unique_count}, support={stats.support}")
+
         db.commit()
+        logger.info(f"Statistics calculated successfully for field {field.name}")
