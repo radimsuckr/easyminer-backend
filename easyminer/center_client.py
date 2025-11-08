@@ -15,7 +15,9 @@ logger = logging.getLogger(__name__)
 class EasyMinerCenterClient:
     def __init__(self, base_url: str | None = None):
         self.base_url: str = (base_url or settings.easyminer_center_url).rstrip("/")
-        self.client: httpx.AsyncClient = httpx.AsyncClient(base_url=self.base_url, timeout=10)
+        self.client: httpx.AsyncClient = httpx.AsyncClient(
+            base_url=self.base_url, timeout=10, headers={"User-Agent": "EasyMiner Backend (Python)"}
+        )
 
     async def close(self) -> None:
         await self.client.aclose()
