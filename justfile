@@ -39,3 +39,11 @@ reinit-db:
 
 migrate-head:
 	uv run alembic upgrade head
+
+[working-directory: "thesis"]
+typst:
+	typst compile main.typ
+
+[working-directory: "thesis"]
+typst-watch:
+	typst watch main.typ
