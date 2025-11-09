@@ -5,7 +5,7 @@ services:
       dockerfile: Dockerfile
       target: api
     depends_on:
-      - postgres
+      - mariadb
       - redis
     env_file: .env
     image: easyminer-backend:latest
@@ -18,15 +18,6 @@ services:
       target: worker
     image: easyminer-backend-worker:latest
     ports: []
-
-  postgres:
-    environment:
-      POSTGRES_DB: easyminer
-      POSTGRES_PASSWORD: easyminer
-      POSTGRES_USER: easyminer
-    image: postgres:alpine
-    ports:
-      - "5432:5432"
 
   mariadb:
     environment:
