@@ -2,7 +2,7 @@ FROM python:3.13-slim-trixie AS build
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-RUN apt update && apt upgrade -y && apt install -y --no-install-recommends gcc git libc-dev libpq5
+RUN apt update && apt upgrade -y && apt install -y --no-install-recommends gcc git libc-dev
 
 RUN groupadd --gid 1000 easyminer && useradd -m -s /usr/sbin/nologin --uid 1000 -g easyminer easyminer
 
