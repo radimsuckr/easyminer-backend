@@ -4,12 +4,10 @@ Validator for mining tasks - ensures compatibility with Scala implementation.
 Based on: cz.vse.easyminer.miner.impl.MinerTaskValidatorImpl
 """
 
-from easyminer.parsers.pmml.miner import PMML
+from easyminer.parsers.pmml.miner import PMML, InterestMeasureThreshold, TaskSetting
 
 
 class MinerTaskValidationError(Exception):
-    """Exception raised when mining task validation fails"""
-
     pass
 
 
@@ -17,9 +15,11 @@ class MinerTaskValidator:
     """Validates mining task parameters according to Scala implementation rules"""
 
     def __init__(self, pmml: PMML):
-        self.pmml = pmml
-        self.task_setting = pmml.association_model.task_setting
-        self.interest_measures = {im.interest_measure.upper(): im for im in self.task_setting.interest_measure_settings}
+        self.pmml: PMML = pmml
+        self.task_setting: TaskSetting = pmml.association_model.task_setting
+        self.interest_measures: dict[str, InterestMeasureThreshold] = {
+            im.interest_measure.upper(): im for im in self.task_setting.interest_measure_settings
+        }
 
     def _has_measure(self, measure_name: str) -> bool:
         """Check if a specific interest measure is present"""
@@ -42,7 +42,7 @@ class MinerTaskValidator:
             return 0
 
         # Count unique field references from BBA settings
-        unique_fields = set()
+        unique_fields: set[str] = set()
         for ba_ref in consequent.ba_refs:
             bba = next((bba for bba in self.task_setting.bba_settings if bba.id == ba_ref), None)
             if bba:
