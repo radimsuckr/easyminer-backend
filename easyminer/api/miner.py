@@ -40,7 +40,7 @@ async def mine(
         db_config = await get_database_config(api_key, DbType.limited)
         db_url = db_config.get_sync_url()
 
-        task = mine_task.apply_async(args=(pmml, db_url), headers={"db_url": db_url})
+        task = mine_task.apply_async(args=(pmml,), headers={"db_url": db_url})
         return MineStartResponse(
             code="200",
             miner=Miner(
