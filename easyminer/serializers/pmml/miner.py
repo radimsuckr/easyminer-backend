@@ -53,6 +53,18 @@ class AssociationRules(BaseXmlModel, tag="AssociationRules"):
     arules: list[AssociationRule] = element(tag="AssociationRule", default_factory=list)
 
 
+class DataDictionary(BaseXmlModel, tag="DataDictionary"):
+    """DataDictionary element - typically empty for mining results"""
+
+    number_of_fields: int = attr(name="numberOfFields", default=0)
+
+
+class TransformationDictionary(BaseXmlModel, tag="TransformationDictionary"):
+    """TransformationDictionary element - typically empty for mining results"""
+
+    pass
+
+
 class AssociationModel(
     BaseXmlModel,
     tag="AssociationModel",
@@ -90,6 +102,8 @@ class PMML(
     )
 
     header: Header | None = element(tag="Header", default=None)
+    data_dictionary: DataDictionary = element(tag="DataDictionary")
+    transformation_dictionary: TransformationDictionary = element(tag="TransformationDictionary")
     association_model: AssociationModel = element(tag="AssociationModel", ns="guha")
 
 
@@ -147,8 +161,13 @@ def create_pmml_result(
         extensions = [Extension(name=h["name"], value=h["value"]) for h in headers_data]
         header = Header(extensions=extensions)
 
-    # Create PMML root
-    return PMML(header=header, association_model=association_model)
+    # Create PMML root with required elements
+    return PMML(
+        header=header,
+        data_dictionary=DataDictionary(),
+        transformation_dictionary=TransformationDictionary(),
+        association_model=association_model,
+    )
 
 
 # ============================================================================
@@ -353,4 +372,9 @@ def create_pmml_result_from_pyarc(
         ]
         header = Header(extensions=extensions)
 
-    return PMML(header=header, association_model=association_model)
+    return PMML(
+        header=header,
+        data_dictionary=DataDictionary(),
+        transformation_dictionary=TransformationDictionary(),
+        association_model=association_model,
+    )

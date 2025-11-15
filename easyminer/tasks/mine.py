@@ -10,11 +10,67 @@ from sqlalchemy.orm import joinedload
 from easyminer.database import get_sync_db_session
 from easyminer.models.preprocessing import Attribute, DatasetInstance
 from easyminer.parsers.pmml.miner import PMML as PMMLInput
+from easyminer.parsers.pmml.miner import BBASetting, DBASetting, TaskSetting
 from easyminer.serializers.pmml.miner import create_pmml_result_from_pyarc
 from easyminer.validators.miner import validate_mining_task
 from easyminer.worker import app
 
 logger = logging.getLogger(__name__)
+
+
+def resolve_dba_to_attributes(dba: DBASetting, task_setting: TaskSetting) -> list[str]:
+    """
+    Recursively resolve a DBA (Derived Boolean Attribute) to leaf-level attribute names.
+
+    DBAs form a hierarchical structure where:
+    - Level 1 & 2 DBAs (Conjunction/Disjunction) reference other DBAs via BASettingRef
+    - Level 3 DBAs (Literal) reference BBAs (Basic Boolean Attributes) via BASettingRef
+
+    This function recursively traverses the DBA hierarchy to collect all leaf-level
+    attribute names from BBAs.
+
+    Args:
+        dba: The DBA setting to resolve
+        task_setting: Task setting containing all BBA and DBA definitions
+
+    Returns:
+        List of unique attribute names (from BBAs)
+
+    Example:
+        DBA(id=10, type=Conjunction) -> [DBA(id=20), DBA(id=21)]
+          DBA(id=20, type=Conjunction) -> [DBA(id=30), DBA(id=31)]
+            DBA(id=30, type=Literal) -> BBA(id=1, name="age")
+            DBA(id=31, type=Literal) -> BBA(id=2, name="salary")
+          DBA(id=21, type=Literal) -> BBA(id=3, name="status")
+
+        Result: ["age", "salary", "status"]
+    """
+    attribute_names: set[str] = set()
+
+    # Build lookup dictionaries for efficient access
+    bba_by_id: dict[str, BBASetting] = {bba.id: bba for bba in task_setting.bba_settings}
+    dba_by_id: dict[str, DBASetting] = {dba.id: dba for dba in task_setting.dba_settings}
+
+    def _resolve_ba_ref(ba_ref: str) -> None:
+        """Recursively resolve a BA reference (can be BBA or DBA)"""
+        # First check if it's a DBA (Derived Boolean Attribute)
+        if ba_ref in dba_by_id:
+            referenced_dba = dba_by_id[ba_ref]
+            # Recurse into the DBA's references
+            for nested_ba_ref in referenced_dba.ba_refs:
+                _resolve_ba_ref(nested_ba_ref)
+        # Otherwise it must be a BBA (Basic Boolean Attribute)
+        elif ba_ref in bba_by_id:
+            referenced_bba = bba_by_id[ba_ref]
+            attribute_names.add(referenced_bba.name)
+        else:
+            logger.warning(f"BASettingRef '{ba_ref}' not found in BBA or DBA settings")
+
+    # Start resolution from the input DBA
+    for ba_ref in dba.ba_refs:
+        _resolve_ba_ref(ba_ref)
+
+    return sorted(attribute_names)  # Sort for deterministic output
 
 
 class MinerService:
@@ -227,6 +283,31 @@ class MinerService:
 
 @app.task(pydantic=True)
 def mine(pmml: PMMLInput, db_url: str | None = None) -> str:
+    """
+    Execute mining task based on PMML input specification.
+
+    This function handles threshold_type and compare_type fields from InterestMeasureThreshold:
+
+    threshold_type:
+        - "% of all": Threshold is a percentage (0.0-1.0, e.g., 0.5 = 50%)
+        - "Abs": Threshold is an absolute count (e.g., 5 = exactly 5 items)
+
+    compare_type:
+        - "Greater than or equal": Rule IM >= threshold (default for CONF, SUPP)
+        - "Less than or equal": Rule IM <= threshold (used for RULE_LENGTH)
+        - "Equal": Rule IM = threshold (used for AUTO_CONF_SUPP)
+
+    Note: The underlying mining algorithms (fim.arules, pyARC top_rules) apply
+    thresholds with >= semantics for support/confidence. The compare_type field
+    is used for validation, logging, and potential post-filtering.
+
+    Args:
+        pmml: Parsed PMML mining task specification
+        db_url: Optional database URL (uses Celery header if not provided)
+
+    Returns:
+        XML string of PMML result with mined association rules
+    """
     # Validate the mining task first (Scala compatibility)
     validate_mining_task(pmml)
 
@@ -248,6 +329,18 @@ def mine(pmml: PMMLInput, db_url: str | None = None) -> str:
 
     # Check if AUTO_CONF_SUPP is requested (automatic confidence/support detection)
     auto_conf_supp = any(im.interest_measure.lower() == "auto_conf_supp" for im in ts.interest_measure_settings)
+
+    # Log all interest measures with their compare_type for transparency
+    logger.info("Interest measures configuration:")
+    for im in ts.interest_measure_settings:
+        if im.interest_measure.lower() == "rule_length":
+            im.threshold_type = "Abs"  # RULE_LENGTH should use absolute counts
+
+        compare_type = im.compare_type or "Greater than or equal"  # Default
+        threshold_type = im.threshold_type or "% of all"  # Default
+        logger.info(
+            f"  - {im.interest_measure}: threshold={im.threshold}, type={threshold_type}, compare={compare_type}"
+        )
 
     if cba_requested:
         logger.info("CBA requested via InterestMeasure")
@@ -285,22 +378,63 @@ def mine(pmml: PMMLInput, db_url: str | None = None) -> str:
     )
     max_rule_length = None
     if rule_length_candidates:
-        max_rule_length = int(rule_length_candidates[0].threshold) if rule_length_candidates[0].threshold else None
-        logger.info(f"Max rule length constraint: {max_rule_length}")
+        rule_length_im = rule_length_candidates[0]
+        if rule_length_im.threshold is not None:
+            # RULE_LENGTH should use "Abs" threshold_type (absolute count)
+            max_rule_length = int(rule_length_im.threshold)
+            logger.info(f"Max rule length constraint: {max_rule_length}")
 
-    # Build quantifiers dictionary
+    # Build quantifiers dictionary with proper threshold_type handling
     quantifiers = {}
+
+    def normalize_threshold(im: type[ts.interest_measure_settings[0]], default_type: str = "% of all") -> float:
+        """Normalize threshold value to decimal (0.0-1.0) based on threshold_type"""
+        if im.threshold is None:
+            return 0.0
+
+        threshold_type = im.threshold_type or default_type
+        value = im.threshold
+
+        if threshold_type == "% of all":
+            # Already in decimal form (0.0-1.0)
+            if value > 1.0:
+                logger.warning(f"Threshold {value} marked as '% of all' but > 1.0, dividing by 100")
+                return value / 100.0
+            return value
+        elif threshold_type == "Abs":
+            # Absolute count - not applicable for confidence/support (would need total count)
+            logger.warning(f"Absolute threshold_type for {im.interest_measure} not supported in percentage context")
+            return value if value <= 1.0 else value / 100.0
+        else:
+            logger.warning(f"Unknown threshold_type '{threshold_type}', treating as '% of all'")
+            return value if value <= 1.0 else value / 100.0
+
     if base_candidates and base_candidates[0].threshold is not None:
-        quantifiers["Base"] = base_candidates[0].threshold
+        quantifiers["Base"] = normalize_threshold(base_candidates[0])
+        logger.debug(
+            f"Base threshold: {quantifiers['Base']:.4f} (type: {base_candidates[0].threshold_type or '% of all'})"
+        )
+
     if confidence_candidates and confidence_candidates[0].threshold is not None:
-        quantifiers["conf"] = confidence_candidates[0].threshold
+        quantifiers["conf"] = normalize_threshold(confidence_candidates[0])
+        logger.debug(
+            f"Confidence threshold: {quantifiers['conf']:.4f} (type: {confidence_candidates[0].threshold_type or '% of all'})"
+        )
+
     if support_candidates and support_candidates[0].threshold is not None:
         # CleverMiner uses "Base" for support in 4ft-Miner
         # Only add if not already set by base_candidates
         if "Base" not in quantifiers:
-            quantifiers["Base"] = support_candidates[0].threshold
+            quantifiers["Base"] = normalize_threshold(support_candidates[0])
+            logger.debug(
+                f"Support threshold: {quantifiers['Base']:.4f} (type: {support_candidates[0].threshold_type or '% of all'})"
+            )
+
     if aad_candidates and aad_candidates[0].threshold is not None:
-        quantifiers["aad"] = aad_candidates[0].threshold
+        quantifiers["aad"] = normalize_threshold(aad_candidates[0])
+        logger.debug(
+            f"AAD threshold: {quantifiers['aad']:.4f} (type: {aad_candidates[0].threshold_type or '% of all'})"
+        )
 
     # For AUTO_CONF_SUPP mode, use default values if not specified
     if auto_conf_supp:
@@ -325,8 +459,12 @@ def mine(pmml: PMMLInput, db_url: str | None = None) -> str:
     svc = MinerService(dataset_id, db_url)
 
     # Extract attribute names from antecedent and consequent settings
-    antecedent_attrs = [next(filter(lambda x: x.id == bba_ref, ts.bba_settings)).name for bba_ref in antecedent.ba_refs]
-    consequent_attrs = [next(filter(lambda x: x.id == bba_ref, ts.bba_settings)).name for bba_ref in consequent.ba_refs]
+    # Use resolver to handle hierarchical DBA structures (DBA can reference other DBAs)
+    antecedent_attrs = resolve_dba_to_attributes(antecedent, ts)
+    consequent_attrs = resolve_dba_to_attributes(consequent, ts)
+
+    logger.info(f"Resolved antecedent attributes: {antecedent_attrs}")
+    logger.info(f"Resolved consequent attributes: {consequent_attrs}")
 
     # Identify target column (should be the consequent attribute)
     if not consequent_attrs:
@@ -356,15 +494,9 @@ def mine(pmml: PMMLInput, db_url: str | None = None) -> str:
         # Mode 1: Standard mining with user-provided thresholds
         logger.info("=== MODE 1: Standard Mining with Fixed Thresholds ===")
 
-        # Extract thresholds from PMML
+        # Extract thresholds from PMML (already normalized by normalize_threshold)
         min_confidence = quantifiers.get("conf", 0.5)
         min_support = quantifiers.get("Base", 0.01)
-
-        # Convert to decimal if needed (PMML may provide as percentage or decimal)
-        if min_confidence > 1.0:
-            min_confidence = min_confidence / 100.0
-        if min_support > 1.0:
-            min_support = min_support / 100.0
 
         logger.info(f"User thresholds: support={min_support:.2%}, confidence={min_confidence:.2%}")
 

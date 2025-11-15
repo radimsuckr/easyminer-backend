@@ -93,8 +93,10 @@ class InterestMeasureThreshold(BaseXmlModel, tag="InterestMeasureThreshold", nsm
     id: str = attr()
     interest_measure: str = element("InterestMeasure")
     threshold: float | None = element("Threshold", default=None)
-    threshold_type: str | None = element("ThresholdType", default=None)
-    compare_type: str | None = element("CompareType", default=None)
+    threshold_type: Literal["% of all"] | Literal["Abs"] = element("ThresholdType", default="% of all")
+    compare_type: Literal["Greater than or equal"] | Literal["Less than or equal"] | Literal["Equal"] = element(
+        "CompareType", default="Greater than or equal"
+    )
 
 
 class InterestMeasureSetting(BaseXmlModel, tag="InterestMeasureSetting", nsmap=EMPTY_NSMAP):

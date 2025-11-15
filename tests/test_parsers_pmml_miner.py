@@ -1089,3 +1089,88 @@ def test_data_dictionary_and_transformation_dictionary_missing():
     # Verify it's a validation error about missing elements
     error_msg = str(exc_info.value).lower()
     assert "datadictionary" in error_msg or "transformationdictionary" in error_msg or "missing" in error_msg
+
+
+def test_interest_measure_absolute_thresholds():
+    """Absolute thresholds for confidence and support"""
+    xml_content = """<?xml version="1.0" encoding="UTF-8"?>
+    <PMML xmlns="http://www.dmg.org/PMML-4_0" version="4.0">
+      <Header><Application name="Test" version="1.0"/></Header>
+      <DataDictionary/>
+      <TransformationDictionary/>
+      <guha:AssociationModel xmlns:guha="http://keg.vse.cz/ns/GUHA0.1rev1" xmlns=""
+                             modelName="1" functionName="associationRules" algorithmName="4ft">
+        <TaskSetting>
+          <Extension name="LISp-Miner">
+            <HypothesesCountMax>100</HypothesesCountMax>
+          </Extension>
+          <ConsequentSetting>1</ConsequentSetting>
+
+          <InterestMeasureSetting>
+            <InterestMeasureThreshold id="100">
+              <InterestMeasure>CONF</InterestMeasure>
+              <Threshold>50</Threshold>
+              <ThresholdType>Abs</ThresholdType>
+              <CompareType>Greater than or equal</CompareType>
+            </InterestMeasureThreshold>
+            <InterestMeasureThreshold id="101">
+              <InterestMeasure>SUPP</InterestMeasure>
+              <Threshold>10</Threshold>
+              <ThresholdType>Abs</ThresholdType>
+              <CompareType>Greater than or equal</CompareType>
+            </InterestMeasureThreshold>
+          </InterestMeasureSetting>
+        </TaskSetting>
+      </guha:AssociationModel>
+    </PMML>"""
+
+    parser = SimplePmmlParser(xml_content)
+    pmml = parser.parse()
+
+    im_settings = pmml.association_model.task_setting.interest_measure_settings
+
+    conf = next(im for im in im_settings if im.interest_measure == "CONF")
+    assert conf.threshold == 50
+    assert conf.threshold_type == "Abs"
+
+    supp = next(im for im in im_settings if im.interest_measure == "SUPP")
+    assert supp.threshold == 10
+    assert supp.threshold_type == "Abs"
+
+
+def test_interest_measure_percentage_over_100():
+    """Percentage values > 1.0 accepted (normalized by mining task)"""
+    xml_content = """<?xml version="1.0" encoding="UTF-8"?>
+    <PMML xmlns="http://www.dmg.org/PMML-4_0" version="4.0">
+      <Header><Application name="Test" version="1.0"/></Header>
+      <DataDictionary/>
+      <TransformationDictionary/>
+      <guha:AssociationModel xmlns:guha="http://keg.vse.cz/ns/GUHA0.1rev1" xmlns=""
+                             modelName="1" functionName="associationRules" algorithmName="4ft">
+        <TaskSetting>
+          <Extension name="LISp-Miner">
+            <HypothesesCountMax>100</HypothesesCountMax>
+          </Extension>
+          <ConsequentSetting>1</ConsequentSetting>
+
+          <InterestMeasureSetting>
+            <InterestMeasureThreshold id="100">
+              <InterestMeasure>CONF</InterestMeasure>
+              <Threshold>80.0</Threshold>
+              <ThresholdType>% of all</ThresholdType>
+              <CompareType>Greater than or equal</CompareType>
+            </InterestMeasureThreshold>
+          </InterestMeasureSetting>
+        </TaskSetting>
+      </guha:AssociationModel>
+    </PMML>"""
+
+    parser = SimplePmmlParser(xml_content)
+    pmml = parser.parse()
+
+    im_settings = pmml.association_model.task_setting.interest_measure_settings
+    conf = next(im for im in im_settings if im.interest_measure == "CONF")
+
+    # Parser accepts value as-is (mining task normalizes to 0.8)
+    assert conf.threshold == 80.0
+    assert conf.threshold_type == "% of all"
