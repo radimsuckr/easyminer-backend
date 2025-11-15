@@ -12,7 +12,7 @@ from easyminer.tasks.create_attribute import apply_transformation
 
 
 def test_salary_eachone_simple_attribute():
-    """Test parsing of salary-eachone.xml - simple MapValues transformation"""
+    """Each-One with empty InlineTable"""
     xml_content = """<?xml version="1.0" encoding="UTF-8"?>
     <TransformationDictionary xmlns="http://www.dmg.org/PMML-4_2">
         <DerivedField name="salary-eachone">
@@ -52,7 +52,7 @@ def test_salary_eachone_simple_attribute_bytes():
 
 
 def test_salary_equidistant_intervals():
-    """Test parsing of salary-equidistant-intervals.xml"""
+    """Equidistant intervals via explicit DiscretizeBin"""
     xml_content = """<?xml version="1.0" encoding="UTF-8"?>
     <TransformationDictionary xmlns="http://www.dmg.org/PMML-4_2">
         <DerivedField name="salary-equidistant-intervals">
@@ -86,8 +86,32 @@ def test_salary_equidistant_intervals():
     assert attribute.transform(12000.0) == "[11064.00, 12541.00)"
 
 
+def test_equidistant_intervals_with_explicit_algorithm():
+    """Equidistant via Extension algorithm (NotImplementedError)"""
+    xml_content = """<?xml version="1.0" encoding="UTF-8"?>
+    <TransformationDictionary xmlns="http://www.dmg.org/PMML-4_2">
+        <DerivedField name="test-equidistant">
+            <Discretize field="200">
+                <Extension name="algorithm" value="equidistant-intervals" />
+                <Extension name="bins" value="4" />
+                <Extension name="leftMargin" value="0" />
+                <Extension name="rightMargin" value="100" />
+            </Discretize>
+        </DerivedField>
+    </TransformationDictionary>"""
+
+    pmml = TransformationDictionary.from_xml_string(xml_content)
+
+    # This should raise NotImplementedError since we don't have explicit support for equidistant via Extension
+    try:
+        _ = create_attribute_from_pmml(pmml.derived_fields[0])
+        assert False, "Expected NotImplementedError for equidistant-intervals algorithm"
+    except NotImplementedError as e:
+        assert "equidistant-intervals" in str(e)
+
+
 def test_salary_equifrequent_intervals():
-    """Test parsing of salary-equifrequent-intervals.xml"""
+    """Equifrequent intervals with margins"""
     xml_content = """<?xml version="1.0" encoding="UTF-8"?>
     <TransformationDictionary xmlns="http://www.dmg.org/PMML-4_2">
         <DerivedField name="salary-equifrequent-intervals">
@@ -117,7 +141,7 @@ def test_salary_equifrequent_intervals():
 
 
 def test_salary_equisized_intervals():
-    """Test parsing of salary-equisized-intervals.xml"""
+    """Equisized intervals with support and margins"""
     xml_content = """<?xml version="1.0" encoding="UTF-8"?>
     <TransformationDictionary xmlns="http://www.dmg.org/PMML-4_2">
         <DerivedField name="salary-equisized-intervals">
@@ -146,8 +170,29 @@ def test_salary_equisized_intervals():
     assert result.endswith(")")
 
 
+def test_equisized_intervals_requires_margins():
+    """Equisized requires margins (ValueError)"""
+    xml_content = """<?xml version="1.0" encoding="UTF-8"?>
+    <TransformationDictionary xmlns="http://www.dmg.org/PMML-4_2">
+        <DerivedField name="test-equisized">
+            <Discretize field="100">
+                <Extension name="algorithm" value="equisized-intervals" />
+                <Extension name="support" value="0.2" />
+            </Discretize>
+        </DerivedField>
+    </TransformationDictionary>"""
+
+    pmml = TransformationDictionary.from_xml_string(xml_content)
+
+    try:
+        _ = create_attribute_from_pmml(pmml.derived_fields[0])
+        assert False, "Expected ValueError for missing margins"
+    except ValueError as e:
+        assert "requires leftMargin and rightMargin" in str(e)
+
+
 def test_salary_interval_enumeration():
-    """Test parsing of salary-interval-enumeration.xml"""
+    """Manual intervals with duplicate binValues"""
     xml_content = """<?xml version="1.0" encoding="UTF-8"?>
     <TransformationDictionary xmlns="http://www.dmg.org/PMML-4_2">
         <DerivedField name="salar-interval-enumeraton">
@@ -187,8 +232,58 @@ def test_salary_interval_enumeration():
     assert attribute.transform(9500.0) is None  # Outside all intervals
 
 
+def test_manual_intervals_all_closure_types():
+    """All closure types (closedClosed, closedOpen, openClosed, openOpen)"""
+    xml_content = """<?xml version="1.0" encoding="UTF-8"?>
+    <TransformationDictionary xmlns="http://www.dmg.org/PMML-4_2">
+        <DerivedField name="test-closures">
+            <Discretize field="999">
+                <DiscretizeBin binValue="closed_closed">
+                    <Interval closure="closedClosed" leftMargin="0" rightMargin="10" />
+                </DiscretizeBin>
+                <DiscretizeBin binValue="closed_open">
+                    <Interval closure="closedOpen" leftMargin="15" rightMargin="25" />
+                </DiscretizeBin>
+                <DiscretizeBin binValue="open_closed">
+                    <Interval closure="openClosed" leftMargin="30" rightMargin="40" />
+                </DiscretizeBin>
+                <DiscretizeBin binValue="open_open">
+                    <Interval closure="openOpen" leftMargin="50" rightMargin="60" />
+                </DiscretizeBin>
+            </Discretize>
+        </DerivedField>
+    </TransformationDictionary>"""
+
+    pmml = TransformationDictionary.from_xml_string(xml_content)
+    attribute = create_attribute_from_pmml(pmml.derived_fields[0])
+
+    assert isinstance(attribute, NumericIntervalsAttribute)
+    assert len(attribute.bins) == 4
+
+    # Test boundary inclusivity for each closure type
+    # closedClosed [0, 10] - includes both
+    assert attribute.transform(0.0) == "closed_closed"
+    assert attribute.transform(10.0) == "closed_closed"
+    assert attribute.transform(12.0) is None  # In gap
+
+    # closedOpen [15, 25) - includes left, excludes right
+    assert attribute.transform(15.0) == "closed_open"
+    assert attribute.transform(24.9) == "closed_open"
+    assert attribute.transform(25.0) is None  # Excluded
+
+    # openClosed (30, 40] - excludes left, includes right
+    assert attribute.transform(30.0) is None  # Excluded
+    assert attribute.transform(35.0) == "open_closed"
+    assert attribute.transform(40.0) == "open_closed"
+
+    # openOpen (50, 60) - excludes both
+    assert attribute.transform(50.0) is None  # Excluded
+    assert attribute.transform(55.0) == "open_open"
+    assert attribute.transform(60.0) is None  # Excluded
+
+
 def test_salary_nominal_enumeration():
-    """Test parsing of salary-nominal-enumeration.xml"""
+    """Nominal enumeration with value mappings"""
     xml_content = """<?xml version="1.0" encoding="UTF-8"?>
     <TransformationDictionary xmlns="http://www.dmg.org/PMML-4_2">
         <DerivedField name="salary-nominal-enumeration">
@@ -225,6 +320,55 @@ def test_salary_nominal_enumeration():
     assert attribute.transform("10000") == "2 selected values"
     assert attribute.transform("12541") == "2 selected values"
     assert attribute.transform("9999") is None
+
+
+def test_nominal_enumeration_categorical_data():
+    """Nominal enumeration with categorical strings"""
+    xml_content = """<?xml version="1.0" encoding="UTF-8"?>
+    <TransformationDictionary xmlns="http://www.dmg.org/PMML-4_2">
+        <DerivedField name="education-groups">
+            <MapValues outputColumn="field">
+                <FieldColumnPair field="555" />
+                <InlineTable>
+                    <row>
+                        <column>HighSchool</column>
+                        <field>Lower Education</field>
+                    </row>
+                    <row>
+                        <column>SomeCollege</column>
+                        <field>Lower Education</field>
+                    </row>
+                    <row>
+                        <column>Bachelors</column>
+                        <field>Higher Education</field>
+                    </row>
+                    <row>
+                        <column>Masters</column>
+                        <field>Higher Education</field>
+                    </row>
+                    <row>
+                        <column>PhD</column>
+                        <field>Higher Education</field>
+                    </row>
+                </InlineTable>
+            </MapValues>
+        </DerivedField>
+    </TransformationDictionary>"""
+
+    pmml = TransformationDictionary.from_xml_string(xml_content)
+    attribute = create_attribute_from_pmml(pmml.derived_fields[0])
+
+    assert isinstance(attribute, NominalEnumerationAttribute)
+    assert attribute.name == "education-groups"
+    assert len(attribute.bins) == 2  # "Lower Education" and "Higher Education"
+
+    # Test transformations
+    assert attribute.transform("HighSchool") == "Lower Education"
+    assert attribute.transform("SomeCollege") == "Lower Education"
+    assert attribute.transform("Bachelors") == "Higher Education"
+    assert attribute.transform("Masters") == "Higher Education"
+    assert attribute.transform("PhD") == "Higher Education"
+    assert attribute.transform("Elementary") is None  # Not in mapping
 
 
 def test_factory_with_overrides():

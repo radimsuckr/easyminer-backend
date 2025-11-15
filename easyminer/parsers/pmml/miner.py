@@ -14,8 +14,8 @@ EMPTY_NSMAP = {"": ""}
 
 
 class LiteralSign(Enum):
-    positive = "+"
-    negative = "-"
+    positive = "Positive"
+    negative = "Negative"
 
 
 class CoefficientType(Enum):
@@ -28,6 +28,7 @@ class CoefficientType(Enum):
 class DBASettingType(Enum):
     conjunction = "Conjunction"
     disjunction = "Disjunction"
+    literal = "Literal"
 
 
 class Extension(BaseXmlModel, tag="Extension", nsmap=NSMAP):
@@ -44,7 +45,7 @@ class Header(BaseXmlModel, tag="Header", search_mode="unordered", nsmap=NSMAP):
     copyright: str | None = attr(default=None)
     application: Application | None = element(default=None)
     annotation: str | None = element(default=None)
-    timestamp: str | None = element(default=None)
+    timestamp: str | None = element(tag="Timestamp", default=None)
     extensions: list[Extension] = element(default_factory=list)
 
     @property
@@ -92,6 +93,8 @@ class InterestMeasureThreshold(BaseXmlModel, tag="InterestMeasureThreshold", nsm
     id: str = attr()
     interest_measure: str = element("InterestMeasure")
     threshold: float | None = element("Threshold", default=None)
+    threshold_type: str | None = element("ThresholdType", default=None)
+    compare_type: str | None = element("CompareType", default=None)
 
 
 class InterestMeasureSetting(BaseXmlModel, tag="InterestMeasureSetting", nsmap=EMPTY_NSMAP):
@@ -144,10 +147,24 @@ class AssociationModel(BaseXmlModel, tag="AssociationModel", ns="guha", nsmap=NS
     task_setting: TaskSetting = element("TaskSetting", ns="")
 
 
+class DataDictionary(BaseXmlModel, tag="DataDictionary", nsmap=NSMAP):
+    """DataDictionary element - typically empty for mining requests"""
+
+    number_of_fields: int | None = attr(name="numberOfFields", default=None)
+
+
+class TransformationDictionary(BaseXmlModel, tag="TransformationDictionary", nsmap=NSMAP):
+    """TransformationDictionary element - typically empty for mining requests"""
+
+    pass
+
+
 class PMML(BaseXmlModel, tag="PMML", search_mode="unordered", nsmap=NSMAP):
     version: str = attr()
     schema_location: str | None = attr(alias="schemaLocation", ns="xsi", default=None)
     header: Header = element("Header")
+    data_dictionary: DataDictionary = element("DataDictionary")
+    transformation_dictionary: TransformationDictionary = element("TransformationDictionary")
     association_model: AssociationModel = element("AssociationModel", ns="guha")
 
 
