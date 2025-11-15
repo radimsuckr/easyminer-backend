@@ -92,6 +92,56 @@ class MinerTaskValidator:
         except (ValueError, IndexError):
             raise MinerTaskValidationError(f"database-server must contain valid numeric port, got: {db_server}")
 
+    def _validate_interest_measure_config(self) -> None:
+        """Validate that interest measures have correct compare_type and threshold_type per R backend spec."""
+        for im in self.task_setting.interest_measure_settings:
+            measure_name = im.interest_measure.upper()
+            compare_type = im.compare_type
+            threshold_type = im.threshold_type
+
+            # Validate per R backend spec
+            if measure_name == "CONF":
+                if compare_type != "Greater than or equal":
+                    raise MinerTaskValidationError(
+                        f"CONF must use CompareType='Greater than or equal', got: '{compare_type}'"
+                    )
+                if threshold_type != "% of all":
+                    raise MinerTaskValidationError(f"CONF must use ThresholdType='% of all', got: '{threshold_type}'")
+
+            elif measure_name == "SUPP":
+                if compare_type != "Greater than or equal":
+                    raise MinerTaskValidationError(
+                        f"SUPP must use CompareType='Greater than or equal', got: '{compare_type}'"
+                    )
+                if threshold_type != "% of all":
+                    raise MinerTaskValidationError(f"SUPP must use ThresholdType='% of all', got: '{threshold_type}'")
+
+            elif measure_name == "LIFT":
+                if compare_type != "Greater than or equal":
+                    raise MinerTaskValidationError(
+                        f"LIFT must use CompareType='Greater than or equal', got: '{compare_type}'"
+                    )
+                if threshold_type != "% of all":
+                    raise MinerTaskValidationError(f"LIFT must use ThresholdType='% of all', got: '{threshold_type}'")
+
+            elif measure_name == "RULE_LENGTH":
+                if compare_type != "Less than or equal":
+                    raise MinerTaskValidationError(
+                        f"RULE_LENGTH must use CompareType='Less than or equal', got: '{compare_type}'"
+                    )
+                if threshold_type != "Abs":
+                    raise MinerTaskValidationError(f"RULE_LENGTH must use ThresholdType='Abs', got: '{threshold_type}'")
+
+            elif measure_name == "AUTO_CONF_SUPP":
+                if compare_type != "Equal":
+                    raise MinerTaskValidationError(
+                        f"AUTO_CONF_SUPP must use CompareType='Equal', got: '{compare_type}'"
+                    )
+                if threshold_type != "Abs":
+                    raise MinerTaskValidationError(
+                        f"AUTO_CONF_SUPP must use ThresholdType='Abs', got: '{threshold_type}'"
+                    )
+
     def validate(self) -> bool:
         """
         Validate the mining task according to Scala implementation rules.
@@ -100,6 +150,7 @@ class MinerTaskValidator:
             MinerTaskValidationError: If validation fails
         """
         self._validate_header_extensions()
+        self._validate_interest_measure_config()
 
         # Check if AUTO_CONF_SUPP is enabled
         auto_conf_supp = self._has_measure("AUTO_CONF_SUPP")
