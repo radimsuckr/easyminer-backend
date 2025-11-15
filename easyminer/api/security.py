@@ -16,7 +16,7 @@ api_key_query = APIKeyQuery(
 )
 
 
-async def get_api_key(
+def get_api_key(
     api_key_h: Annotated[str | None, Depends(api_key_header)], api_key_q: Annotated[str | None, Depends(api_key_query)]
 ) -> str:
     """

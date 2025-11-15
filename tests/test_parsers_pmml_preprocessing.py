@@ -8,6 +8,7 @@ from easyminer.parsers.pmml.preprocessing import (
     TransformationDictionary,
     create_attribute_from_pmml,
 )
+from easyminer.tasks.create_attribute import apply_transformation
 
 
 def test_salary_eachone_simple_attribute():
@@ -423,3 +424,117 @@ def test_multiple_attributes_in_single_pmml():
     assert attribute1.transform("test") == "test"
     assert attribute2.transform(5.0) == "[0.00, 10.00)"
     assert attribute3.transform("A") == "category1"
+
+
+def test_apply_transformation_with_simple_attribute():
+    """Test apply_transformation wrapper function with simple attributes"""
+    xml_content = """<?xml version="1.0" encoding="UTF-8"?>
+    <TransformationDictionary xmlns="http://www.dmg.org/PMML-4_2">
+        <DerivedField name="test-simple">
+            <MapValues outputColumn="field">
+                <FieldColumnPair field="123" column="column" />
+            </MapValues>
+        </DerivedField>
+    </TransformationDictionary>"""
+
+    pmml = TransformationDictionary.from_xml_string(xml_content)
+    attr = create_attribute_from_pmml(pmml.derived_fields[0])
+
+    # Test that apply_transformation always returns strings
+    test_cases = [
+        ("test_string", "test_string"),
+        (123.45, "123.45"),
+        (None, "None"),
+        ("456", "456"),
+        ("", ""),
+    ]
+
+    for input_value, expected in test_cases:
+        result = apply_transformation(attr, input_value)
+        assert result == expected
+        assert isinstance(result, str)
+
+
+def test_apply_transformation_with_equidistant_intervals():
+    """Test apply_transformation with equidistant intervals including out of range values"""
+    xml_content = """<?xml version="1.0" encoding="UTF-8"?>
+    <TransformationDictionary xmlns="http://www.dmg.org/PMML-4_2">
+        <DerivedField name="test-intervals">
+            <Discretize field="456">
+                <DiscretizeBin binValue="[0;10)">
+                    <Interval closure="closedOpen" leftMargin="0" rightMargin="10" />
+                </DiscretizeBin>
+                <DiscretizeBin binValue="[10;20]">
+                    <Interval closure="closedClosed" leftMargin="10" rightMargin="20" />
+                </DiscretizeBin>
+            </Discretize>
+        </DerivedField>
+    </TransformationDictionary>"""
+
+    pmml = TransformationDictionary.from_xml_string(xml_content)
+    attr = create_attribute_from_pmml(pmml.derived_fields[0])
+
+    # Test transformations including out of range values
+    test_cases = [
+        (5.0, "[0.00, 10.00)"),
+        (15.0, "[10.00, 20.00)"),
+        (25.0, "out_of_range"),  # Above maximum
+        (-5.0, "out_of_range"),  # Below minimum
+        (None, "None"),
+        ("12.5", "[10.00, 20.00)"),  # String input that can be converted to float
+    ]
+
+    for input_value, expected in test_cases:
+        result = apply_transformation(attr, input_value)
+        assert result == expected, f"For input {input_value}, expected {expected} but got {result}"
+        assert isinstance(result, str)
+
+
+def test_apply_transformation_with_invalid_numeric_string():
+    """Test apply_transformation with string that cannot be converted to number"""
+    xml_content = """<?xml version="1.0" encoding="UTF-8"?>
+    <TransformationDictionary xmlns="http://www.dmg.org/PMML-4_2">
+        <DerivedField name="test-intervals">
+            <Discretize field="999">
+                <DiscretizeBin binValue="[0;10)">
+                    <Interval closure="closedOpen" leftMargin="0" rightMargin="10" />
+                </DiscretizeBin>
+            </Discretize>
+        </DerivedField>
+    </TransformationDictionary>"""
+
+    pmml = TransformationDictionary.from_xml_string(xml_content)
+    attr = create_attribute_from_pmml(pmml.derived_fields[0])
+
+    # Test with string that cannot be converted to float
+    result = apply_transformation(attr, "not_a_number")
+    assert result == "None"  # Should handle conversion error gracefully
+    assert isinstance(result, str)
+
+
+def test_apply_transformation_edge_cases():
+    """Test apply_transformation with various edge cases"""
+    xml_content = """<?xml version="1.0" encoding="UTF-8"?>
+    <TransformationDictionary xmlns="http://www.dmg.org/PMML-4_2">
+        <DerivedField name="edge-case-test">
+            <MapValues outputColumn="field">
+                <FieldColumnPair field="789" column="column" />
+            </MapValues>
+        </DerivedField>
+    </TransformationDictionary>"""
+
+    pmml = TransformationDictionary.from_xml_string(xml_content)
+    attr = create_attribute_from_pmml(pmml.derived_fields[0])
+
+    # Test various edge cases
+    test_cases: list[tuple[int, str] | tuple[float, str] | tuple[bool, str]] = [
+        (0, "0"),
+        (0.0, "0.0"),
+        (False, "False"),
+        (True, "True"),
+    ]
+
+    for input_value, expected in test_cases:
+        result = apply_transformation(attr, input_value)
+        assert result == expected
+        assert isinstance(result, str)
