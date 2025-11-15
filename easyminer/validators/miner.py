@@ -50,13 +50,57 @@ class MinerTaskValidator:
 
         return len(unique_fields)
 
-    def validate(self) -> None:
+    def _validate_header_extensions(self) -> None:
+        """Validate that required PMML header extensions are present and valid."""
+        if not self.pmml.header or not self.pmml.header.extensions:
+            raise MinerTaskValidationError("PMML header with extensions is required")
+
+        ext_dict = {ext.name.lower(): ext.value for ext in self.pmml.header.extensions}
+
+        # Validate Dataset extension
+        if "dataset" not in ext_dict or not ext_dict["dataset"]:
+            raise MinerTaskValidationError("Dataset extension not found in PMML header")
+
+        try:
+            _ = int(ext_dict["dataset"])
+        except ValueError:
+            raise MinerTaskValidationError(
+                f"Dataset extension must contain a valid integer, got: {ext_dict['dataset']}"
+            )
+
+        # Validate database connection extensions
+        required_db_extensions = ["database-server", "database-name", "database-user", "database-password"]
+        missing = [name for name in required_db_extensions if name not in ext_dict or not ext_dict[name]]
+
+        if missing:
+            raise MinerTaskValidationError(f"Missing required database extensions in PMML header: {missing}")
+
+        # Validate database-server format (must contain port)
+        db_server = ext_dict["database-server"]
+        # Handle both "mysql://host:port" and "host:port" formats
+        server_str = db_server.split("://")[1] if "://" in db_server else db_server
+
+        if ":" not in server_str:
+            raise MinerTaskValidationError(
+                f"database-server must contain port (format: host:port or mysql://host:port), got: {db_server}"
+            )
+
+        # Validate port is numeric
+        try:
+            port_str = server_str.rsplit(":", 1)[1]
+            _ = int(port_str)
+        except (ValueError, IndexError):
+            raise MinerTaskValidationError(f"database-server must contain valid numeric port, got: {db_server}")
+
+    def validate(self) -> bool:
         """
         Validate the mining task according to Scala implementation rules.
 
         Raises:
             MinerTaskValidationError: If validation fails
         """
+        self._validate_header_extensions()
+
         # Check if AUTO_CONF_SUPP is enabled
         auto_conf_supp = self._has_measure("AUTO_CONF_SUPP")
         cba_enabled = self._has_measure("CBA")
@@ -128,8 +172,10 @@ class MinerTaskValidator:
             # and require consequent for all datasets
             pass  # We'll allow this for now, can be stricter later
 
+        return True
 
-def validate_mining_task(pmml: PMML) -> None:
+
+def validate_mining_task(pmml: PMML) -> bool:
     """
     Convenience function to validate a mining task.
 
@@ -140,4 +186,4 @@ def validate_mining_task(pmml: PMML) -> None:
         MinerTaskValidationError: If validation fails
     """
     validator = MinerTaskValidator(pmml)
-    validator.validate()
+    return validator.validate()
