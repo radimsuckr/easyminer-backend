@@ -74,15 +74,42 @@ def resolve_dba_to_attributes(dba: DBASetting, task_setting: TaskSetting) -> lis
 
 
 class MinerService:
-    def __init__(self, dataset_id: int, db_url: str | None = None):
+    def __init__(self, dataset_id: int, db_url: str, required_attributes: list[str] | None = None):
+        """
+        Initialize MinerService.
+
+        Args:
+            dataset_id: ID of the dataset to mine
+            db_url: Optional database URL
+            required_attributes: Optional list of attribute names to load. If None, loads all attributes.
+                                Specifying this improves performance by only loading relevant columns.
+        """
         self._ds_id: int = dataset_id
-        self._db_url: str | None = db_url
-        self._df: pd.DataFrame
+        self._db_url: str = db_url
+        self._required_attributes: list[str] | None = required_attributes
+        self._df: pd.DataFrame | None = None
 
     def _load_data(self) -> None:
+        """
+        Load data from database into DataFrame.
+
+        Only loads attributes specified in required_attributes (if set), otherwise loads all.
+        This significantly improves performance and memory usage for large datasets.
+        """
         with get_sync_db_session(self._db_url) as db:
-            attributes = db.scalars(select(Attribute).where(Attribute.dataset_id == self._ds_id)).all()
+            # Build query with optional attribute name filter
+            query = select(Attribute).where(Attribute.dataset_id == self._ds_id)
+            if self._required_attributes:
+                query = query.where(Attribute.name.in_(self._required_attributes))
+                logger.info(
+                    f"Loading {len(self._required_attributes)} required attributes: {self._required_attributes}"
+                )
+            else:
+                logger.info("Loading all attributes from dataset")
+
+            attributes = db.scalars(query).all()
             self._df = pd.DataFrame(columns=tuple(f.name for f in attributes))
+
             for attribute in attributes:
                 instances = db.scalars(
                     select(DatasetInstance)
@@ -91,6 +118,8 @@ class MinerService:
                     .options(joinedload(DatasetInstance.value))
                 ).all()
                 self._df[attribute.name] = [i.value.value for i in instances]
+
+            logger.info(f"Loaded {len(self._df)} rows with {len(self._df.columns)} columns")
 
     def _prepare_transaction_db(self, target_col: str) -> tuple[TransactionDB, list[str]]:
         """
@@ -456,8 +485,6 @@ def mine(pmml: PMMLInput, db_url: str | None = None) -> str:
     antecedent = next(filter(lambda x: x.id == antecedent_setting_id, ts.dba_settings))
     consequent = next(filter(lambda x: x.id == consequent_setting_id, ts.dba_settings))
 
-    svc = MinerService(dataset_id, db_url)
-
     # Extract attribute names from antecedent and consequent settings
     # Use resolver to handle hierarchical DBA structures (DBA can reference other DBAs)
     antecedent_attrs = resolve_dba_to_attributes(antecedent, ts)
@@ -465,6 +492,13 @@ def mine(pmml: PMMLInput, db_url: str | None = None) -> str:
 
     logger.info(f"Resolved antecedent attributes: {antecedent_attrs}")
     logger.info(f"Resolved consequent attributes: {consequent_attrs}")
+
+    # Combine all required attributes for data loading
+    # This improves performance by only loading relevant columns
+    required_attrs = list(set(antecedent_attrs + consequent_attrs))
+    logger.info(f"Loading {len(required_attrs)} unique attributes from dataset")
+
+    svc = MinerService(dataset_id, db_url, required_attributes=required_attrs)
 
     # Identify target column (should be the consequent attribute)
     if not consequent_attrs:
