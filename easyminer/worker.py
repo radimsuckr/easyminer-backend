@@ -89,17 +89,12 @@ def after_task_publish_handler(body, exchange: str | Exchange, routing_key, *arg
 @task_prerun.connect()
 def task_prerun_handler(task_id: str, task, *args, **kwargs):
     logger = logging.getLogger(__name__)
-    db_url = task.request.kwargs.get("db_url")
-    if not db_url and task.request.args:
-        # Try to get from last positional argument
-        db_url = (
-            task.request.args[-1]
-            if isinstance(task.request.args[-1], str) and "mysql" in task.request.args[-1]
-            else None
-        )
+
+    # Get db_url from task headers (consistent with publish handlers)
+    db_url = task.request.headers.get("db_url") if hasattr(task.request, "headers") else None
 
     if not db_url:
-        logger.error(f"Task {task_id}: db_url not found in task arguments")
+        logger.error(f"Task {task_id}: db_url not found in task headers")
         return
 
     with get_sync_db_session(db_url) as session:
@@ -114,17 +109,12 @@ def task_prerun_handler(task_id: str, task, *args, **kwargs):
 @task_postrun.connect()
 def task_postrun_handler(task_id: str, task, retval, state, *args, **kwargs):
     logger = logging.getLogger(__name__)
-    db_url = task.request.kwargs.get("db_url")
-    if not db_url and task.request.args:
-        # Try to get from last positional argument
-        db_url = (
-            task.request.args[-1]
-            if isinstance(task.request.args[-1], str) and "mysql" in task.request.args[-1]
-            else None
-        )
+
+    # Get db_url from task headers (consistent with publish handlers)
+    db_url = task.request.headers.get("db_url") if hasattr(task.request, "headers") else None
 
     if not db_url:
-        logger.error(f"Task {task_id}: db_url not found in task arguments")
+        logger.error(f"Task {task_id}: db_url not found in task headers")
         return
 
     with get_sync_db_session(db_url) as session:
