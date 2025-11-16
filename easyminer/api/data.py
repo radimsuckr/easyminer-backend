@@ -766,9 +766,9 @@ async def get_field_values(
     "/datasource/{id}/field/{field_id}/aggregated-values",
     summary="Create a task for getting a histogram of a numeric field where values are aggregated to intervals by number of bins.",
     description="There is one required query parameter 'bins'. This value means number of bins in an output histogram (maximum is 1000). You can specify min and max borders. This operation is processed asynchronously due to its complexity - it returns 202 Accepted and a location header with URL where all information about the task status are placed (see the background tasks section).",
-    status_code=status.HTTP_200_OK,
+    status_code=status.HTTP_202_ACCEPTED,
     responses={
-        status.HTTP_200_OK: {
+        status.HTTP_202_ACCEPTED: {
             "links": {
                 "TaskStatus": {
                     "operationId": "get_task_status",
@@ -794,7 +794,7 @@ async def get_aggregated_values(
     request: Request,
     id: Annotated[int, Path()],
     field_id: Annotated[int, Path()],
-    bins: Annotated[int, Query(ge=1, le=1000)] = 10,
+    bins: Annotated[int, Query(ge=2, le=1000)] = 10,
     min: Annotated[Decimal | None, Query()] = None,
     max: Annotated[Decimal | None, Query()] = None,
     min_inclusive: Annotated[bool, Query()] = True,
@@ -834,6 +834,15 @@ async def get_aggregated_values(
                 detail="Couldn't find field max value. Please provide it in the request",
             )
         max = field_max
+
+    # Validate that max > min
+    if max <= min:
+        raise StructuredHTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            error="InvalidRange",
+            message="Maximum value must be greater than minimum value",
+            details={"min": float(min), "max": float(max)},
+        )
 
     # Get database config to pass to Celery task
     db_config = await get_database_config(api_key, DbType.limited)
