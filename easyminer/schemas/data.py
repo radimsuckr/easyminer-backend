@@ -62,7 +62,7 @@ class StartUploadSchema(BaseSchema):
     escape_char: str = Field("\\", description="Escape character")
     locale: Locale = Field(Locale.en, description="Locale for number formatting")
     null_values: list[str] = Field([], description="List of null value representations")
-    data_types: list["FieldType"] = Field([], description="List of data types")
+    data_types: list["FieldType"] = Field([], min_length=1, description="List of data types")
 
 
 class DataSourceBase(BaseSchema):

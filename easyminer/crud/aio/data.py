@@ -11,15 +11,10 @@ from easyminer.models.data import (
     PreviewUpload,
     Upload,
 )
-from easyminer.schemas.data import FieldType, PreviewUploadSchema, StartUploadSchema
+from easyminer.schemas.data import PreviewUploadSchema, StartUploadSchema
 
 
 async def create_upload(db: AsyncSession, settings: StartUploadSchema) -> UUID:
-    if len(settings.data_types) == 0:
-        raise ValueError("data_types cannot be empty")
-    if len(settings.data_types) > len(FieldType):
-        raise ValueError(f"data_types cannot have more than {len(FieldType)} values, got {len(settings.data_types)}")
-
     upload = Upload(
         uuid=uuid4(),
         name=settings.name,
