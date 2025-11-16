@@ -32,6 +32,10 @@ class MediaType(str, Enum):
     csv = "csv"
 
 
+class Locale(str, Enum):
+    en = "en"
+
+
 class DbType(str, Enum):
     limited = "limited"
 
@@ -61,7 +65,7 @@ class StartUploadSchema(BaseSchema):
     encoding: str = Field("utf-8", description="File encoding")
     quotes_char: str = Field('"', description="Quote character")
     escape_char: str = Field("\\", description="Escape character")
-    locale: str = Field("en_US", description="Locale for number formatting")
+    locale: Locale = Field(Locale.en, description="Locale for number formatting")
     compression: CompressionType | None = Field(None, description="Compression type (none, gzip, etc.)")
     null_values: list[str] = Field([], description="List of null value representations")
     data_types: list["FieldType"] = Field([FieldType.nominal], description="List of data types")
