@@ -1,3 +1,5 @@
+import csv
+import io
 import logging
 import pathlib
 from collections import defaultdict
@@ -84,6 +86,14 @@ async def start_upload(db: AuthenticatedSession, settings: StartUploadSchema) ->
             details={"receivedType": settings.media_type.value},
         )
 
+    if all(dt is None for dt in settings.data_types):
+        raise StructuredHTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            error="AllColumnsSkipped",
+            message="At least one column must have a type (not null)",
+            details={"providedDataTypes": settings.data_types},
+        )
+
     upload_uuid = await create_upload(db, settings)
     await db.commit()
     return PlainTextResponse(content=str(upload_uuid))
@@ -137,7 +147,7 @@ async def upload_chunk(
     upload = await db.scalar(
         select(Upload)
         .where(Upload.uuid == upload_id)
-        .options(joinedload(Upload.data_source), joinedload(Upload.null_values))
+        .options(joinedload(Upload.data_source), joinedload(Upload.null_values), joinedload(Upload.data_types))
     )
     if not upload:
         raise StructuredHTTPException(
@@ -182,6 +192,34 @@ async def upload_chunk(
     if len(content) == 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Empty chunk")
 
+    if upload.state == UploadState.initialized:
+        reader = csv.reader(
+            io.StringIO(content),
+            delimiter=upload.separator,
+            quotechar=upload.quotes_char,
+            escapechar=upload.escape_char,
+        )
+        try:
+            header = next(reader)
+            column_count = len(header)
+        except StopIteration:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot read header from first chunk")
+
+        data_types_list = [dt.value for dt in sorted(upload.data_types, key=lambda x: x.index)]
+
+        if len(data_types_list) != column_count:
+            raise StructuredHTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                error="DataTypesMismatch",
+                message="Number of columns must match number of data types set for the upload",
+                details={
+                    "expectedColumnsCount": column_count,
+                    "providedDataTypesCount": len(data_types_list),
+                    "columns": header,
+                    "providedDataTypes": data_types_list,
+                },
+            )
+
     # Lock the upload
     original_state = upload.state
     logging.info("Locking the upload")
@@ -201,6 +239,7 @@ async def upload_chunk(
     escape_char = upload.escape_char
     encoding = upload.encoding
     null_values_list = [nv.value for nv in upload.null_values]
+    data_types_list = [dt.value for dt in sorted(upload.data_types, key=lambda x: x.index)]
 
     await db.commit()
 
@@ -212,6 +251,7 @@ async def upload_chunk(
             "escape_char": escape_char,
             "encoding": encoding,
             "null_values": null_values_list,
+            "data_types": data_types_list,
             "db_url": db_url,
         },
         headers={"db_url": db_url},

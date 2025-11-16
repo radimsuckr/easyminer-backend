@@ -64,7 +64,8 @@ class DataType(Base):
     __tablename__: str = "data_type"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    value: Mapped[FieldType] = mapped_column(Enum(FieldType))
+    index: Mapped[int] = mapped_column(Integer, nullable=False)
+    value: Mapped[FieldType | None] = mapped_column(Enum(FieldType), nullable=True)
 
     upload_id: Mapped[int] = mapped_column(ForeignKey("upload.id", ondelete="CASCADE"))
     upload: Mapped["Upload"] = relationship("Upload", back_populates="data_types")

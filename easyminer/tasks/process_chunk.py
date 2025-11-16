@@ -34,6 +34,7 @@ def process_chunk(
     escape_char: str,
     encoding: str,
     null_values: list[str],
+    data_types: list[FieldType | None],
     db_url: str,
 ) -> ProcessChunkResult:
     with get_sync_db_session(db_url) as db:
@@ -42,7 +43,7 @@ def process_chunk(
             raise ValueError(f"Chunk with ID {chunk_id} not found")
 
         logger.info(f"Processing chunk {chunk_id} with path {chunk.path}")
-        logger.info(f"Using encoding: {encoding}, null_values: {null_values}")
+        logger.info(f"Using encoding: {encoding}, null_values: {null_values}, data_types: {data_types}")
 
         with open(chunk.path, encoding=encoding) as file:
             reader = csv.reader(file, delimiter=separator, quotechar=quote_char, escapechar=escape_char)

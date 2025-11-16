@@ -30,8 +30,8 @@ async def create_upload(db: AsyncSession, settings: StartUploadSchema) -> UUID:
 
     for null_value in settings.null_values:
         db.add(NullValue(value=null_value, upload=upload))
-    for data_type in settings.data_types:
-        db.add(DataType(value=data_type, upload=upload))
+    for idx, data_type in enumerate(settings.data_types):
+        db.add(DataType(index=idx, value=data_type, upload=upload))
 
     data_source = DataSource(name=upload.name, type=settings.db_type, upload=upload)
     db.add(data_source)
