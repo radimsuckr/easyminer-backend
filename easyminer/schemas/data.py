@@ -138,7 +138,7 @@ class FieldValueSchema(BaseSchema):
 class UploadResponseSchema(BaseSchema):
     id: int = Field(1, description="ID of the data source")
     name: str = Field("upload", description="Name of the data source")
-    type: DbType = Field(DbType.limited, description="Database type")
+    type: MediaType = Field(MediaType.csv, description="Media type")
     size: int = Field(100, description="Number of instances (rows) in the data source")
 
 

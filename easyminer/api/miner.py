@@ -9,6 +9,7 @@ from fastapi import APIRouter, Body, HTTPException, Request, Response, status
 from easyminer.dependencies import ApiKey, get_database_config
 from easyminer.parsers.pmml.miner import SimplePmmlParser
 from easyminer.schemas.data import DbType
+from easyminer.schemas.error import StructuredHTTPException
 from easyminer.schemas.miner import Miner, MineStartResponse
 from easyminer.tasks.mine import mine as mine_task
 
@@ -51,9 +52,8 @@ async def mine(
             ),
         )
     except lxml.etree.LxmlError as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Invalid PMML: {e}",
+        raise StructuredHTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, error="InvalidPMML", message=f"Invalid PMML: {str(e)}"
         ) from e
 
 
@@ -68,7 +68,7 @@ async def mine(
     },
 )
 async def get_partial_result(task_id: UUID):
-    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED)
+    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="Partial result retrieval not implemented")
 
 
 @router.get(
@@ -80,4 +80,4 @@ async def get_partial_result(task_id: UUID):
     },
 )
 async def get_complete_result(task_id: UUID):
-    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED)
+    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="Complete result retrieval not implemented")

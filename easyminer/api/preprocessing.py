@@ -49,7 +49,7 @@ async def create_dataset_api(
             result_location=task_router.url_path_for("get_task_result", task_id=task.task_id),
         )
     else:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create dataset task")
 
 
 @router.get(
@@ -63,7 +63,7 @@ async def get_dataset(db: AuthenticatedSession, id: Annotated[int, Path()]):
     if dataset:
         return DatasetRead.model_validate(dataset)
     else:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset not found")
 
 
 @router.delete("/dataset/{id}")
@@ -71,7 +71,7 @@ async def delete_dataset(db: AuthenticatedSession, id: Annotated[int, Path()]):
     """Delete this dataset."""
     dataset = await db.get(Dataset, id)
     if not dataset:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset not found")
 
     await db.delete(dataset)
     await db.commit()
@@ -90,7 +90,7 @@ async def rename_dataset(
     """Rename this dataset."""
     dataset = await db.get(Dataset, id)
     if not dataset:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset not found")
 
     dataset.name = name
     await db.commit()
@@ -104,7 +104,7 @@ async def list_attributes(
     """Display a list of all attributes/columns for a specific dataset."""
     dataset = await db.get(Dataset, dataset_id, options=[joinedload(Dataset.attributes)])
     if not dataset:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset not found")
 
     return [AttributeRead.model_validate(attribute) for attribute in dataset.attributes]
 
@@ -135,7 +135,7 @@ async def create_attribute(
             result_location=task_router.url_path_for("get_task_result", task_id=task.task_id),
         )
     else:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create attribute task")
 
 
 @router.delete("/dataset/{dataset_id}/attribute/{attribute_id}")

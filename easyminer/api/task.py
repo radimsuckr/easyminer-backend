@@ -39,7 +39,7 @@ async def get_task_result(task_id: Annotated[UUID, Path()]):
 
     ares: celery.result.AsyncResult[str] = celery.result.AsyncResult(str(task_id))
     if not ares.ready():
-        raise HTTPException(status_code=status.HTTP_202_ACCEPTED, detail="Task not ready")
+        raise HTTPException(status_code=status.HTTP_202_ACCEPTED, detail="Task is still processing")
     try:
         result = ares.result
     except BaseException as e:

@@ -1,10 +1,11 @@
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, status
 from fastapi.security import APIKeyHeader, APIKeyQuery
 
 from easyminer.center_client import get_center_client
 from easyminer.schemas.center import UserInfo
+from easyminer.schemas.error import StructuredHTTPException
 
 api_key_header = APIKeyHeader(
     name="Authorization",
@@ -32,18 +33,22 @@ def get_api_key(
     # Extract from header with mandatory "ApiKey " prefix
     if api_key_h:
         if not api_key_h.startswith("ApiKey "):
-            raise HTTPException(
+            raise StructuredHTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Authorization header must use 'ApiKey ' prefix (e.g., 'Authorization: ApiKey your-key-here')",
+                error="InvalidAuthorizationHeader",
+                message="Authorization header must use 'ApiKey ' prefix",
+                details={"example": "Authorization: ApiKey your-key-here"},
             )
         api_key = api_key_h[7:]  # Remove "ApiKey " prefix, len("ApiKey ") == 7
     # Or use query parameter directly (no prefix needed)
     elif api_key_q:
         api_key = api_key_q
     else:
-        raise HTTPException(
+        raise StructuredHTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing API key. Provide it in Authorization header (as 'ApiKey <key>') or apiKey query parameter.",
+            error="MissingApiKey",
+            message="Missing API key. Provide it in Authorization header or apiKey query parameter",
+            details={"headerExample": "Authorization: ApiKey your-key-here", "queryExample": "?apiKey=your-key-here"},
         )
 
     return api_key

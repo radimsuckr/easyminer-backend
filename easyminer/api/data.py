@@ -52,6 +52,7 @@ from easyminer.schemas.data import (
     StartUploadSchema,
     UploadResponseSchema,
 )
+from easyminer.schemas.error import StructuredHTTPException
 from easyminer.schemas.task import TaskStatus
 from easyminer.storage import DiskStorage
 from easyminer.tasks.aggregate_field_values import aggregate_field_values
@@ -76,9 +77,11 @@ _csv_upload_example = """a,b,c
 @router.post("/upload/start")
 async def start_upload(db: AuthenticatedSession, settings: StartUploadSchema) -> PlainTextResponse:
     if settings.media_type != "csv":
-        raise HTTPException(
+        raise StructuredHTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only CSV uploads are supported",
+            error="InvalidMediaType",
+            message="Only 'csv' media type is supported",
+            details={"receivedType": settings.media_type.value},
         )
 
     upload_uuid = await create_upload(db, settings)
@@ -89,9 +92,11 @@ async def start_upload(db: AuthenticatedSession, settings: StartUploadSchema) ->
 @router.post("/upload/preview/start")
 async def start_preview_upload(db: AuthenticatedSession, settings: PreviewUploadSchema) -> PlainTextResponse:
     if settings.media_type != "csv":
-        raise HTTPException(
+        raise StructuredHTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only CSV uploads are supported",
+            error="InvalidMediaType",
+            message="Only 'csv' media type is supported",
+            details={"receivedType": settings.media_type.value},
         )
 
     upload_uuid = await create_preview_upload(db, settings)
@@ -122,23 +127,27 @@ async def upload_chunk(
     ] = "",
 ) -> UploadResponseSchema | PlainTextResponse:
     if len(content) > MAX_FULL_UPLOAD_CHUNK_SIZE:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Chunk size exceeds {MAX_FULL_UPLOAD_CHUNK_SIZE} bytes",
+        raise StructuredHTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            error="ChunkTooLarge",
+            message="Chunk size exceeds 500KB limit",
+            details={"maxSize": int(MAX_FULL_UPLOAD_CHUNK_SIZE), "receivedSize": len(content)},
         )
 
     upload = await db.scalar(select(Upload).where(Upload.uuid == upload_id).options(joinedload(Upload.data_source)))
     if not upload:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Upload not found")
+        raise StructuredHTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            error="UploadNotFound",
+            message="Upload session not found or expired",
+            details={"uploadId": str(upload_id)},
+        )
 
     if upload.state == UploadState.finished:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Upload already closed")
 
     if upload.state == UploadState.locked:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Upload is locked, try again later",
-        )
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Upload is locked, try again later")
 
     # Get database config to pass to Celery tasks
     db_config = await get_database_config(api_key, DbType.limited)
@@ -149,7 +158,7 @@ async def upload_chunk(
         result = UploadResponseSchema(
             id=upload.id,
             name=upload.name,
-            type=upload.db_type,
+            type=upload.media_type,
             size=upload.data_source.size,
         )
 
@@ -212,20 +221,27 @@ async def upload_chunk(
 async def upload_preview_chunk(
     db: AuthenticatedSession,
     upload_id: Annotated[UUID, Path()],
-    content: Annotated[bytes, Body(media_type="application/octet-stream")] = b"",
+    content: Annotated[bytes, Body(media_type="text/plain")] = b"",
 ) -> PlainTextResponse:
     if len(content) == 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No data provided")
 
     if len(content) > MAX_PREVIEW_UPLOAD_CHUNK_SIZE:
-        raise HTTPException(
+        raise StructuredHTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=f"Preview data exceeds {MAX_PREVIEW_UPLOAD_CHUNK_SIZE} bytes",
+            error="PayloadTooLarge",
+            message="Preview data exceeds 100KB limit",
+            details={"maxSize": int(MAX_PREVIEW_UPLOAD_CHUNK_SIZE), "receivedSize": len(content)},
         )
 
     preview_upload = await db.scalar(select(PreviewUpload).where(PreviewUpload.uuid == upload_id))
     if not preview_upload:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Preview upload not found")
+        raise StructuredHTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            error="UploadNotFound",
+            message="Upload session not found or expired",
+            details={"uploadId": str(upload_id)},
+        )
 
     try:
         logger.info(f"Processing preview upload {upload_id} with {len(content)} bytes")
@@ -259,7 +275,12 @@ async def upload_preview_chunk(
         logger.error(f"Decompression error for preview {upload_id}: {e}")
         await db.delete(preview_upload)
         await db.commit()
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+        raise StructuredHTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            error="InvalidArchive",
+            message=f"Failed to decompress: {str(e)}",
+            details={"compression": preview_upload.compression.value},
+        )
     except Exception as e:
         logger.error(f"Unexpected error processing preview {upload_id}: {e}", exc_info=True)
         await db.delete(preview_upload)
@@ -288,7 +309,12 @@ async def delete_data_source(db: AuthenticatedSession, id: Annotated[int, Path()
     """Delete a data source."""
     result = await db.execute(delete(DataSource).where(DataSource.id == id))
     if result.rowcount != 1:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found")
+        raise StructuredHTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            error="DataSourceNotFound",
+            message="Data source not found",
+            details={"dataSourceId": id},
+        )
 
 
 @router.get(
@@ -347,8 +373,7 @@ async def get_instances(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found")
     if data_source.upload.state != UploadState.finished:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Data source upload is not finished processing",
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Data source upload is not finished processing"
         )
 
     # Check if data source has instances
@@ -360,10 +385,7 @@ async def get_instances(
         )
     ).scalar_one()
     if instances_count == 0:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Data source has no instances",
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Data source has no instances")
 
     # First, get the row_ids for pagination
     row_ids_stmt = (
@@ -456,8 +478,7 @@ async def get_fields(db: AuthenticatedSession, id: Annotated[int, Path()]) -> li
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found")
     if data_source.upload.state != UploadState.finished:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Data source upload is not finished processing",
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Data source upload is not finished processing"
         )
     return [FieldRead.model_validate(field) for field in data_source.fields]
 
@@ -587,16 +608,13 @@ async def get_field_stats(
     if not field:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Field not found")
     if field.data_type != FieldType.numeric:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Field is not of numeric type",
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Field is not of numeric type")
 
     field_numerical_details = (
         await db.execute(select(FieldNumericDetail).where(FieldNumericDetail.id == field_id))
     ).scalar_one_or_none()
     if not field_numerical_details:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Field details not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Field numeric details not found")
 
     return FieldStatsSchema(
         id=field.id,
@@ -653,7 +671,7 @@ async def get_field_values(
         .all()
     )
     if not instances:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No values found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No field values found")
 
     result: list[FieldValueSchema] = []
     for instance in instances:
@@ -713,10 +731,7 @@ async def get_aggregated_values(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Field not found")
 
     if field.data_type != FieldType.numeric:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Field is not of numeric type",
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Field is not of numeric type")
 
     # Select min and max values if not provided
     if min is None:
@@ -726,7 +741,7 @@ async def get_aggregated_values(
         if field_min is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Couldn't find field min value. Please provide it in the request.",
+                detail="Couldn't find field min value. Please provide it in the request",
             )
         min = field_min
     if max is None:
@@ -736,7 +751,7 @@ async def get_aggregated_values(
         if field_max is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Couldn't find field max value. Please provide it in the request.",
+                detail="Couldn't find field max value. Please provide it in the request",
             )
         max = field_max
 
