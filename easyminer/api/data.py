@@ -620,6 +620,7 @@ async def rename_field(
     description="Toggle between nominal and numeric field types",
     # Response status code should be 204
     responses={
+        status.HTTP_400_BAD_REQUEST: {},
         status.HTTP_404_NOT_FOUND: {},
         status.HTTP_500_INTERNAL_SERVER_ERROR: {},
     },
@@ -637,8 +638,20 @@ async def toggle_field_type(
     if not field or field.data_source_id != id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Field not found")
 
-    new_type = FieldType.nominal if field.data_type == FieldType.numeric else FieldType.numeric
-    field.data_type = new_type
+    if field.data_type == FieldType.numeric:
+        field.data_type = FieldType.nominal
+        await db.commit()
+        return
+
+    if field.unique_values_size_numeric == 0:
+        raise StructuredHTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            error="NoNumericData",
+            message="Cannot change to numeric type: field has no numeric values",
+            details={"fieldId": field_id, "fieldName": field.name, "uniqueNumericValues": 0},
+        )
+
+    field.data_type = FieldType.numeric
     await db.commit()
 
 
