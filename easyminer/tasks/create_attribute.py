@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 @app.task
-def create_attributes(dataset_id: int, xml: str, db_url: str | None = None):
+def create_attributes(dataset_id: int, xml: str, db_url: str):
     """Create dataset attributes from PMML transformation definitions.
 
     This task:

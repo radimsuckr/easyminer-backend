@@ -32,7 +32,7 @@ def process_chunk(
     separator: str,
     quote_char: str,
     escape_char: str,
-    db_url: str | None = None,
+    db_url: str,
 ) -> ProcessChunkResult:
     with get_sync_db_session(db_url) as db:
         chunk = db.get(Chunk, chunk_id)

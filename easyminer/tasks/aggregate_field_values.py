@@ -19,7 +19,7 @@ def aggregate_field_values(
     max: Decimal,
     min_inclusive: bool,
     max_inclusive: bool,
-    db_url: str | None = None,
+    db_url: str,
 ) -> list[dict[str, Decimal | bool | int]]:
     logger.info(
         f"Aggregating field values for data_source_id={data_source_id}, field_id={field_id}, bins={bins}, min={min}, max={max}, min_inclusive={min_inclusive}, max_inclusive={max_inclusive}"
