@@ -134,7 +134,11 @@ async def upload_chunk(
             details={"maxSize": int(MAX_FULL_UPLOAD_CHUNK_SIZE), "receivedSize": len(content)},
         )
 
-    upload = await db.scalar(select(Upload).where(Upload.uuid == upload_id).options(joinedload(Upload.data_source)))
+    upload = await db.scalar(
+        select(Upload)
+        .where(Upload.uuid == upload_id)
+        .options(joinedload(Upload.data_source), joinedload(Upload.null_values))
+    )
     if not upload:
         raise StructuredHTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -195,11 +199,21 @@ async def upload_chunk(
     separator = upload.separator
     quote_char = upload.quotes_char
     escape_char = upload.escape_char
+    encoding = upload.encoding
+    null_values_list = [nv.value for nv in upload.null_values]
+
     await db.commit()
 
     _ = process_chunk.apply_async(
         args=(chunk_id, original_state),
-        kwargs={"separator": separator, "quote_char": quote_char, "escape_char": escape_char, "db_url": db_url},
+        kwargs={
+            "separator": separator,
+            "quote_char": quote_char,
+            "escape_char": escape_char,
+            "encoding": encoding,
+            "null_values": null_values_list,
+            "db_url": db_url,
+        },
         headers={"db_url": db_url},
     )
     return PlainTextResponse(content="", status_code=status.HTTP_202_ACCEPTED)

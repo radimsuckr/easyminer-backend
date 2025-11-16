@@ -32,6 +32,8 @@ def process_chunk(
     separator: str,
     quote_char: str,
     escape_char: str,
+    encoding: str,
+    null_values: list[str],
     db_url: str,
 ) -> ProcessChunkResult:
     with get_sync_db_session(db_url) as db:
@@ -40,8 +42,9 @@ def process_chunk(
             raise ValueError(f"Chunk with ID {chunk_id} not found")
 
         logger.info(f"Processing chunk {chunk_id} with path {chunk.path}")
+        logger.info(f"Using encoding: {encoding}, null_values: {null_values}")
 
-        with open(chunk.path, encoding="utf-8") as file:
+        with open(chunk.path, encoding=encoding) as file:
             reader = csv.reader(file, delimiter=separator, quotechar=quote_char, escapechar=escape_char)
             if original_state == UploadState.initialized:
                 # Parse first row from CSV as header
@@ -76,17 +79,24 @@ def process_chunk(
             for row in reader:
                 logger.debug(f"Row: {row}")
                 for i, col in enumerate(row):
+                    is_null = col in null_values
+
+                    col_nominal = None if is_null else col
                     col_decimal: Decimal | None = None
-                    try:
-                        col_decimal = Decimal(col)
-                    except InvalidOperation:
-                        # Mark this field as having non-numeric values
-                        field_all_numeric[i] = False
+
+                    if not is_null:
+                        try:
+                            col_decimal = Decimal(col)
+                        except InvalidOperation:
+                            field_all_numeric[i] = False
+                    else:
+                        pass
+
                     instance_values.append(
                         {
                             "row_id": row_counter,
                             "col_id": i,
-                            "value_nominal": col,
+                            "value_nominal": col_nominal,
                             "value_numeric": col_decimal,
                             "field_id": col_fields[i].id,
                             "data_source_id": chunk.upload.data_source.id,
