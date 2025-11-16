@@ -62,6 +62,7 @@ from easyminer.tasks.calculate_field_numeric_detail import (
     calculate_field_numeric_detail,
 )
 from easyminer.tasks.process_chunk import process_chunk
+from easyminer.tasks.update_field_statistics import update_field_statistics
 
 MAX_FULL_UPLOAD_CHUNK_SIZE = 500 * 1024 * 1.05  # 500KB plus 5% overhead
 MAX_PREVIEW_UPLOAD_CHUNK_SIZE = 100 * 1024 * 1.05  # 100KB plus 5% overhead
@@ -185,6 +186,9 @@ async def upload_chunk(
 
         for field_id in field_ids:
             _ = calculate_field_numeric_detail.apply_async(
+                kwargs={"field_id": field_id, "db_url": db_url}, headers={"db_url": db_url}
+            )
+            _ = update_field_statistics.apply_async(
                 kwargs={"field_id": field_id, "db_url": db_url}, headers={"db_url": db_url}
             )
         return result
@@ -662,7 +666,7 @@ async def get_field_stats(
     if not field:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Field not found")
     if field.data_type != FieldType.numeric:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Field is not of numeric type")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Field is not of numeric type")
 
     field_numerical_details = (
         await db.execute(select(FieldNumericDetail).where(FieldNumericDetail.id == field_id))
@@ -785,7 +789,7 @@ async def get_aggregated_values(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Field not found")
 
     if field.data_type != FieldType.numeric:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Field is not of numeric type")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Field is not of numeric type")
 
     # Select min and max values if not provided
     if min is None:

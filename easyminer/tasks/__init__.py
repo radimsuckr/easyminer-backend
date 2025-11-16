@@ -4,3 +4,4 @@ from easyminer.tasks.create_attribute import *  # noqa: F403
 from easyminer.tasks.create_dataset import *  # noqa: F403
 from easyminer.tasks.mine import *  # noqa: F403
 from easyminer.tasks.process_chunk import *  # noqa: F403
+from easyminer.tasks.update_field_statistics import *  # noqa: F403
