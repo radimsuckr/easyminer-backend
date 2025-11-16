@@ -1,6 +1,6 @@
 from datetime import datetime
 from enum import Enum
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 from uuid import UUID
 
 from pydantic import ConfigDict, Field, model_validator
@@ -41,23 +41,17 @@ class DbType(str, Enum):
 
 
 class PreviewUploadSchema(BaseSchema):
-    """Settings for preview upload."""
-
-    max_lines: int = Field(..., description="Maximum number of lines to preview")
-    compression: CompressionType | None = Field(..., description="Compression type (none, gzip, etc.)")
-    media_type: MediaType = Field(..., description="Media type")
+    max_lines: int = Field(20, description="Maximum number of lines to preview")
+    compression: CompressionType | Literal[""] = Field("", description="Compression type (none, gzip, etc.)")
+    media_type: MediaType = Field(MediaType.csv, description="Media type")
 
 
 class PreviewResponse(BaseSchema):
-    """Response model for the data source preview endpoint."""
-
     field_names: list[str] = Field(..., description="List of field names")
     rows: list[dict[str, Any]] = Field(..., description="List of rows with field values")
 
 
 class StartUploadSchema(BaseSchema):
-    """Settings for file upload."""
-
     name: str = Field("upload", description="Name of the file")
     media_type: MediaType = Field(MediaType.csv, description="Media type")
     db_type: DbType = Field(DbType.limited, description="Database type")
@@ -66,28 +60,20 @@ class StartUploadSchema(BaseSchema):
     quotes_char: str = Field('"', description="Quote character")
     escape_char: str = Field("\\", description="Escape character")
     locale: Locale = Field(Locale.en, description="Locale for number formatting")
-    compression: CompressionType | None = Field(None, description="Compression type (none, gzip, etc.)")
     null_values: list[str] = Field([], description="List of null value representations")
-    data_types: list["FieldType"] = Field([FieldType.nominal], description="List of data types")
-    format: UploadFormat | None = Field(None, description="RDF format. **NOT USED. Kept only for compatibility.**")
+    data_types: list["FieldType"] = Field([], description="List of data types")
 
 
 class DataSourceBase(BaseSchema):
-    """Base schema for data source."""
-
     name: str = Field("Super data source", description="Name of the data source")
     type: DbType = Field(DbType.limited, description="Type of the data source")
 
 
 class DataSourceCreate(DataSourceBase):
-    """Schema for creating a data source."""
-
     size: int = Field(0, description="Size of the data source")
 
 
 class DataSourceRead(DataSourceBase):
-    """Schema for reading a data source."""
-
     id: int = Field(1, description="ID of the data source")
     created_at: datetime = Field(datetime(2025, 1, 1, 10, 10, 10), description="Creation date of the data source")
     updated_at: datetime = Field(
@@ -115,21 +101,15 @@ class DataSourceRead(DataSourceBase):
 
 
 class FieldBase(BaseSchema):
-    """Base schema for field."""
-
     name: str = Field(..., description="Name of the field")
     data_type: str = Field(..., description="Data type of the field")
 
 
 class FieldCreate(FieldBase):
-    """Schema for creating a field."""
-
     pass
 
 
 class FieldRead(FieldBase):
-    """Schema for reading a field."""
-
     id: int
     data_source_id: int
     unique_count: int | None = None
@@ -162,22 +142,16 @@ class UploadResponseSchema(BaseSchema):
 
 
 class AggregatedInstanceValue(BaseSchema):
-    """Represents a single value in a field-value pair."""
-
     field: int = Field(description="Field ID")
     value: str | float | None = Field(description="Value can be string for nominal or number for numeric fields")
 
 
 class AggregatedInstance(BaseSchema):
-    """Represents a single row in the data source."""
-
     id: int = Field(description="Row number (1-based)")
     values: list[AggregatedInstanceValue] = Field(description="List of field-value pairs")
 
 
 class Value(BaseSchema):
-    """A value for a field with its frequency."""
-
     id: int
     value: Any = None
     frequency: int
