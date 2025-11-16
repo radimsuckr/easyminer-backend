@@ -25,51 +25,36 @@ class EasyMinerCenterClient:
     @cached(cache=TTLCache(maxsize=100, ttl=settings.user_session_ttl))
     async def get_user_info(self, api_key: str) -> UserInfo:
         try:
-            response = await self.client.get(
-                "/api/auth",
-                headers={"Authorization": f"Bearer {api_key}"},
-            )
+            response = await self.client.get("/api/auth", headers={"Authorization": f"Bearer {api_key}"})
             _ = response.raise_for_status()
             return UserInfo.model_validate(response.json())
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 401:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Invalid API key",
-                )
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key")
             logger.error(f"HTTP error from EasyMiner Center: {e}")
             raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="Failed to authenticate with EasyMiner Center",
+                status_code=status.HTTP_502_BAD_GATEWAY, detail="Failed to authenticate with EasyMiner Center"
             )
         except httpx.RequestError as e:
             logger.error(f"Request error to EasyMiner Center: {e}")
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="Failed to connect to EasyMiner Center",
-            )
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Failed to connect to EasyMiner Center")
 
     @cached(cache=TTLCache(maxsize=100, ttl=settings.user_session_ttl))
     async def get_database_config(self, api_key: str, db_type: DbType) -> DatabaseConfig:
         if db_type.value != DbType.limited.value:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Only 'limited' database type is supported",
+                status_code=status.HTTP_400_BAD_REQUEST, detail="Only 'limited' database type is supported"
             )
 
         try:
             response = await self.client.get(
-                f"/api/databases/{db_type.value}",
-                headers={"Authorization": f"Bearer {api_key}"},
+                f"/api/databases/{db_type.value}", headers={"Authorization": f"Bearer {api_key}"}
             )
             _ = response.raise_for_status()
             return DatabaseConfig.model_validate(response.json())
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 401:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Invalid API key",
-                )
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key")
             logger.error(f"HTTP error from EasyMiner Center: {e}")
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
@@ -77,10 +62,7 @@ class EasyMinerCenterClient:
             )
         except httpx.RequestError as e:
             logger.error(f"Request error to EasyMiner Center: {e}")
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="Failed to connect to EasyMiner Center",
-            )
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Failed to connect to EasyMiner Center")
 
 
 _center_client: EasyMinerCenterClient | None = None
