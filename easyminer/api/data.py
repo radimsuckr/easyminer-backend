@@ -552,7 +552,7 @@ async def delete_field(
     db: AuthenticatedSession,
     id: Annotated[int, Path()],
     field_id: Annotated[int, Path()],
-):
+) -> PlainTextResponse:
     data_source = await db.get(DataSource, id)
     if not data_source:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found")
@@ -563,6 +563,7 @@ async def delete_field(
 
     await db.delete(field)
     await db.commit()
+    return PlainTextResponse(content="", status_code=status.HTTP_200_OK)
 
 
 @router.get(
@@ -602,7 +603,7 @@ async def rename_field(
     id: Annotated[int, Path()],
     field_id: Annotated[int, Path()],
     name: Annotated[str, Body(examples=["New Field Name"], media_type="text/plain")],
-):
+) -> PlainTextResponse:
     data_source = await db.get(DataSource, id)
     if not data_source:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found")
@@ -613,6 +614,7 @@ async def rename_field(
 
     field.name = name
     await db.commit()
+    return PlainTextResponse(content="", status_code=status.HTTP_200_OK)
 
 
 @router.put(
@@ -629,7 +631,7 @@ async def toggle_field_type(
     db: AuthenticatedSession,
     id: Annotated[int, Path()],
     field_id: Annotated[int, Path()],
-):
+) -> PlainTextResponse:
     data_source = await db.get(DataSource, id)
     if not data_source:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found")
@@ -641,7 +643,7 @@ async def toggle_field_type(
     if field.data_type == FieldType.numeric:
         field.data_type = FieldType.nominal
         await db.commit()
-        return
+        return PlainTextResponse(content="", status_code=status.HTTP_200_OK)
 
     if field.unique_values_size_numeric == 0:
         raise StructuredHTTPException(
@@ -653,6 +655,7 @@ async def toggle_field_type(
 
     field.data_type = FieldType.numeric
     await db.commit()
+    return PlainTextResponse(content="", status_code=status.HTTP_200_OK)
 
 
 @router.get(
