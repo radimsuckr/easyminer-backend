@@ -718,38 +718,47 @@ async def get_field_values(
     if not field or field.data_source_id != id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Field not found")
 
-    # NOTE: possibly rewrite to pre-save values in db
-    instances = (
-        (
-            await db.execute(
-                select(
-                    DataSourceInstance.field_id,
-                    DataSourceInstance.value_nominal,
-                    DataSourceInstance.value_numeric,
-                    func.count(DataSourceInstance.id).label("frequency"),
-                )
-                .where(DataSourceInstance.field_id == field.id)
-                .group_by(
-                    DataSourceInstance.field_id,
-                    DataSourceInstance.value_nominal,
-                    DataSourceInstance.value_numeric,
-                )
-                .limit(limit)
-                .offset(offset)
+    query = (
+        select(
+            func.min(DataSourceInstance.row_id).label("value_id"),  # Use first row_id as unique identifier
+            DataSourceInstance.value_nominal,
+            func.count(DataSourceInstance.id).label("frequency"),
+        )
+        .where(DataSourceInstance.field_id == field.id)
+        .group_by(DataSourceInstance.value_nominal)
+        .order_by(func.count(DataSourceInstance.id).desc())
+    )
+
+    if field.data_type == FieldType.numeric:
+        query = query.where(DataSourceInstance.value_numeric.isnot(None))
+
+    query = query.limit(limit).offset(offset)
+
+    value_results = (await db.execute(query)).all()
+
+    total_rows = (
+        await db.execute(
+            select(func.count(distinct(DataSourceInstance.row_id))).where(
+                DataSourceInstance.data_source_id == data_source.id
             )
         )
-        .tuples()
-        .all()
-    )
-    if not instances:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No field values found")
+    ).scalar_one()
+
+    present_rows = (
+        await db.execute(
+            select(func.count(distinct(DataSourceInstance.row_id))).where(DataSourceInstance.field_id == field.id)
+        )
+    ).scalar_one()
+
+    null_frequency = total_rows - present_rows
 
     result: list[FieldValueSchema] = []
-    for instance in instances:
-        if field.data_type == FieldType.numeric:
-            result.append(FieldValueSchema(id=instance[0], value=float(instance[2]) or 0, frequency=instance[3]))
-        else:
-            result.append(FieldValueSchema(id=instance[0], value=instance[1] or "", frequency=instance[3]))
+    for value_id, value, frequency in value_results:
+        result.append(FieldValueSchema(id=value_id, value=value, frequency=frequency))
+
+    if null_frequency > 0:
+        result.append(FieldValueSchema(id=0, value=None, frequency=null_frequency))
+
     return result
 
 

@@ -133,7 +133,7 @@ class FieldStatsSchema(BaseSchema):
 
 class FieldValueSchema(BaseSchema):
     id: int = Field(..., description="ID of the field")
-    value: str | float = Field(..., description="Value of the field")
+    value: str | float | None = Field(..., description="Value of the field")
     frequency: int = Field(..., description="Frequency of the value")
 
 
