@@ -53,11 +53,15 @@ def process_chunk(
                 logger.info(f"Header: {header}")
                 # Process header
                 for i, col in enumerate(header):
+                    if data_types[i] is None:
+                        logger.debug(f"Skipping column {i} ({col}) - null type")
+                        continue
+
                     logger.info(f"Processing header column: {col}")
                     field = Field(
                         name=col,
                         index=i,
-                        data_type=FieldType.numeric,
+                        data_type=data_types[i],
                         data_source_id=chunk.upload.data_source.id,
                     )
                     db.add(field)
@@ -65,32 +69,31 @@ def process_chunk(
             fields = db.query(Field).filter(Field.data_source_id == chunk.upload.data_source.id).all()
             col_fields = {field.index: field for field in fields}
 
-            # Track whether all values are numeric for each field
-            # Start with assumption that all fields are numeric
-            field_all_numeric = {field.index: True for field in fields}
-
             upload_size = db.execute(
                 select(func.count())
                 .select_from(DataSourceInstance)
                 .where(DataSourceInstance.data_source_id == chunk.upload.data_source.id)
             ).scalar_one()
-            row_counter = int(upload_size / len(fields))
+            # Only count non-skipped fields for row counter calculation
+            non_skipped_fields = [f for f in fields if data_types[f.index] is not None]
+            row_counter = int(upload_size / len(non_skipped_fields)) if non_skipped_fields else 0
             batch_size = 1000
             instance_values: list[dict[str, str | Decimal | int | None]] = []
             for row in reader:
                 logger.debug(f"Row: {row}")
                 for i, col in enumerate(row):
-                    is_null = col in null_values
+                    if data_types[i] is None:
+                        continue
 
-                    col_nominal = None if is_null else col
+                    if col in null_values:
+                        continue
+
+                    col_nominal = col
                     col_decimal: Decimal | None = None
 
-                    if not is_null:
-                        try:
-                            col_decimal = Decimal(col)
-                        except InvalidOperation:
-                            field_all_numeric[i] = False
-                    else:
+                    try:
+                        col_decimal = Decimal(col)
+                    except InvalidOperation:
                         pass
 
                     instance_values.append(
@@ -112,14 +115,6 @@ def process_chunk(
                 logger.debug(f"Processing last batch of {len(instance_values)} instances")
                 _ = db.execute(insert(DataSourceInstance), instance_values)
                 instance_values.clear()
-
-            # Update field types based on actual data
-            for field_index, is_all_numeric in field_all_numeric.items():
-                field = col_fields[field_index]
-                detected_type = FieldType.numeric if is_all_numeric else FieldType.nominal
-                if field.data_type != detected_type:
-                    logger.info(f"Updating field {field.name} type to {detected_type}")
-                    field.data_type = detected_type
 
         # Unlock the upload
         logger.info("Unlocking the upload")
