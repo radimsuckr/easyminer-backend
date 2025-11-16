@@ -1,6 +1,6 @@
 from datetime import datetime
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from pydantic import ConfigDict, Field, model_validator
@@ -26,6 +26,7 @@ class CompressionType(str, Enum):
     zip = "zip"
     gzip = "gzip"
     bzip2 = "bzip2"
+    none = ""
 
 
 class MediaType(str, Enum):
@@ -41,8 +42,8 @@ class DbType(str, Enum):
 
 
 class PreviewUploadSchema(BaseSchema):
-    max_lines: int = Field(20, description="Maximum number of lines to preview")
-    compression: CompressionType | Literal[""] = Field("", description="Compression type (none, gzip, etc.)")
+    max_lines: int = Field(20, ge=1, le=1000, description="Maximum number of lines to preview")
+    compression: CompressionType = Field(CompressionType.none, description="Compression type")
     media_type: MediaType = Field(MediaType.csv, description="Media type")
 
 

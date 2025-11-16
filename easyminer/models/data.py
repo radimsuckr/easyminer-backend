@@ -8,7 +8,7 @@ from sqlalchemy import DECIMAL, UUID, DateTime, Enum, ForeignKey, Integer, Strin
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from easyminer.database import Base
-from easyminer.schemas.data import CompressionType, DbType, FieldType, MediaType
+from easyminer.schemas.data import CompressionType, DbType, FieldType, Locale, MediaType
 
 if TYPE_CHECKING:
     from easyminer.models.preprocessing import Attribute, Dataset
@@ -35,9 +35,7 @@ class Upload(Base):
     encoding: Mapped[str] = mapped_column(String(40))
     quotes_char: Mapped[str] = mapped_column(String(1))
     escape_char: Mapped[str] = mapped_column(String(1))
-    locale: Mapped[str] = mapped_column(String(20))
-    compression: Mapped["CompressionType | None"] = mapped_column(Enum(CompressionType), nullable=True)
-    preview_max_lines: Mapped[int | None] = mapped_column(Integer(), nullable=True)
+    locale: Mapped[Locale] = mapped_column(Enum(Locale))
 
     state: Mapped[UploadState] = mapped_column(Enum(UploadState), default=UploadState.initialized)
     last_change_at: Mapped[datetime] = mapped_column(DateTime(), default=datetime.now(UTC), onupdate=datetime.now(UTC))
@@ -78,7 +76,7 @@ class PreviewUpload(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     uuid: Mapped[pyUUID] = mapped_column(UUID(), unique=True)
     max_lines: Mapped[int] = mapped_column(Integer())
-    compression: Mapped[CompressionType | None] = mapped_column(Enum(CompressionType))
+    compression: Mapped[CompressionType] = mapped_column(Enum(CompressionType))
     media_type: Mapped["MediaType"] = mapped_column(Enum(MediaType))
 
 

@@ -30,7 +30,6 @@ async def create_upload(db: AsyncSession, settings: StartUploadSchema) -> UUID:
         quotes_char=settings.quotes_char,
         escape_char=settings.escape_char,
         locale=settings.locale,
-        compression=settings.compression,
     )
     db.add(upload)
 
@@ -48,12 +47,13 @@ async def create_upload(db: AsyncSession, settings: StartUploadSchema) -> UUID:
 
 async def create_preview_upload(db: AsyncSession, settings: PreviewUploadSchema) -> UUID:
     upload_id = uuid4()
-    upload = PreviewUpload(uuid=upload_id, max_lines=settings.max_lines, compression=settings.compression)
+    upload = PreviewUpload(
+        uuid=upload_id,
+        max_lines=settings.max_lines,
+        compression=settings.compression.value,
+        media_type=settings.media_type,
+    )
     db.add(upload)
-
-    data_source = DataSource(name=f"preview-{upload_id}", type="limited", preview_upload=upload)
-    db.add(data_source)
-
     await db.flush()
     return upload.uuid
 

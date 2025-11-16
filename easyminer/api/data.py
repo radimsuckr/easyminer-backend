@@ -15,23 +15,33 @@ from fastapi import (
     Request,
     status,
 )
+from fastapi.responses import PlainTextResponse
 from sqlalchemy import delete, distinct, func, select
 from sqlalchemy.orm import joinedload
 
 from easyminer.config import API_V1_PREFIX
 from easyminer.crud.aio.data import create_chunk, create_preview_upload, create_upload
+from easyminer.decompress import (
+    CompressionError,
+    decompress_bzip2,
+    decompress_gzip,
+    decompress_zip,
+    extract_first_n_lines,
+)
 from easyminer.dependencies import ApiKey, AuthenticatedSession, get_database_config
 from easyminer.models.data import (
     DataSource,
     DataSourceInstance,
     Field,
     FieldNumericDetail,
+    PreviewUpload,
     Upload,
     UploadState,
 )
 from easyminer.schemas.data import (
     AggregatedInstance,
     AggregatedInstanceValue,
+    CompressionType,
     DataSourceRead,
     DbType,
     FieldRead,
@@ -50,8 +60,8 @@ from easyminer.tasks.calculate_field_numeric_detail import (
 )
 from easyminer.tasks.process_chunk import process_chunk
 
-# Maximum chunk size for preview uploads (1MB)
-MAX_CHUNK_SIZE = 1000 * 1024
+MAX_FULL_UPLOAD_CHUNK_SIZE = 500 * 1024 * 1.05  # 500KB plus 5% overhead
+MAX_PREVIEW_UPLOAD_CHUNK_SIZE = 100 * 1024 * 1.05  # 100KB plus 5% overhead
 
 router = APIRouter(prefix=API_V1_PREFIX, tags=["Data"])
 
@@ -64,8 +74,7 @@ _csv_upload_example = """a,b,c
 
 
 @router.post("/upload/start")
-async def start_upload(db: AuthenticatedSession, settings: StartUploadSchema) -> UUID:
-    """Start a new upload process."""
+async def start_upload(db: AuthenticatedSession, settings: StartUploadSchema) -> PlainTextResponse:
     if settings.media_type != "csv":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -74,11 +83,11 @@ async def start_upload(db: AuthenticatedSession, settings: StartUploadSchema) ->
 
     upload_uuid = await create_upload(db, settings)
     await db.commit()
-    return upload_uuid
+    return PlainTextResponse(content=str(upload_uuid))
 
 
 @router.post("/upload/preview/start")
-async def start_preview_upload(db: AuthenticatedSession, settings: PreviewUploadSchema) -> UUID:
+async def start_preview_upload(db: AuthenticatedSession, settings: PreviewUploadSchema) -> PlainTextResponse:
     if settings.media_type != "csv":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -86,11 +95,13 @@ async def start_preview_upload(db: AuthenticatedSession, settings: PreviewUpload
         )
 
     upload_uuid = await create_preview_upload(db, settings)
-    return upload_uuid
+    await db.commit()
+    return PlainTextResponse(content=str(upload_uuid))
 
 
 @router.post(
     "/upload/{upload_id}",
+    response_model=None,
     responses={
         status.HTTP_200_OK: {
             "description": "Upload successful and closed",
@@ -109,11 +120,11 @@ async def upload_chunk(
         str,
         Body(examples=[_csv_upload_example], media_type="text/plain"),  # NOTE: text/csv could possibly be used here
     ] = "",
-):
-    if len(content) > MAX_CHUNK_SIZE:
+) -> UploadResponseSchema | PlainTextResponse:
+    if len(content) > MAX_FULL_UPLOAD_CHUNK_SIZE:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Chunk size exceeds {MAX_CHUNK_SIZE} bytes",
+            detail=f"Chunk size exceeds {MAX_FULL_UPLOAD_CHUNK_SIZE} bytes",
         )
 
     upload = await db.scalar(select(Upload).where(Upload.uuid == upload_id).options(joinedload(Upload.data_source)))
@@ -182,26 +193,78 @@ async def upload_chunk(
         kwargs={"separator": separator, "quote_char": quote_char, "escape_char": escape_char, "db_url": db_url},
         headers={"db_url": db_url},
     )
+    return PlainTextResponse(content="", status_code=status.HTTP_202_ACCEPTED)
 
 
 @router.post(
     "/upload/preview/{upload_id}",
     responses={
-        status.HTTP_200_OK: {"description": "Upload successful and closed"},
-        status.HTTP_202_ACCEPTED: {"description": "Chunk accepted"},
-        status.HTTP_403_FORBIDDEN: {"description": "Upload already closed"},
-        status.HTTP_429_TOO_MANY_REQUESTS: {"description": "Uploading chunks too fast"},
+        status.HTTP_200_OK: {
+            "description": "Preview complete - returns first N lines as plain text CSV",
+            "content": {"text/plain": {"example": _csv_upload_example}},
+        },
+        status.HTTP_400_BAD_REQUEST: {"description": "Empty data or invalid request"},
+        status.HTTP_404_NOT_FOUND: {"description": "Preview upload session not found"},
+        status.HTTP_413_REQUEST_ENTITY_TOO_LARGE: {"description": "Compressed data exceeds limit"},
+        status.HTTP_422_UNPROCESSABLE_ENTITY: {"description": "Decompression or processing error"},
     },
 )
 async def upload_preview_chunk(
     db: AuthenticatedSession,
     upload_id: Annotated[UUID, Path()],
-    content: Annotated[
-        str,
-        Body(examples=[_csv_upload_example], media_type="text/plain"),  # NOTE: text/csv could possibly be used here
-    ] = "",
-):
-    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED)
+    content: Annotated[bytes, Body(media_type="application/octet-stream")] = b"",
+) -> PlainTextResponse:
+    if len(content) == 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No data provided")
+
+    if len(content) > MAX_PREVIEW_UPLOAD_CHUNK_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"Preview data exceeds {MAX_PREVIEW_UPLOAD_CHUNK_SIZE} bytes",
+        )
+
+    preview_upload = await db.scalar(select(PreviewUpload).where(PreviewUpload.uuid == upload_id))
+    if not preview_upload:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Preview upload not found")
+
+    try:
+        logger.info(f"Processing preview upload {upload_id} with {len(content)} bytes")
+
+        match preview_upload.compression:
+            case CompressionType.zip:
+                logger.info("Decompressing ZIP content")
+                csv_text = decompress_zip(content)
+            case CompressionType.gzip:
+                logger.info("Decompressing GZIP content")
+                csv_text = decompress_gzip(content)
+            case CompressionType.bzip2:
+                logger.info("Decompressing BZIP2 content")
+                csv_text = decompress_bzip2(content)
+            case CompressionType.none:
+                logger.info("No compression, decoding content directly")
+                csv_text = content.decode("utf-8", errors="replace")
+
+        logger.info(f"Loaded to {len(csv_text)} characters")
+
+        result_text = extract_first_n_lines(csv_text, preview_upload.max_lines)
+        lines_count = len(result_text.split("\n"))
+        logger.info(f"Extracted {lines_count} lines for preview")
+
+        await db.delete(preview_upload)
+        await db.commit()
+        logger.info(f"Deleted preview upload session {upload_id}")
+
+        return PlainTextResponse(content=result_text, status_code=status.HTTP_200_OK)
+    except CompressionError as e:
+        logger.error(f"Decompression error for preview {upload_id}: {e}")
+        await db.delete(preview_upload)
+        await db.commit()
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+    except Exception as e:
+        logger.error(f"Unexpected error processing preview {upload_id}: {e}", exc_info=True)
+        await db.delete(preview_upload)
+        await db.commit()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Processing failed: {str(e)}")
 
 
 @router.get("/datasource")

@@ -1,8 +1,8 @@
 """init
 
-Revision ID: aacce900b4ed
+Revision ID: 7da2c51aa4de
 Revises:
-Create Date: 2025-06-09 11:52:21.520757+02:00
+Create Date: 2025-11-16 12:34:09.138231+01:00
 
 """
 
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = "aacce900b4ed"
+revision: str = "7da2c51aa4de"
 down_revision: str | None = None
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
@@ -25,11 +25,7 @@ def upgrade() -> None:
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
         sa.Column("uuid", sa.UUID(), nullable=False),
         sa.Column("max_lines", sa.Integer(), nullable=False),
-        sa.Column(
-            "compression",
-            sa.Enum("zip", "gzip", "bzip2", name="compressiontype"),
-            nullable=True,
-        ),
+        sa.Column("compression", sa.Enum("zip", "gzip", "bzip2", "none", name="compressiontype"), nullable=False),
         sa.Column("media_type", sa.Enum("csv", name="mediatype"), nullable=False),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("uuid"),
@@ -51,18 +47,8 @@ def upgrade() -> None:
         sa.Column("encoding", sa.String(length=40), nullable=False),
         sa.Column("quotes_char", sa.String(length=1), nullable=False),
         sa.Column("escape_char", sa.String(length=1), nullable=False),
-        sa.Column("locale", sa.String(length=20), nullable=False),
-        sa.Column(
-            "compression",
-            sa.Enum("zip", "gzip", "bzip2", name="compressiontype"),
-            nullable=True,
-        ),
-        sa.Column("preview_max_lines", sa.Integer(), nullable=True),
-        sa.Column(
-            "state",
-            sa.Enum("initialized", "locked", "ready", "finished", name="uploadstate"),
-            nullable=False,
-        ),
+        sa.Column("locale", sa.Enum("en", name="locale"), nullable=False),
+        sa.Column("state", sa.Enum("initialized", "locked", "ready", "finished", name="uploadstate"), nullable=False),
         sa.Column("last_change_at", sa.DateTime(), nullable=False),
         sa.PrimaryKeyConstraint("id"),
     )
@@ -139,14 +125,7 @@ def upgrade() -> None:
         sa.Column("name", sa.String(length=100), nullable=False),
         sa.Column(
             "status",
-            sa.Enum(
-                "pending",
-                "scheduled",
-                "started",
-                "success",
-                "failure",
-                name="taskstatusenum",
-            ),
+            sa.Enum("pending", "scheduled", "started", "success", "failure", name="taskstatusenum"),
             nullable=False,
         ),
         sa.Column("status_message", sa.String(length=255), nullable=True),
