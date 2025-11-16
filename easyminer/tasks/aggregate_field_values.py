@@ -45,10 +45,10 @@ def aggregate_field_values(
                     DataSourceInstance.data_source_id == data_source_id,
                     DataSourceInstance.field_id == field.id,
                     DataSourceInstance.value_numeric != None,  # noqa: E711
-                    DataSourceInstance.value_numeric > from_
+                    DataSourceInstance.value_numeric >= from_
                     if from_inclusive
-                    else DataSourceInstance.value_numeric >= from_,
-                    DataSourceInstance.value_numeric < to if to_inclusive else DataSourceInstance.value_numeric <= to,
+                    else DataSourceInstance.value_numeric > from_,
+                    DataSourceInstance.value_numeric <= to if to_inclusive else DataSourceInstance.value_numeric < to,
                 )
             )
             frequency = db.execute(stmt).scalar_one()
