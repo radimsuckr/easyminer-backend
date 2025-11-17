@@ -34,6 +34,7 @@ from easyminer.dependencies import ApiKey, AuthenticatedSession, get_database_co
 from easyminer.models.data import (
     DataSource,
     DataSourceInstance,
+    DataSourceValue,
     Field,
     FieldNumericDetail,
     PreviewUpload,
@@ -61,6 +62,7 @@ from easyminer.tasks.aggregate_field_values import aggregate_field_values
 from easyminer.tasks.calculate_field_numeric_detail import (
     calculate_field_numeric_detail,
 )
+from easyminer.tasks.populate_field_values import populate_field_values
 from easyminer.tasks.process_chunk import process_chunk
 from easyminer.tasks.update_field_statistics import update_field_statistics
 
@@ -189,6 +191,9 @@ async def upload_chunk(
                 kwargs={"field_id": field_id, "db_url": db_url}, headers={"db_url": db_url}
             )
             _ = update_field_statistics.apply_async(
+                kwargs={"field_id": field_id, "db_url": db_url}, headers={"db_url": db_url}
+            )
+            _ = populate_field_values.apply_async(
                 kwargs={"field_id": field_id, "db_url": db_url}, headers={"db_url": db_url}
             )
         return result
@@ -713,6 +718,7 @@ async def get_field_values(
     offset: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=0, le=1000)] = 100,
 ) -> list[FieldValueSchema]:
+    """Get field values with their frequencies."""
     data_source = await db.get(DataSource, id)
     if not data_source:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found")
@@ -723,44 +729,24 @@ async def get_field_values(
 
     query = (
         select(
-            func.min(DataSourceInstance.row_id).label("value_id"),  # Use first row_id as unique identifier
-            DataSourceInstance.value_nominal,
-            func.count(DataSourceInstance.id).label("frequency"),
+            DataSourceValue.id.label("value_id"),
+            DataSourceValue.value_nominal,
+            DataSourceValue.frequency,
         )
-        .where(DataSourceInstance.field_id == field.id)
-        .group_by(DataSourceInstance.value_nominal)
-        .order_by(func.count(DataSourceInstance.id).desc())
+        .where(DataSourceValue.field_id == field_id)
+        .order_by(DataSourceValue.frequency.desc())
     )
 
     if field.data_type == FieldType.numeric:
-        query = query.where(DataSourceInstance.value_numeric.isnot(None))
+        query = query.where(DataSourceValue.value_numeric.isnot(None))
 
     query = query.limit(limit).offset(offset)
 
     value_results = (await db.execute(query)).all()
 
-    total_rows = (
-        await db.execute(
-            select(func.count(distinct(DataSourceInstance.row_id))).where(
-                DataSourceInstance.data_source_id == data_source.id
-            )
-        )
-    ).scalar_one()
-
-    present_rows = (
-        await db.execute(
-            select(func.count(distinct(DataSourceInstance.row_id))).where(DataSourceInstance.field_id == field.id)
-        )
-    ).scalar_one()
-
-    null_frequency = total_rows - present_rows
-
     result: list[FieldValueSchema] = []
     for value_id, value, frequency in value_results:
         result.append(FieldValueSchema(id=value_id, value=value, frequency=frequency))
-
-    if null_frequency > 0:
-        result.append(FieldValueSchema(id=0, value=None, frequency=null_frequency))
 
     return result
 

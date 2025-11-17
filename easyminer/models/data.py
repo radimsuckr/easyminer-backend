@@ -4,7 +4,7 @@ from decimal import Decimal
 from typing import TYPE_CHECKING, final
 from uuid import UUID as pyUUID
 
-from sqlalchemy import DECIMAL, UUID, DateTime, Enum, ForeignKey, Integer, String
+from sqlalchemy import DECIMAL, UUID, DateTime, Enum, ForeignKey, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from easyminer.database import Base
@@ -201,10 +201,17 @@ class DataSourceInstance(Base):
     value_nominal: Mapped[str | None] = mapped_column(String(255), nullable=True)
     value_numeric: Mapped[Decimal | None] = mapped_column(DECIMAL, nullable=True)
 
-    data_source_id: Mapped[int] = mapped_column(ForeignKey("data_source.id", ondelete="CASCADE"))
+    data_source_id: Mapped[int] = mapped_column(ForeignKey("data_source.id", ondelete="CASCADE"), index=True)
     data_source: Mapped["DataSource"] = relationship("DataSource", back_populates="instances")
-    field_id: Mapped[int] = mapped_column(ForeignKey("field.id", ondelete="CASCADE"))
+    field_id: Mapped[int] = mapped_column(ForeignKey("field.id", ondelete="CASCADE"), index=True)
     field: Mapped["Field"] = relationship("Field")
+
+    __table_args__ = (
+        Index("ix_data_source_instance_ds_field", "data_source_id", "field_id"),
+        Index("ix_data_source_instance_ds_row", "data_source_id", "row_id"),
+        Index("ix_data_source_instance_field_value_nominal", "field_id", "value_nominal"),
+        Index("ix_data_source_instance_field_value_numeric", "field_id", "value_numeric"),
+    )
 
 
 class DataSourceValue(Base):
@@ -217,7 +224,12 @@ class DataSourceValue(Base):
     value_numeric: Mapped[Decimal | None] = mapped_column(DECIMAL, nullable=True)
     frequency: Mapped[int] = mapped_column(Integer)
 
-    data_source_id: Mapped[int] = mapped_column(ForeignKey("data_source.id", ondelete="CASCADE"))
+    data_source_id: Mapped[int] = mapped_column(ForeignKey("data_source.id", ondelete="CASCADE"), index=True)
     data_source: Mapped["DataSource"] = relationship("DataSource", back_populates="values")
-    field_id: Mapped[int] = mapped_column(ForeignKey("field.id", ondelete="CASCADE"))
+    field_id: Mapped[int] = mapped_column(ForeignKey("field.id", ondelete="CASCADE"), index=True)
     field: Mapped["Field"] = relationship("Field")
+
+    __table_args__ = (
+        Index("ix_data_source_value_ds_field", "data_source_id", "field_id"),
+        Index("ix_data_source_value_field_freq", "field_id", "frequency"),
+    )
