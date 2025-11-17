@@ -20,13 +20,14 @@ from easyminer.parsers.pmml.preprocessing import (
     create_attribute_from_pmml,
 )
 from easyminer.schemas.data import FieldType
+from easyminer.schemas.preprocessing import AttributeResult
 from easyminer.worker import app
 
 logger = logging.getLogger(__name__)
 
 
-@app.task
-def create_attributes(dataset_id: int, xml: str, db_url: str):
+@app.task(pydantic=True)
+def create_attributes(dataset_id: int, xml: str, db_url: str) -> list[AttributeResult]:
     """Create dataset attributes from PMML transformation definitions.
 
     This task:
@@ -42,7 +43,9 @@ def create_attributes(dataset_id: int, xml: str, db_url: str):
 
     if not pmml.derived_fields:
         logger.warning("No derived fields found in PMML")
-        return
+        return []
+
+    created_attributes: list[AttributeResult] = []
 
     with get_sync_db_session(db_url) as db:
         dataset = db.get(mprep.Dataset, dataset_id, options=[joinedload(mprep.Dataset.data_source)])
@@ -123,8 +126,20 @@ def create_attributes(dataset_id: int, xml: str, db_url: str):
                 + f"from {len(instances)} instances"
             )
 
+            created_attributes.append(
+                AttributeResult(
+                    id=db_attr.id,
+                    dataset=db_attr.dataset_id,
+                    field=db_attr.field_id,
+                    name=db_attr.name,
+                    unique_values_size=db_attr.unique_values_size,
+                )
+            )
+
         db.commit()
         logger.info(f"Successfully created {len(pmml.derived_fields)} attributes for dataset {dataset_id}")
+
+        return created_attributes
 
 
 def apply_transformation(attr_def: Attribute, value: float | str | None) -> str:

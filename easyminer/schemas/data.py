@@ -158,3 +158,13 @@ class Value(BaseSchema):
     id: int
     value: Any = None
     frequency: int
+
+
+class IntervalResult(BaseSchema):
+    from_: float | None = Field(None, alias="from")
+    to: float | None = Field(None)
+    from_inclusive: bool = Field(True)
+    to_inclusive: bool = Field(True)
+    frequency: int = Field(0)
+
+    model_config: ConfigDict = ConfigDict(populate_by_name=True)

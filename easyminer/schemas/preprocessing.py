@@ -93,3 +93,19 @@ class TaskResult(BaseSchema):
 
     task_id: UUID
     result: dict[str, Any] = Field(default_factory=dict)
+
+
+class DatasetResult(BaseSchema):
+    id: int = Field(..., description="Dataset ID")
+    name: str = Field(..., description="Dataset name")
+    data_source: int = Field(..., description="Data source ID")
+    type: DbType = Field(..., description="Database type")
+    size: int = Field(..., description="Number of instances")
+
+
+class AttributeResult(BaseSchema):
+    id: int = Field(..., description="Attribute ID")
+    dataset: int = Field(..., description="Dataset ID")
+    field: int = Field(..., description="Field ID")
+    name: str = Field(..., description="Attribute name")
+    unique_values_size: int = Field(..., description="Number of unique values within this attribute")
