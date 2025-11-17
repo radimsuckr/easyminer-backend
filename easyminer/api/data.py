@@ -139,7 +139,7 @@ async def upload_chunk(
 ) -> UploadResponseSchema | PlainTextResponse:
     if len(content) > MAX_FULL_UPLOAD_CHUNK_SIZE:
         raise StructuredHTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
             error="ChunkTooLarge",
             message="Chunk size exceeds 500KB limit",
             details={"maxSize": int(MAX_FULL_UPLOAD_CHUNK_SIZE), "receivedSize": len(content)},
@@ -272,8 +272,8 @@ async def upload_chunk(
         },
         status.HTTP_400_BAD_REQUEST: {"description": "Empty data or invalid request"},
         status.HTTP_404_NOT_FOUND: {"description": "Preview upload session not found"},
-        status.HTTP_413_REQUEST_ENTITY_TOO_LARGE: {"description": "Compressed data exceeds limit"},
-        status.HTTP_422_UNPROCESSABLE_ENTITY: {"description": "Decompression or processing error"},
+        status.HTTP_413_CONTENT_TOO_LARGE: {"description": "Compressed data exceeds limit"},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"description": "Decompression or processing error"},
     },
 )
 async def upload_preview_chunk(
@@ -286,7 +286,7 @@ async def upload_preview_chunk(
 
     if len(content) > MAX_PREVIEW_UPLOAD_CHUNK_SIZE:
         raise StructuredHTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
             error="PayloadTooLarge",
             message="Preview data exceeds 100KB limit",
             details={"maxSize": int(MAX_PREVIEW_UPLOAD_CHUNK_SIZE), "receivedSize": len(content)},
@@ -334,7 +334,7 @@ async def upload_preview_chunk(
         await db.delete(preview_upload)
         await db.commit()
         raise StructuredHTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             error="InvalidArchive",
             message=f"Failed to decompress: {str(e)}",
             details={"compression": preview_upload.compression.value},

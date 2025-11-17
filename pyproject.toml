@@ -22,6 +22,7 @@ requires-python = ">= 3.13"
 
 [dependency-groups]
 dev = [
+	"aiosqlite>=0.21.0",
 	"celery-types>=0.23.0",
 	"lxml-stubs>=0.5.1",
 	"mypy>=1.11.0",
@@ -45,3 +46,7 @@ extend-select = ["E4", "E7", "E9", "F", "FAST", "I", "INP", "UP"]
 
 [tool.pytest.ini_options]
 asyncio_default_fixture_loop_scope = "function"
+
+[tool.basedpyright]
+reportAny = false
+reportExplicitAny = false
