@@ -2,6 +2,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Body, Form, HTTPException, Path, Query, status
+from fastapi.responses import PlainTextResponse
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload
 
@@ -67,7 +68,7 @@ async def get_dataset(db: AuthenticatedSession, id: Annotated[int, Path()]):
 
 
 @router.delete("/dataset/{id}")
-async def delete_dataset(db: AuthenticatedSession, id: Annotated[int, Path()]):
+async def delete_dataset(db: AuthenticatedSession, id: Annotated[int, Path()]) -> PlainTextResponse:
     """Delete this dataset."""
     dataset = await db.get(Dataset, id)
     if not dataset:
@@ -75,6 +76,7 @@ async def delete_dataset(db: AuthenticatedSession, id: Annotated[int, Path()]):
 
     await db.delete(dataset)
     await db.commit()
+    return PlainTextResponse(content="", status_code=status.HTTP_200_OK)
 
 
 @router.put(
@@ -140,10 +142,8 @@ async def create_attribute(
 
 @router.delete("/dataset/{dataset_id}/attribute/{attribute_id}")
 async def delete_attribute(
-    db: AuthenticatedSession,
-    dataset_id: Annotated[int, Path()],
-    attribute_id: Annotated[int, Path()],
-) -> None:
+    db: AuthenticatedSession, dataset_id: Annotated[int, Path()], attribute_id: Annotated[int, Path()]
+) -> PlainTextResponse:
     """Delete this attribute of a specific dataset."""
     dataset = await db.get(Dataset, dataset_id, options=[joinedload(Dataset.attributes)])
     if not dataset:
@@ -157,6 +157,7 @@ async def delete_attribute(
 
     await db.delete(attribute)
     await db.commit()
+    return PlainTextResponse(content="", status_code=status.HTTP_200_OK)
 
 
 @router.get("/dataset/{dataset_id}/attribute/{attribute_id}")

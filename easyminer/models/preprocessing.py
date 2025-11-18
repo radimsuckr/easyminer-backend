@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 class Dataset(Base):
     __tablename__: str = "dataset"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, index=True)
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     type: Mapped["DbType"] = mapped_column(Enum(DbType), default=DbType.limited, nullable=False)
     size: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
@@ -30,7 +30,7 @@ class Dataset(Base):
 class Attribute(Base):
     __tablename__: str = "dataset_attribute"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, index=True)
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     unique_values_size: Mapped[int] = mapped_column(default=0, nullable=False)
     is_active: Mapped[bool] = mapped_column(default=False, nullable=False)
@@ -46,7 +46,7 @@ class Attribute(Base):
 class DatasetInstance(Base):
     __tablename__: str = "dataset_instance"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, index=True)
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     tx_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
 
     value_id: Mapped[int] = mapped_column(ForeignKey("dataset_value.id", ondelete="CASCADE"), nullable=False)
@@ -59,8 +59,8 @@ class DatasetValue(Base):
     __tablename__: str = "dataset_value"
     __table_args__: tuple[Constraint] = (UniqueConstraint("value", "attribute_id"),)
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, index=True)
-    value: Mapped[str] = mapped_column(String(255), nullable=False)
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    value: Mapped[str | None] = mapped_column(String(255), nullable=True)
     frequency: Mapped[int] = mapped_column(Integer, nullable=False)
 
     attribute_id: Mapped[int] = mapped_column(ForeignKey("dataset_attribute.id", ondelete="CASCADE"), nullable=False)

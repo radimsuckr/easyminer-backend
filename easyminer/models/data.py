@@ -84,7 +84,7 @@ class PreviewUpload(Base):
 class Chunk(Base):
     __tablename__: str = "chunk"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, index=True)
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     uploaded_at: Mapped[datetime] = mapped_column(DateTime())
     path: Mapped[str] = mapped_column(String(255))
 
@@ -97,7 +97,7 @@ class DataSource(Base):
 
     __tablename__: str = "data_source"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, index=True)
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(255))
     type: Mapped[DbType] = mapped_column(Enum(DbType), nullable=False)
     size: Mapped[int] = mapped_column(default=0)
@@ -123,7 +123,7 @@ class Field(Base):
 
     __tablename__: str = "field"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, index=True)
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(255))
     data_type: Mapped["FieldType"] = mapped_column(Enum(FieldType))
     index: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -182,7 +182,7 @@ class FieldNumericDetail(Base):
 
     __tablename__: str = "field_numeric_detail"
 
-    id: Mapped[int] = mapped_column(ForeignKey("field.id", ondelete="CASCADE"), primary_key=True, index=True)
+    id: Mapped[int] = mapped_column(ForeignKey("field.id", ondelete="CASCADE"), primary_key=True)
     min_value: Mapped[Decimal] = mapped_column(DECIMAL)
     max_value: Mapped[Decimal] = mapped_column(DECIMAL)
     avg_value: Mapped[Decimal] = mapped_column(DECIMAL)
@@ -195,22 +195,21 @@ class DataSourceInstance(Base):
 
     __tablename__: str = "data_source_instance"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, index=True)
-    row_id: Mapped[int] = mapped_column(Integer)  # Row number in the original data
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    row_id: Mapped[int] = mapped_column(Integer, index=True)  # Row number in the original data
     col_id: Mapped[int] = mapped_column(Integer)  # Column number in the original data
     value_nominal: Mapped[str | None] = mapped_column(String(255), nullable=True)
     value_numeric: Mapped[Decimal | None] = mapped_column(DECIMAL, nullable=True)
 
-    data_source_id: Mapped[int] = mapped_column(ForeignKey("data_source.id", ondelete="CASCADE"), index=True)
+    # Note: No index=True here because composite index ds_row covers data_source_id
+    data_source_id: Mapped[int] = mapped_column(ForeignKey("data_source.id", ondelete="CASCADE"))
     data_source: Mapped["DataSource"] = relationship("DataSource", back_populates="instances")
     field_id: Mapped[int] = mapped_column(ForeignKey("field.id", ondelete="CASCADE"), index=True)
     field: Mapped["Field"] = relationship("Field")
 
     __table_args__ = (
-        Index("ix_data_source_instance_ds_field", "data_source_id", "field_id"),
+        # Composite index covers queries by data_source_id alone or data_source_id + row_id
         Index("ix_data_source_instance_ds_row", "data_source_id", "row_id"),
-        Index("ix_data_source_instance_field_value_nominal", "field_id", "value_nominal"),
-        Index("ix_data_source_instance_field_value_numeric", "field_id", "value_numeric"),
     )
 
 
@@ -219,7 +218,7 @@ class DataSourceValue(Base):
 
     __tablename__: str = "data_source_value"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, index=True)
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     value_nominal: Mapped[str | None] = mapped_column(String(255), nullable=True)
     value_numeric: Mapped[Decimal | None] = mapped_column(DECIMAL, nullable=True)
     frequency: Mapped[int] = mapped_column(Integer)
@@ -230,6 +229,6 @@ class DataSourceValue(Base):
     field: Mapped["Field"] = relationship("Field")
 
     __table_args__ = (
-        Index("ix_data_source_value_ds_field", "data_source_id", "field_id"),
+        # Keep field_freq index for value ordering queries (get_field_values)
         Index("ix_data_source_value_field_freq", "field_id", "frequency"),
     )

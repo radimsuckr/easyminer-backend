@@ -1,8 +1,8 @@
 """init
 
-Revision ID: ebfe6b55b380
+Revision ID: cc9afa8a7880
 Revises:
-Create Date: 2025-11-16 15:59:06.300467+01:00
+Create Date: 2025-11-18 00:51:54.988851+01:00
 
 """
 
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = "ebfe6b55b380"
+revision: str = "cc9afa8a7880"
 down_revision: str | None = None
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
@@ -150,7 +150,30 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["field_id"], ["field.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
+    op.create_index(
+        op.f("ix_data_source_instance_data_source_id"), "data_source_instance", ["data_source_id"], unique=False
+    )
+    op.create_index(
+        "ix_data_source_instance_ds_field", "data_source_instance", ["data_source_id", "field_id"], unique=False
+    )
+    op.create_index(
+        "ix_data_source_instance_ds_row", "data_source_instance", ["data_source_id", "row_id"], unique=False
+    )
+    op.create_index(op.f("ix_data_source_instance_field_id"), "data_source_instance", ["field_id"], unique=False)
+    op.create_index(
+        "ix_data_source_instance_field_value_nominal",
+        "data_source_instance",
+        ["field_id", "value_nominal"],
+        unique=False,
+    )
+    op.create_index(
+        "ix_data_source_instance_field_value_numeric",
+        "data_source_instance",
+        ["field_id", "value_numeric"],
+        unique=False,
+    )
     op.create_index(op.f("ix_data_source_instance_id"), "data_source_instance", ["id"], unique=False)
+    op.create_index(op.f("ix_data_source_instance_row_id"), "data_source_instance", ["row_id"], unique=False)
     op.create_table(
         "data_source_value",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
@@ -163,6 +186,10 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["field_id"], ["field.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
+    op.create_index(op.f("ix_data_source_value_data_source_id"), "data_source_value", ["data_source_id"], unique=False)
+    op.create_index("ix_data_source_value_ds_field", "data_source_value", ["data_source_id", "field_id"], unique=False)
+    op.create_index("ix_data_source_value_field_freq", "data_source_value", ["field_id", "frequency"], unique=False)
+    op.create_index(op.f("ix_data_source_value_field_id"), "data_source_value", ["field_id"], unique=False)
     op.create_index(op.f("ix_data_source_value_id"), "data_source_value", ["id"], unique=False)
     op.create_table(
         "dataset_attribute",
@@ -190,7 +217,7 @@ def upgrade() -> None:
     op.create_table(
         "dataset_value",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
-        sa.Column("value", sa.String(length=255), nullable=False),
+        sa.Column("value", sa.String(length=255), nullable=True),
         sa.Column("frequency", sa.Integer(), nullable=False),
         sa.Column("attribute_id", sa.Integer(), nullable=False),
         sa.ForeignKeyConstraint(["attribute_id"], ["dataset_attribute.id"], ondelete="CASCADE"),
@@ -225,8 +252,19 @@ def downgrade() -> None:
     op.drop_index(op.f("ix_dataset_attribute_id"), table_name="dataset_attribute")
     op.drop_table("dataset_attribute")
     op.drop_index(op.f("ix_data_source_value_id"), table_name="data_source_value")
+    op.drop_index(op.f("ix_data_source_value_field_id"), table_name="data_source_value")
+    op.drop_index("ix_data_source_value_field_freq", table_name="data_source_value")
+    op.drop_index("ix_data_source_value_ds_field", table_name="data_source_value")
+    op.drop_index(op.f("ix_data_source_value_data_source_id"), table_name="data_source_value")
     op.drop_table("data_source_value")
+    op.drop_index(op.f("ix_data_source_instance_row_id"), table_name="data_source_instance")
     op.drop_index(op.f("ix_data_source_instance_id"), table_name="data_source_instance")
+    op.drop_index("ix_data_source_instance_field_value_numeric", table_name="data_source_instance")
+    op.drop_index("ix_data_source_instance_field_value_nominal", table_name="data_source_instance")
+    op.drop_index(op.f("ix_data_source_instance_field_id"), table_name="data_source_instance")
+    op.drop_index("ix_data_source_instance_ds_row", table_name="data_source_instance")
+    op.drop_index("ix_data_source_instance_ds_field", table_name="data_source_instance")
+    op.drop_index(op.f("ix_data_source_instance_data_source_id"), table_name="data_source_instance")
     op.drop_table("data_source_instance")
     op.drop_index(op.f("ix_task_task_id"), table_name="task")
     op.drop_table("task")
