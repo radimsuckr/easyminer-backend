@@ -32,6 +32,9 @@ def upgrade() -> None:
         sa.Column("media_type", sa.Enum("csv", name="mediatype"), nullable=False),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("uuid"),
+        mysql_engine='InnoDB',
+        mysql_charset='utf8',
+        mysql_collate='utf8_bin',
     )
 
     op.create_table(
@@ -39,6 +42,9 @@ def upgrade() -> None:
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
         sa.Column("value", sa.JSON(), nullable=False),
         sa.PrimaryKeyConstraint("id"),
+        mysql_engine='InnoDB',
+        mysql_charset='utf8',
+        mysql_collate='utf8_bin',
     )
 
     op.create_table(
@@ -56,6 +62,9 @@ def upgrade() -> None:
         sa.Column("state", sa.Enum("initialized", "locked", "ready", "finished", name="uploadstate"), nullable=False),
         sa.Column("last_change_at", sa.DateTime(), nullable=False),
         sa.PrimaryKeyConstraint("id"),
+        mysql_engine='InnoDB',
+        mysql_charset='utf8',
+        mysql_collate='utf8_bin',
     )
 
     op.create_table(
@@ -66,6 +75,9 @@ def upgrade() -> None:
         sa.Column("upload_id", sa.Integer(), nullable=False),
         sa.ForeignKeyConstraint(["upload_id"], ["upload.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
+        mysql_engine='InnoDB',
+        mysql_charset='utf8',
+        mysql_collate='utf8_bin',
     )
     op.create_index(op.f("ix_chunk_id"), "chunk", ["id"], unique=False)
 
@@ -76,6 +88,9 @@ def upgrade() -> None:
         sa.Column("upload_id", sa.Integer(), nullable=False),
         sa.ForeignKeyConstraint(["upload_id"], ["upload.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
+        mysql_engine='InnoDB',
+        mysql_charset='utf8',
+        mysql_collate='utf8_bin',
     )
 
     op.create_table(
@@ -86,6 +101,9 @@ def upgrade() -> None:
         sa.Column("upload_id", sa.Integer(), nullable=False),
         sa.ForeignKeyConstraint(["upload_id"], ["upload.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
+        mysql_engine='InnoDB',
+        mysql_charset='utf8',
+        mysql_collate='utf8_bin',
     )
 
     # Data source table (no created_at/updated_at, has active boolean)
@@ -99,6 +117,9 @@ def upgrade() -> None:
         sa.Column("upload_id", sa.Integer(), nullable=False),
         sa.ForeignKeyConstraint(["upload_id"], ["upload.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
+        mysql_engine='InnoDB',
+        mysql_charset='utf8',
+        mysql_collate='utf8_bin',
     )
     op.create_index(op.f("ix_data_source_id"), "data_source", ["id"], unique=False)
 
@@ -117,6 +138,9 @@ def upgrade() -> None:
         sa.Column("data_source", sa.Integer(), nullable=False),
         sa.ForeignKeyConstraint(["data_source"], ["data_source.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id", "data_source"),
+        mysql_engine='InnoDB',
+        mysql_charset='utf8',
+        mysql_collate='utf8_bin',
     )
 
     op.create_table(
@@ -127,6 +151,9 @@ def upgrade() -> None:
         sa.Column("avg_value", sa.DECIMAL(), nullable=False),
         sa.ForeignKeyConstraint(["id"], ["field.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
+        mysql_engine='InnoDB',
+        mysql_charset='utf8',
+        mysql_collate='utf8_bin',
     )
     op.create_index(op.f("ix_field_numeric_detail_id"), "field_numeric_detail", ["id"], unique=False)
 
@@ -141,6 +168,9 @@ def upgrade() -> None:
         sa.Column("data_source", sa.Integer(), nullable=False),
         sa.ForeignKeyConstraint(["data_source"], ["data_source.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
+        mysql_engine='InnoDB',
+        mysql_charset='utf8',
+        mysql_collate='utf8_bin',
     )
     op.create_index(op.f("ix_dataset_id"), "dataset", ["id"], unique=False)
 
@@ -157,6 +187,9 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["dataset"], ["dataset.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["field"], ["field.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id", "dataset"),
+        mysql_engine='InnoDB',
+        mysql_charset='utf8',
+        mysql_collate='utf8_bin',
     )
 
     # Task tracking tables
@@ -176,6 +209,9 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["data_source_id"], ["data_source.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["result_id"], ["task_result.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
+        mysql_engine='InnoDB',
+        mysql_charset='utf8',
+        mysql_collate='utf8_bin',
     )
     op.create_index(op.f("ix_task_task_id"), "task", ["task_id"], unique=True)
 
