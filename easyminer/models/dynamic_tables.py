@@ -13,8 +13,8 @@ The Scala implementation uses:
 
 import logging
 
-from sqlalchemy import Column, Double, Index, Integer, MetaData, String, Table, text
-from sqlalchemy.engine import Connection, Engine
+from sqlalchemy import Column, Double, Index, Integer, MetaData, String, Table
+from sqlalchemy.engine import Engine
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +66,9 @@ def get_data_source_table(data_source_id: int) -> Table:
         Column("value_numeric", Double, nullable=True),
         Index(f"ix_{table_name}_field", "field"),
         Index(f"ix_{table_name}_id_field", "id", "field"),
+        mysql_engine='MyISAM',
+        mysql_charset='utf8',
+        mysql_collate='utf8_bin',
         extend_existing=True,
     )
 
@@ -92,6 +95,9 @@ def get_data_source_value_table(data_source_id: int) -> Table:
         Column("value_numeric", Double, nullable=True),
         Column("frequency", Integer, nullable=False),
         Index(f"ix_{table_name}_field", "field"),
+        mysql_engine='MyISAM',
+        mysql_charset='utf8',
+        mysql_collate='utf8_bin',
         extend_existing=True,
     )
 
@@ -117,6 +123,9 @@ def get_dataset_table(dataset_id: int) -> Table:
         Column("value", Integer, nullable=False),  # references pp_value_{ID}.id
         Index(f"ix_{table_name}_tid", "tid"),
         Index(f"ix_{table_name}_attribute", "attribute"),
+        mysql_engine='MyISAM',
+        mysql_charset='utf8',
+        mysql_collate='utf8_bin',
         extend_existing=True,
     )
 
@@ -141,13 +150,11 @@ def get_dataset_value_table(dataset_id: int) -> Table:
         Column("value", String(255), nullable=False),
         Column("frequency", Integer, nullable=False),
         Index(f"ix_{table_name}_attribute", "attribute"),
+        mysql_engine='MyISAM',
+        mysql_charset='utf8',
+        mysql_collate='utf8_bin',
         extend_existing=True,
     )
-
-
-def _is_mysql(connection: Connection) -> bool:
-    """Check if the connection is to a MySQL/MariaDB database."""
-    return connection.dialect.name in ("mysql", "mariadb")
 
 
 def create_data_source_tables(engine: Engine, data_source_id: int) -> None:
@@ -157,23 +164,14 @@ def create_data_source_tables(engine: Engine, data_source_id: int) -> None:
     - data_source_{ID} table for instance data
     - value_{ID} table for unique values
 
-    Uses MyISAM engine for MySQL (better for bulk inserts), standard tables for SQLite.
+    Uses MyISAM engine for MySQL/MariaDB (specified in table definition).
     """
     instance_table = get_data_source_table(data_source_id)
     value_table = get_data_source_value_table(data_source_id)
 
     with engine.begin() as conn:
-        if _is_mysql(conn):
-            # Use MyISAM for better bulk insert performance
-            instance_table.create(conn, checkfirst=True)
-            value_table.create(conn, checkfirst=True)
-            # Alter to MyISAM if needed
-            conn.execute(text(f"ALTER TABLE `{instance_table.name}` ENGINE=MyISAM"))
-            conn.execute(text(f"ALTER TABLE `{value_table.name}` ENGINE=MyISAM"))
-        else:
-            # SQLite or other databases
-            instance_table.create(conn, checkfirst=True)
-            value_table.create(conn, checkfirst=True)
+        instance_table.create(conn, checkfirst=True)
+        value_table.create(conn, checkfirst=True)
 
     logger.info(f"Created tables for data source {data_source_id}: {instance_table.name}, {value_table.name}")
 
@@ -203,21 +201,14 @@ def create_dataset_tables(engine: Engine, dataset_id: int) -> None:
     - dataset_{ID} table for preprocessed instance data
     - pp_value_{ID} table for unique preprocessed values
 
-    Uses MyISAM engine for MySQL, standard tables for SQLite.
+    Uses MyISAM engine for MySQL/MariaDB (specified in table definition).
     """
     instance_table = get_dataset_table(dataset_id)
     value_table = get_dataset_value_table(dataset_id)
 
     with engine.begin() as conn:
-        if _is_mysql(conn):
-            # Use MyISAM for better bulk insert performance
-            value_table.create(conn, checkfirst=True)
-            instance_table.create(conn, checkfirst=True)
-            conn.execute(text(f"ALTER TABLE `{instance_table.name}` ENGINE=MyISAM"))
-            conn.execute(text(f"ALTER TABLE `{value_table.name}` ENGINE=MyISAM"))
-        else:
-            value_table.create(conn, checkfirst=True)
-            instance_table.create(conn, checkfirst=True)
+        value_table.create(conn, checkfirst=True)
+        instance_table.create(conn, checkfirst=True)
 
     logger.info(f"Created tables for dataset {dataset_id}: {instance_table.name}, {value_table.name}")
 
