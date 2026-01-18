@@ -4,7 +4,8 @@ from decimal import Decimal
 from sqlalchemy import func, select
 
 from easyminer.database import get_sync_db_session
-from easyminer.models.data import DataSourceInstance, Field
+from easyminer.models.data import Field
+from easyminer.models.dynamic_tables import get_data_source_table
 from easyminer.worker import app
 
 logger = logging.getLogger(__name__)
@@ -26,9 +27,15 @@ def aggregate_field_values(
     )
 
     with get_sync_db_session(db_url) as db:
-        field = db.get(Field, field_id)
-        if not field or field.data_source_id != data_source_id:
+        # Query field using composite PK (id, data_source)
+        field = db.execute(
+            select(Field).where(Field.id == field_id, Field.data_source == data_source_id)
+        ).scalar_one_or_none()
+        if not field:
             raise ValueError(f"Field with ID {field_id} not found in data source {data_source_id}")
+
+        # Get the dynamic table for this data source
+        instance_table = get_data_source_table(data_source_id)
 
         histograms: list[dict[str, Decimal | bool | int]] = []
         bin_size = (max - min) / bins
@@ -38,17 +45,17 @@ def aggregate_field_values(
             from_inclusive = min_inclusive if i == 0 else True
             to_inclusive = max_inclusive if i == bins - 1 else False
 
+            # Use dynamic table column names: field (was field_id)
             stmt = (
                 select(func.count())
-                .select_from(DataSourceInstance)
+                .select_from(instance_table)
                 .where(
-                    DataSourceInstance.data_source_id == data_source_id,
-                    DataSourceInstance.field_id == field.id,
-                    DataSourceInstance.value_numeric != None,  # noqa: E711
-                    DataSourceInstance.value_numeric >= from_
+                    instance_table.c.field == field.id,
+                    instance_table.c.value_numeric != None,  # noqa: E711
+                    instance_table.c.value_numeric >= from_
                     if from_inclusive
-                    else DataSourceInstance.value_numeric > from_,
-                    DataSourceInstance.value_numeric <= to if to_inclusive else DataSourceInstance.value_numeric < to,
+                    else instance_table.c.value_numeric > from_,
+                    instance_table.c.value_numeric <= to if to_inclusive else instance_table.c.value_numeric < to,
                 )
             )
             frequency = db.execute(stmt).scalar_one()

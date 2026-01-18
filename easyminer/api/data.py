@@ -18,7 +18,7 @@ from fastapi import (
     status,
 )
 from fastapi.responses import PlainTextResponse
-from sqlalchemy import delete, distinct, func, select
+from sqlalchemy import create_engine, delete, distinct, func, select
 from sqlalchemy.orm import joinedload
 
 from easyminer.config import API_V1_PREFIX
@@ -33,12 +33,15 @@ from easyminer.decompress import (
 from easyminer.dependencies import ApiKey, AuthenticatedSession, get_database_config
 from easyminer.models.data import (
     DataSource,
-    DataSourceInstance,
     Field,
     FieldNumericDetail,
     PreviewUpload,
     Upload,
     UploadState,
+)
+from easyminer.models.dynamic_tables import (
+    drop_data_source_tables,
+    get_data_source_table,
 )
 from easyminer.schemas.data import (
     AggregatedInstance,
@@ -177,19 +180,20 @@ async def upload_chunk(
             size=upload.data_source.size,
         )
 
+        data_source_id = upload.data_source.id
         field_ids = (
-            await db.scalars(
-                select(Field.id).where(Field.data_source_id == upload.data_source.id).order_by(Field.index)
-            )
+            await db.scalars(select(Field.id).where(Field.data_source == data_source_id).order_by(Field.index))
         ).all()
         await db.commit()
 
         for field_id in field_ids:
             _ = calculate_field_numeric_detail.apply_async(
-                kwargs={"field_id": field_id, "db_url": db_url}, headers={"db_url": db_url}
+                kwargs={"field_id": field_id, "data_source_id": data_source_id, "db_url": db_url},
+                headers={"db_url": db_url},
             )
             _ = update_field_statistics.apply_async(
-                kwargs={"field_id": field_id, "db_url": db_url}, headers={"db_url": db_url}
+                kwargs={"field_id": field_id, "data_source_id": data_source_id, "db_url": db_url},
+                headers={"db_url": db_url},
             )
         return result
 
@@ -363,8 +367,31 @@ async def list_data_sources(
         status.HTTP_500_INTERNAL_SERVER_ERROR: {},
     },
 )
-async def delete_data_source(db: AuthenticatedSession, id: Annotated[int, Path()]) -> None:
-    """Delete a data source."""
+async def delete_data_source(
+    db: AuthenticatedSession,
+    api_key: ApiKey,
+    id: Annotated[int, Path()],
+) -> None:
+    """Delete a data source and its dynamic tables."""
+    # Check if data source exists
+    data_source = await db.get(DataSource, id)
+    if not data_source:
+        raise StructuredHTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            error="DataSourceNotFound",
+            message="Data source not found",
+            details={"dataSourceId": id},
+        )
+
+    # Drop dynamic tables before deleting the data source
+    if data_source.active:
+        db_config = await get_database_config(api_key, DbType.limited)
+        sync_engine = create_engine(db_config.get_sync_url())
+        try:
+            drop_data_source_tables(sync_engine, id)
+        finally:
+            sync_engine.dispose()
+
     result = await db.execute(delete(DataSource).where(DataSource.id == id))
     if result.rowcount != 1:
         raise StructuredHTTPException(
@@ -434,34 +461,27 @@ async def get_instances(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Data source upload is not finished processing"
         )
 
+    # Get the dynamic table for this data source
+    instance_table = get_data_source_table(id)
+
     # Check if data source has instances
     instances_count = (
-        await db.execute(
-            select(func.count(distinct(DataSourceInstance.row_id)))
-            .select_from(DataSourceInstance)
-            .where(DataSourceInstance.data_source_id == id)
-        )
+        await db.execute(select(func.count(distinct(instance_table.c.id))).select_from(instance_table))
     ).scalar_one()
     if instances_count == 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Data source has no instances")
 
-    # First, get the row_ids for pagination
-    row_ids_stmt = (
-        select(distinct(DataSourceInstance.row_id))
-        .where(DataSourceInstance.data_source_id == id)
-        .order_by(DataSourceInstance.row_id)
-        .limit(limit)
-        .offset(offset)
-    )
+    # First, get the row_ids for pagination (using dynamic table column 'id' instead of 'row_id')
+    row_ids_stmt = select(distinct(instance_table.c.id)).order_by(instance_table.c.id).limit(limit).offset(offset)
 
     if field_ids:
         # If filtering by field_ids, we need to ensure the row has at least one of those fields
         row_ids_stmt = (
-            select(distinct(DataSourceInstance.row_id))
-            .select_from(DataSourceInstance)
-            .join(Field, DataSourceInstance.field_id == Field.id)
-            .where(DataSourceInstance.data_source_id == id, Field.index.in_(field_ids))
-            .order_by(DataSourceInstance.row_id)
+            select(distinct(instance_table.c.id))
+            .select_from(instance_table)
+            .join(Field, instance_table.c.field == Field.id)
+            .where(Field.index.in_(field_ids))
+            .order_by(instance_table.c.id)
             .limit(limit)
             .offset(offset)
         )
@@ -475,18 +495,15 @@ async def get_instances(
     # Now get all the data for these specific rows in a single query
     data_stmt = (
         select(
-            DataSourceInstance.row_id,
+            instance_table.c.id.label("row_id"),
             Field.index.label("field_index"),
-            DataSourceInstance.value_nominal,
-            DataSourceInstance.value_numeric,
+            instance_table.c.value_nominal,
+            instance_table.c.value_numeric,
         )
-        .select_from(DataSourceInstance)
-        .join(Field, DataSourceInstance.field_id == Field.id)
-        .where(
-            DataSourceInstance.data_source_id == id,
-            DataSourceInstance.row_id.in_(row_ids),
-        )
-        .order_by(DataSourceInstance.row_id, Field.index)
+        .select_from(instance_table)
+        .join(Field, instance_table.c.field == Field.id)
+        .where(instance_table.c.id.in_(row_ids))
+        .order_by(instance_table.c.id, Field.index)
     )
 
     if field_ids:
@@ -557,8 +574,9 @@ async def delete_field(
     if not data_source:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found")
 
-    field = await db.get(Field, field_id)
-    if not field or field.data_source_id != id:
+    # Query field using composite PK (id, data_source)
+    field = await db.scalar(select(Field).where(Field.id == field_id, Field.data_source == id))
+    if not field:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Field not found")
 
     await db.delete(field)
@@ -583,8 +601,11 @@ async def get_field(
     if not data_source:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found")
 
-    field = await db.get(Field, field_id, options=[joinedload(Field.numeric_detail)])
-    if not field or field.data_source_id != id:
+    # Query field using composite PK (id, data_source) with joinedload
+    field = await db.scalar(
+        select(Field).where(Field.id == field_id, Field.data_source == id).options(joinedload(Field.numeric_detail))
+    )
+    if not field:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Field not found")
 
     return FieldRead.model_validate(field)
@@ -608,8 +629,9 @@ async def rename_field(
     if not data_source:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found")
 
-    field = await db.get(Field, field_id)
-    if not field or field.data_source_id != id:
+    # Query field using composite PK (id, data_source)
+    field = await db.scalar(select(Field).where(Field.id == field_id, Field.data_source == id))
+    if not field:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Field not found")
 
     field.name = name
@@ -636,8 +658,9 @@ async def toggle_field_type(
     if not data_source:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found")
 
-    field = await db.get(Field, field_id)
-    if not field or field.data_source_id != id:
+    # Query field using composite PK (id, data_source)
+    field = await db.scalar(select(Field).where(Field.id == field_id, Field.data_source == id))
+    if not field:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Field not found")
 
     if field.data_type == FieldType.numeric:
@@ -676,9 +699,7 @@ async def get_field_stats(
     if not data_source:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found")
 
-    field = (
-        await db.execute(select(Field).where(Field.data_source_id == id, Field.id == field_id))
-    ).scalar_one_or_none()
+    field = (await db.execute(select(Field).where(Field.data_source == id, Field.id == field_id))).scalar_one_or_none()
     if not field:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Field not found")
     if field.data_type != FieldType.numeric:
@@ -717,40 +738,39 @@ async def get_field_values(
     if not data_source:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found")
 
-    field = await db.get(Field, field_id)
-    if not field or field.data_source_id != id:
+    # Query field using composite PK (id, data_source)
+    field = await db.scalar(select(Field).where(Field.id == field_id, Field.data_source == id))
+    if not field:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Field not found")
 
+    # Get the dynamic table for this data source
+    instance_table = get_data_source_table(id)
+
+    # Use dynamic table column names: id (was row_id), field (was field_id)
     query = (
         select(
-            func.min(DataSourceInstance.row_id).label("value_id"),  # Use first row_id as unique identifier
-            DataSourceInstance.value_nominal,
-            func.count(DataSourceInstance.id).label("frequency"),
+            func.min(instance_table.c.id).label("value_id"),  # Use first row_id as unique identifier
+            instance_table.c.value_nominal,
+            func.count(instance_table.c.pid).label("frequency"),
         )
-        .where(DataSourceInstance.field_id == field.id)
-        .group_by(DataSourceInstance.value_nominal)
-        .order_by(func.count(DataSourceInstance.id).desc())
+        .where(instance_table.c.field == field.id)
+        .group_by(instance_table.c.value_nominal)
+        .order_by(func.count(instance_table.c.pid).desc())
     )
 
     if field.data_type == FieldType.numeric:
-        query = query.where(DataSourceInstance.value_numeric.isnot(None))
+        query = query.where(instance_table.c.value_numeric.isnot(None))
 
     query = query.limit(limit).offset(offset)
 
     value_results = (await db.execute(query)).all()
 
     total_rows = (
-        await db.execute(
-            select(func.count(distinct(DataSourceInstance.row_id))).where(
-                DataSourceInstance.data_source_id == data_source.id
-            )
-        )
+        await db.execute(select(func.count(distinct(instance_table.c.id))).select_from(instance_table))
     ).scalar_one()
 
     present_rows = (
-        await db.execute(
-            select(func.count(distinct(DataSourceInstance.row_id))).where(DataSourceInstance.field_id == field.id)
-        )
+        await db.execute(select(func.count(distinct(instance_table.c.id))).where(instance_table.c.field == field.id))
     ).scalar_one()
 
     null_frequency = total_rows - present_rows
@@ -807,9 +827,7 @@ async def get_aggregated_values(
     if not data_source:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Data source not found")
 
-    field = (
-        await db.execute(select(Field).where(Field.data_source_id == id, Field.id == field_id))
-    ).scalar_one_or_none()
+    field = (await db.execute(select(Field).where(Field.data_source == id, Field.id == field_id))).scalar_one_or_none()
     if not field:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Field not found")
 

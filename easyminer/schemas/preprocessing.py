@@ -23,16 +23,20 @@ class DatasetCreate(BaseSchema):
 
 
 class DatasetRead(BaseSchema):
-    """Schema for reading a dataset."""
+    """Schema for reading a dataset.
+
+    Model uses 'data_source' and 'active' but we expose as
+    'data_source_id' and 'is_active' for API compatibility.
+    """
 
     id: int
     name: str
-    data_source_id: int
+    data_source_id: int = Field(validation_alias="data_source")
     type: DbType
     size: int
-    is_active: bool
+    is_active: bool = Field(validation_alias="active")
 
-    model_config: ConfigDict = ConfigDict(from_attributes=True)
+    model_config: ConfigDict = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
 class DatasetUpdate(BaseSchema):
@@ -57,15 +61,19 @@ class AttributeCreate(BaseSchema):
 
 
 class AttributeRead(BaseSchema):
-    """Schema for reading an attribute."""
+    """Schema for reading an attribute.
+
+    Model uses 'dataset' and 'field' but we expose as
+    'dataset_id' and 'field_id' for API compatibility.
+    """
 
     id: int
     name: str
-    dataset_id: int
-    field_id: int
+    dataset_id: int = Field(validation_alias="dataset")
+    field_id: int = Field(validation_alias="field")
     unique_values_size: int
 
-    model_config: ConfigDict = ConfigDict(from_attributes=True)
+    model_config: ConfigDict = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
 class AttributeValueRead(BaseSchema):

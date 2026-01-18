@@ -2,12 +2,17 @@ import logging
 from collections import defaultdict
 from decimal import Decimal
 
-from sqlalchemy import exists, insert, select
+from sqlalchemy import exists, func, insert, select
 from sqlalchemy.orm import joinedload
 
 from easyminer.database import get_sync_db_session
 from easyminer.models import data as mdata
 from easyminer.models import preprocessing as mprep
+from easyminer.models.dynamic_tables import (
+    get_data_source_table,
+    get_dataset_table,
+    get_dataset_value_table,
+)
 from easyminer.parsers.pmml.preprocessing import (
     Attribute,
     EquidistantIntervalsAttribute,
@@ -45,9 +50,22 @@ def create_attributes(dataset_id: int, xml: str, db_url: str):
         return
 
     with get_sync_db_session(db_url) as db:
-        dataset = db.get(mprep.Dataset, dataset_id, options=[joinedload(mprep.Dataset.data_source)])
+        dataset = db.get(mprep.Dataset, dataset_id, options=[joinedload(mprep.Dataset.data_source_rel)])
         if not dataset:
             raise ValueError(f"Dataset with id {dataset_id} not found")
+
+        data_source_id = dataset.data_source
+
+        # Get dynamic tables
+        source_table = get_data_source_table(data_source_id)
+        dataset_instance_table = get_dataset_table(dataset_id)
+        dataset_value_table = get_dataset_value_table(dataset_id)
+
+        # Get next attribute ID since composite PK doesn't support autoincrement
+        max_attr_id = db.execute(
+            select(func.coalesce(func.max(mprep.Attribute.id), 0)).where(mprep.Attribute.dataset == dataset_id)
+        ).scalar_one()
+        next_attr_id = max_attr_id + 1
 
         for field_def in pmml.derived_fields:
             attr_def = create_attribute_from_pmml(field_def)
@@ -59,27 +77,36 @@ def create_attributes(dataset_id: int, xml: str, db_url: str):
             field_exists = db.execute(
                 select(
                     exists().where(
-                        mdata.Field.data_source_id == dataset.data_source_id,
+                        mdata.Field.data_source == data_source_id,
                         mdata.Field.id == attr_def.field_id,
                     )
                 )
             ).scalar_one()
 
             if not field_exists:
-                raise ValueError(
-                    f"Field with ID {attr_def.field_id} does not exist in data source ID {dataset.data_source_id}"
-                )
+                raise ValueError(f"Field with ID {attr_def.field_id} does not exist in data source ID {data_source_id}")
 
-            db_attr = mprep.Attribute(name=attr_def.name, dataset_id=dataset.id, field_id=attr_def.field_id)
+            # Create attribute record with renamed columns and manually assigned ID
+            db_attr = mprep.Attribute(id=next_attr_id, name=attr_def.name, dataset=dataset.id, field=attr_def.field_id)
             db.add(db_attr)
-            db.flush()  # Get the ID
+            db.flush()
+            next_attr_id += 1
 
-            instances_query = (
-                select(mdata.DataSourceInstance)
-                .options(joinedload(mdata.DataSourceInstance.field))
-                .where(mdata.DataSourceInstance.field_id == attr_def.field_id)
-            )
-            instances = db.scalars(instances_query).all()
+            # Query data from dynamic source table (using composite PK)
+            field = db.execute(
+                select(mdata.Field).where(
+                    mdata.Field.id == attr_def.field_id, mdata.Field.data_source == data_source_id
+                )
+            ).scalar_one_or_none()
+            if not field:
+                raise ValueError(f"Field with ID {attr_def.field_id} not found in data source {data_source_id}")
+            instances_query = select(
+                source_table.c.id.label("row_id"),
+                source_table.c.value_nominal,
+                source_table.c.value_numeric,
+            ).where(source_table.c.field == attr_def.field_id)
+
+            instances = db.execute(instances_query).all()
 
             if not instances:
                 logger.warning(f"No instances found for field {attr_def.field_id}")
@@ -90,7 +117,7 @@ def create_attributes(dataset_id: int, xml: str, db_url: str):
             value_frequencies: dict[str, list[int]] = defaultdict(list)
 
             for instance in instances:
-                if instance.field.data_type == FieldType.numeric:
+                if field.data_type == FieldType.numeric:
                     transform_input: float | str | None = (
                         float(instance.value_numeric) if instance.value_numeric is not None else None
                     )
@@ -102,21 +129,25 @@ def create_attributes(dataset_id: int, xml: str, db_url: str):
                 value_frequencies[transformed_value].append(instance.row_id)
 
             for value, tx_ids in value_frequencies.items():
-                id = db.execute(
-                    insert(mprep.DatasetValue)
-                    .values(value=value, frequency=len(tx_ids), attribute_id=db_attr.id)
-                    .returning(mprep.DatasetValue.id)
+                # Insert into dynamic value table (pp_value_{ID})
+                value_id = db.execute(
+                    insert(dataset_value_table)
+                    .values(value=value, frequency=len(tx_ids), attribute=db_attr.id)
+                    .returning(dataset_value_table.c.id)
                 ).scalar_one()
+
+                # Insert into dynamic instance table (dataset_{ID})
                 while len(tx_ids) > 0:
                     instance_tx_ids = tx_ids[:1000]
                     tx_ids = tx_ids[1000:]
                     instances_to_add = [
-                        {"tx_id": tx_id, "value_id": id, "attribute_id": db_attr.id} for tx_id in instance_tx_ids
+                        {"tid": tx_id, "value": value_id, "attribute": db_attr.id} for tx_id in instance_tx_ids
                     ]
-                    _ = db.execute(insert(mprep.DatasetInstance), instances_to_add)
+                    _ = db.execute(insert(dataset_instance_table), instances_to_add)
                     db.flush()
 
             db_attr.unique_values_size = len(value_frequencies)
+            db_attr.active = True
 
             logger.info(
                 f"Created attribute '{attr_def.name}' with {len(value_frequencies)} unique values "

@@ -1,4 +1,3 @@
-from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
@@ -77,29 +76,29 @@ class DataSourceCreate(DataSourceBase):
 
 
 class DataSourceRead(DataSourceBase):
+    """Schema for reading a data source.
+
+    The Scala-compatible schema doesn't include timestamps.
+    Model uses 'active' field.
+    """
+
     id: int = Field(1, description="ID of the data source")
-    created_at: datetime = Field(datetime(2025, 1, 1, 10, 10, 10), description="Creation date of the data source")
-    updated_at: datetime = Field(
-        datetime(2025, 1, 1, 10, 20, 30),
-        description="Last update date of the data source",
-    )
     size: int = Field(100, description="Size of the data source")
+    active: bool = Field(False, description="Whether the data source is active (tables created)")
     upload_id: UUID = Field(
         UUID("397aab84-43c0-4cfc-9c9f-54d2585ce9ac"),
-        description="UUID from either Upload or PreviewUpload relationship",
+        description="UUID from Upload relationship",
     )
 
-    model_config: ConfigDict = ConfigDict(from_attributes=True)
+    model_config: ConfigDict = ConfigDict(from_attributes=True, populate_by_name=True)
 
     @model_validator(mode="before")
     @classmethod
     def set_upload_id(cls, data: "DataSource") -> "DataSource":
         if hasattr(data, "upload") and data.upload:
             setattr(data, "upload_id", data.upload.uuid)
-        elif hasattr(data, "preview_upload") and data.preview_upload:
-            setattr(data, "upload_id", data.preview_upload.uuid)
         else:
-            raise ValueError("No upload or preview_upload relationship found")
+            raise ValueError("No upload relationship found")
         return data
 
 
@@ -113,15 +112,20 @@ class FieldCreate(FieldBase):
 
 
 class FieldRead(FieldBase):
+    """Schema for reading a field.
+
+    Model uses 'data_source' but we expose as 'data_source_id' for API compatibility.
+    """
+
     id: int
-    data_source_id: int
+    data_source_id: int = Field(validation_alias="data_source")
     unique_count: int | None = None
     support: int | None = None
     min_value: float | None = None
     max_value: float | None = None
     avg_value: float | None = None
 
-    model_config: ConfigDict = ConfigDict(from_attributes=True)
+    model_config: ConfigDict = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
 class FieldStatsSchema(BaseSchema):

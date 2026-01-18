@@ -4,7 +4,7 @@ from decimal import Decimal
 from typing import TYPE_CHECKING, final
 from uuid import UUID as pyUUID
 
-from sqlalchemy import DECIMAL, UUID, DateTime, Enum, ForeignKey, Integer, String
+from sqlalchemy import DECIMAL, UUID, DateTime, Enum, ForeignKey, Integer, PrimaryKeyConstraint, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from easyminer.database import Base
@@ -93,7 +93,11 @@ class Chunk(Base):
 
 
 class DataSource(Base):
-    """Data source model representing a data set."""
+    """Data source model representing a data set.
+
+    Instance data is stored in dynamic tables: data_source_{id} and value_{id}.
+    These are created/dropped via easyminer.models.dynamic_tables.
+    """
 
     __tablename__: str = "data_source"
 
@@ -101,29 +105,30 @@ class DataSource(Base):
     name: Mapped[str] = mapped_column(String(255))
     type: Mapped[DbType] = mapped_column(Enum(DbType), nullable=False)
     size: Mapped[int] = mapped_column(default=0)
-    created_at: Mapped[datetime] = mapped_column(default=datetime.now(UTC))
-    updated_at: Mapped[datetime] = mapped_column(default=datetime.now(UTC), onupdate=datetime.now(UTC))
+    active: Mapped[bool] = mapped_column(default=False)
 
     # Relationships
-    fields: Mapped[list["Field"]] = relationship(back_populates="data_source", cascade="all, delete-orphan")
-    instances: Mapped[list["DataSourceInstance"]] = relationship(
-        back_populates="data_source", cascade="all, delete-orphan"
-    )
-    values: Mapped[list["DataSourceValue"]] = relationship(back_populates="data_source", cascade="all, delete-orphan")
+    fields: Mapped[list["Field"]] = relationship(back_populates="data_source_rel", cascade="all, delete-orphan")
     upload_id: Mapped[int] = mapped_column(ForeignKey("upload.id", ondelete="CASCADE"))
     upload: Mapped["Upload"] = relationship(
         back_populates="data_source", cascade="all, delete-orphan", single_parent=True
     )
     tasks: Mapped[list["Task"]] = relationship(back_populates="data_source", cascade="all, delete-orphan")
-    datasets: Mapped[list["Dataset"]] = relationship(back_populates="data_source", cascade="all, delete-orphan")
+    datasets: Mapped[list["Dataset"]] = relationship(back_populates="data_source_rel", cascade="all, delete-orphan")
 
 
 class Field(Base):
-    """Field model representing a column in a data source."""
+    """Field model representing a column in a data source.
+
+    Uses composite primary key (id, data_source) for Scala compatibility.
+    Note: autoincrement not used because SQLite doesn't support it with composite keys.
+    IDs are assigned manually based on max(id)+1 for the data_source.
+    """
 
     __tablename__: str = "field"
+    __table_args__ = (PrimaryKeyConstraint("id", "data_source"),)
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, index=True)
+    id: Mapped[int] = mapped_column()
     name: Mapped[str] = mapped_column(String(255))
     data_type: Mapped["FieldType"] = mapped_column(Enum(FieldType))
     index: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -134,9 +139,10 @@ class Field(Base):
     support_nominal: Mapped[int] = mapped_column(default=0)
     support_numeric: Mapped[int] = mapped_column(default=0)
 
-    data_source_id: Mapped[int] = mapped_column(ForeignKey("data_source.id", ondelete="CASCADE"))
-    data_source: Mapped["DataSource"] = relationship("DataSource", back_populates="fields")
-    attributes: Mapped[list["Attribute"]] = relationship(back_populates="field", cascade="all, delete-orphan")
+    # Foreign key renamed from data_source_id to data_source for Scala compatibility
+    data_source: Mapped[int] = mapped_column(ForeignKey("data_source.id", ondelete="CASCADE"))
+    data_source_rel: Mapped["DataSource"] = relationship("DataSource", back_populates="fields")
+    attributes: Mapped[list["Attribute"]] = relationship(back_populates="field_rel", cascade="all, delete-orphan")
     numeric_detail: Mapped["FieldNumericDetail | None"] = relationship(
         "FieldNumericDetail", back_populates="field", uselist=False
     )
@@ -188,36 +194,3 @@ class FieldNumericDetail(Base):
     avg_value: Mapped[Decimal] = mapped_column(DECIMAL)
 
     field: Mapped["Field"] = relationship("Field", back_populates="numeric_detail")
-
-
-class DataSourceInstance(Base):
-    """Represents a single cell in the data source."""
-
-    __tablename__: str = "data_source_instance"
-
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, index=True)
-    row_id: Mapped[int] = mapped_column(Integer)  # Row number in the original data
-    col_id: Mapped[int] = mapped_column(Integer)  # Column number in the original data
-    value_nominal: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    value_numeric: Mapped[Decimal | None] = mapped_column(DECIMAL, nullable=True)
-
-    data_source_id: Mapped[int] = mapped_column(ForeignKey("data_source.id", ondelete="CASCADE"))
-    data_source: Mapped["DataSource"] = relationship("DataSource", back_populates="instances")
-    field_id: Mapped[int] = mapped_column(ForeignKey("field.id", ondelete="CASCADE"))
-    field: Mapped["Field"] = relationship("Field")
-
-
-class DataSourceValue(Base):
-    """Represents unique values and their frequencies."""
-
-    __tablename__: str = "data_source_value"
-
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, index=True)
-    value_nominal: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    value_numeric: Mapped[Decimal | None] = mapped_column(DECIMAL, nullable=True)
-    frequency: Mapped[int] = mapped_column(Integer)
-
-    data_source_id: Mapped[int] = mapped_column(ForeignKey("data_source.id", ondelete="CASCADE"))
-    data_source: Mapped["DataSource"] = relationship("DataSource", back_populates="values")
-    field_id: Mapped[int] = mapped_column(ForeignKey("field.id", ondelete="CASCADE"))
-    field: Mapped["Field"] = relationship("Field")

@@ -2,13 +2,17 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Body, Form, HTTPException, Path, Query, status
-from sqlalchemy import select
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import joinedload
 
 from easyminer.api.task import router as task_router
 from easyminer.config import API_V1_PREFIX
 from easyminer.dependencies import ApiKey, AuthenticatedSession, get_database_config
-from easyminer.models.preprocessing import Attribute, Dataset, DatasetValue
+from easyminer.models.dynamic_tables import (
+    drop_dataset_tables,
+    get_dataset_value_table,
+)
+from easyminer.models.preprocessing import Attribute, Dataset
 from easyminer.schemas.data import DbType
 from easyminer.schemas.preprocessing import (
     AttributeRead,
@@ -25,7 +29,7 @@ router = APIRouter(prefix=API_V1_PREFIX, tags=["Preprocessing"])
 @router.get("/dataset")
 async def list_datasets(db: AuthenticatedSession) -> list[DatasetRead]:
     """Display a list of all datasets within the user data space."""
-    datasets = (await db.execute(select(Dataset).options(joinedload(Dataset.data_source)))).scalars().all()
+    datasets = (await db.execute(select(Dataset).options(joinedload(Dataset.data_source_rel)))).scalars().all()
     return [DatasetRead.model_validate(dataset) for dataset in datasets]
 
 
@@ -67,11 +71,24 @@ async def get_dataset(db: AuthenticatedSession, id: Annotated[int, Path()]):
 
 
 @router.delete("/dataset/{id}")
-async def delete_dataset(db: AuthenticatedSession, id: Annotated[int, Path()]):
-    """Delete this dataset."""
+async def delete_dataset(
+    db: AuthenticatedSession,
+    api_key: ApiKey,
+    id: Annotated[int, Path()],
+):
+    """Delete this dataset and its dynamic tables."""
     dataset = await db.get(Dataset, id)
     if not dataset:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset not found")
+
+    # Drop dynamic tables before deleting the dataset
+    if dataset.active:
+        db_config = await get_database_config(api_key, DbType.limited)
+        sync_engine = create_engine(db_config.get_sync_url())
+        try:
+            drop_dataset_tables(sync_engine, id)
+        finally:
+            sync_engine.dispose()
 
     await db.delete(dataset)
     await db.commit()
@@ -149,8 +166,9 @@ async def delete_attribute(
     if not dataset:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset not found")
 
+    # Use renamed column: dataset instead of dataset_id
     attribute = await db.scalar(
-        select(Attribute).where(Attribute.id == attribute_id).where(Attribute.dataset_id == dataset_id)
+        select(Attribute).where(Attribute.id == attribute_id).where(Attribute.dataset == dataset_id)
     )
     if not attribute:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Attribute not found")
@@ -170,8 +188,9 @@ async def get_attribute(
     if not dataset:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset not found")
 
+    # Use renamed column: dataset instead of dataset_id
     attribute = await db.scalar(
-        select(Attribute).where(Attribute.id == attribute_id).where(Attribute.dataset_id == dataset_id)
+        select(Attribute).where(Attribute.id == attribute_id).where(Attribute.dataset == dataset_id)
     )
     if not attribute:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Attribute not found")
@@ -191,8 +210,9 @@ async def rename_attribute(
     if not dataset:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset not found")
 
+    # Use renamed column: dataset instead of dataset_id
     attribute = await db.scalar(
-        select(Attribute).where(Attribute.id == attribute_id).where(Attribute.dataset_id == dataset_id)
+        select(Attribute).where(Attribute.id == attribute_id).where(Attribute.dataset == dataset_id)
     )
     if not attribute:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Attribute not found")
@@ -214,19 +234,17 @@ async def list_values(
     if not dataset:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset not found")
 
+    # Use renamed column: dataset instead of dataset_id
     attribute = await db.scalar(
-        select(Attribute).where(Attribute.id == attribute_id).where(Attribute.dataset_id == dataset_id)
+        select(Attribute).where(Attribute.id == attribute_id).where(Attribute.dataset == dataset_id)
     )
     if not attribute:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Attribute not found")
 
+    # Query the dynamic value table (pp_value_{ID})
+    value_table = get_dataset_value_table(dataset_id)
     values = (
-        (
-            await db.execute(
-                select(DatasetValue).where(DatasetValue.attribute_id == attribute.id).offset(offset).limit(limit)
-            )
-        )
-        .scalars()
-        .all()
-    )
-    return [AttributeValueRead.model_validate(value) for value in values]
+        await db.execute(select(value_table).where(value_table.c.attribute == attribute.id).offset(offset).limit(limit))
+    ).all()
+
+    return [AttributeValueRead(id=v.id, value=v.value, frequency=v.frequency) for v in values]

@@ -6,10 +6,10 @@ import pandas as pd
 from pyarc import TransactionDB
 from pyarc.algorithms import createCARs, top_rules
 from sqlalchemy import select
-from sqlalchemy.orm import joinedload
 
 from easyminer.database import get_sync_db_session
-from easyminer.models.preprocessing import Attribute, DatasetInstance
+from easyminer.models.dynamic_tables import get_dataset_table, get_dataset_value_table
+from easyminer.models.preprocessing import Attribute
 from easyminer.parsers.pmml.miner import PMML as PMMLInput
 from easyminer.parsers.pmml.miner import (
     BBASetting,
@@ -150,10 +150,13 @@ class MinerService:
 
         Only loads attributes specified in required_attributes (if set), otherwise loads all.
         This significantly improves performance and memory usage for large datasets.
+
+        Uses dynamic tables: dataset_{ID} and pp_value_{ID}
         """
         with get_sync_db_session(self._db_url) as db:
             # Build query with optional attribute name filter
-            query = select(Attribute).where(Attribute.dataset_id == self._ds_id)
+            # Use renamed column: dataset instead of dataset_id
+            query = select(Attribute).where(Attribute.dataset == self._ds_id)
             if self._required_attributes:
                 query = query.where(Attribute.name.in_(self._required_attributes))
                 logger.info(
@@ -165,14 +168,21 @@ class MinerService:
             attributes = db.scalars(query).all()
             self._df = pd.DataFrame(columns=tuple(f.name for f in attributes))
 
+            # Get dynamic tables for this dataset
+            instance_table = get_dataset_table(self._ds_id)
+            value_table = get_dataset_value_table(self._ds_id)
+
             for attribute in attributes:
-                instances = db.scalars(
-                    select(DatasetInstance)
-                    .where(DatasetInstance.attribute_id == attribute.id)
-                    .order_by(DatasetInstance.tx_id)
-                    .options(joinedload(DatasetInstance.value))
+                # Query instances from dynamic table with value join
+                # Dynamic table columns: tid, attribute, value (references pp_value_{ID}.id)
+                instances = db.execute(
+                    select(instance_table.c.tid, value_table.c.value)
+                    .select_from(instance_table)
+                    .join(value_table, instance_table.c.value == value_table.c.id)
+                    .where(instance_table.c.attribute == attribute.id)
+                    .order_by(instance_table.c.tid)
                 ).all()
-                self._df[attribute.name] = [i.value.value for i in instances]
+                self._df[attribute.name] = [i.value for i in instances]
 
             logger.info(f"Loaded {len(self._df)} rows with {len(self._df.columns)} columns")
 
