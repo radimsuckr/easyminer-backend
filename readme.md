@@ -10,3 +10,7 @@
    - Update `.env` variables if applicable
 7. `docker compose up -d`
 8. `just dev`
+
+## Celery auto-reload
+
+Hot reloading for Celery is done via [watchdog](https://github.com/gorakhargosh/watchdog). Install with `uv`: `uv tool install 'watchdog[watchmedo]'`.

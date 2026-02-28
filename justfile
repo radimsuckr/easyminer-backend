@@ -2,51 +2,51 @@ docker_image_name := "easyminer-backend"
 
 [default]
 list:
-	@just --list
+    @just --list
 
 build-docker:
-	docker build -t "{{ docker_image_name }}:latest" --target api .
-	docker build -t "{{ docker_image_name }}-worker:latest" --target worker .
+    docker build -t "{{ docker_image_name }}:latest" --target api .
+    docker build -t "{{ docker_image_name }}-worker:latest" --target worker .
 
 docker-services:
-	docker compose up -d mariadb redis
+    docker compose up -d mariadb redis
 
 dev:
-	uv run uvicorn easyminer.app:app --reload --log-level debug
+    uv run uvicorn easyminer.app:app --reload --log-level debug
 
 run:
-	uv run uvicorn easyminer.app:app --log-level info
+    uv run uvicorn easyminer.app:app --log-level info
 
-[working-directory: "tools"]
+[working-directory("tools")]
 fake_server:
-	uv run fake_server.py
+    uv run fake_server.py
 
 test:
-	uv run pytest tests/
+    uv run pytest tests/
 
 celery:
-	uv run celery -A easyminer.worker worker -l INFO -O fair
+    uv run watchmedo auto-restart --patterns='**/*.py' --recursive -- celery -A easyminer.worker worker -l INFO -O fair
 
 reinit-db:
-	docker compose kill mariadb
-	docker compose rm -f mariadb
-	docker compose up -d mariadb
+    docker compose kill mariadb
+    docker compose rm -f mariadb
+    docker compose up -d mariadb
 
-	rm -r easyminer/alembic/versions/* || true
+    rm -r easyminer/alembic/versions/* || true
 
-	# wait for mariadb to be up
-	sleep 2
+    # wait for mariadb to be up
+    sleep 2
 
-	uv run alembic upgrade head
-	uv run alembic revision --autogenerate -m "init"
+    uv run alembic upgrade head
+    uv run alembic revision --autogenerate -m "init"
 
 migrate-head:
-	uv run alembic upgrade head
+    uv run alembic upgrade head
 
-[working-directory: "thesis"]
+[working-directory("thesis")]
 typst:
-	typst compile main.typ
+    typst compile main.typ
 
-[working-directory: "thesis"]
+[working-directory("thesis")]
 typst-watch:
-	typst watch main.typ
+    typst watch main.typ
