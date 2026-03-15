@@ -5,7 +5,7 @@ import fim
 import pandas as pd
 from pyarc import TransactionDB
 from pyarc.algorithms import createCARs, top_rules
-from sqlalchemy import select
+from sqlalchemy import case, func, select
 
 from easyminer.database import get_sync_db_session
 from easyminer.models.dynamic_tables import get_dataset_table, get_dataset_value_table
@@ -149,7 +149,8 @@ class MinerService:
         Load data from database into DataFrame.
 
         Only loads attributes specified in required_attributes (if set), otherwise loads all.
-        This significantly improves performance and memory usage for large datasets.
+        Uses a single SQL-level pivot query so the DB returns data already in wide format,
+        transferring N rows instead of N*attributes rows.
 
         Uses dynamic tables: dataset_{ID} and pp_value_{ID}
         """
@@ -166,23 +167,33 @@ class MinerService:
                 logger.info("Loading all attributes from dataset")
 
             attributes = db.scalars(query).all()
-            self._df = pd.DataFrame(columns=tuple(f.name for f in attributes))
+            if not attributes:
+                self._df = pd.DataFrame()
+                logger.warning("No attributes found")
+                return
 
             # Get dynamic tables for this dataset
             instance_table = get_dataset_table(self._ds_id)
             value_table = get_dataset_value_table(self._ds_id)
 
-            for attribute in attributes:
-                # Query instances from dynamic table with value join
-                # Dynamic table columns: tid, attribute, value (references pp_value_{ID}.id)
-                instances = db.execute(
-                    select(instance_table.c.tid, value_table.c.value)
-                    .select_from(instance_table)
-                    .join(value_table, instance_table.c.value == value_table.c.id)
-                    .where(instance_table.c.attribute == attribute.id)
-                    .order_by(instance_table.c.tid)
-                ).all()
-                self._df[attribute.name] = [i.value for i in instances]
+            pivot_columns = [
+                func.max(
+                    case((instance_table.c.attribute == attr.id, value_table.c.value), else_=None)
+                ).label(attr.name)
+                for attr in attributes
+            ]
+
+            pivot_query = (
+                select(instance_table.c.tid, *pivot_columns)
+                .select_from(instance_table)
+                .join(value_table, instance_table.c.value == value_table.c.id)
+                .where(instance_table.c.attribute.in_([a.id for a in attributes]))
+                .group_by(instance_table.c.tid)
+                .order_by(instance_table.c.tid)
+            )
+
+            self._df = pd.read_sql(pivot_query, db.connection())
+            self._df = self._df.drop(columns=["tid"])
 
             logger.info(f"Loaded {len(self._df)} rows with {len(self._df.columns)} columns")
 
