@@ -2,6 +2,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Body, Form, HTTPException, Path, Query, status
+from fastapi.responses import PlainTextResponse
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import joinedload
 
@@ -75,7 +76,7 @@ async def delete_dataset(
     db: AuthenticatedSession,
     api_key: ApiKey,
     id: Annotated[int, Path()],
-):
+) -> PlainTextResponse:
     """Delete this dataset and its dynamic tables."""
     dataset = await db.get(Dataset, id)
     if not dataset:
@@ -92,6 +93,7 @@ async def delete_dataset(
 
     await db.delete(dataset)
     await db.commit()
+    return PlainTextResponse(content="", status_code=status.HTTP_200_OK)
 
 
 @router.put(
@@ -160,7 +162,7 @@ async def delete_attribute(
     db: AuthenticatedSession,
     dataset_id: Annotated[int, Path()],
     attribute_id: Annotated[int, Path()],
-) -> None:
+) -> PlainTextResponse:
     """Delete this attribute of a specific dataset."""
     dataset = await db.get(Dataset, dataset_id, options=[joinedload(Dataset.attributes)])
     if not dataset:
@@ -175,6 +177,7 @@ async def delete_attribute(
 
     await db.delete(attribute)
     await db.commit()
+    return PlainTextResponse(content="", status_code=status.HTTP_200_OK)
 
 
 @router.get("/dataset/{dataset_id}/attribute/{attribute_id}")

@@ -6,12 +6,13 @@ from sqlalchemy import func, select
 from easyminer.database import get_sync_db_session
 from easyminer.models.data import Field
 from easyminer.models.dynamic_tables import get_data_source_table
+from easyminer.schemas.data import IntervalResult
 from easyminer.worker import app
 
 logger = logging.getLogger(__name__)
 
 
-@app.task
+@app.task(pydantic=True)
 def aggregate_field_values(
     data_source_id: int,
     field_id: int,
@@ -21,11 +22,12 @@ def aggregate_field_values(
     min_inclusive: bool,
     max_inclusive: bool,
     db_url: str,
-) -> list[dict[str, Decimal | bool | int]]:
+) -> list[IntervalResult]:
     logger.info(
         f"Aggregating field values for data_source_id={data_source_id}, field_id={field_id}, bins={bins}, min={min}, max={max}, min_inclusive={min_inclusive}, max_inclusive={max_inclusive}"
     )
 
+    histograms: list[IntervalResult] = []
     with get_sync_db_session(db_url) as db:
         # Query field using composite PK (id, data_source)
         field = db.execute(
@@ -37,7 +39,6 @@ def aggregate_field_values(
         # Get the dynamic table for this data source
         instance_table = get_data_source_table(data_source_id)
 
-        histograms: list[dict[str, Decimal | bool | int]] = []
         bin_size = (max - min) / bins
         for i in range(bins):
             from_ = min + i * bin_size
@@ -61,13 +62,29 @@ def aggregate_field_values(
             frequency = db.execute(stmt).scalar_one()
 
             histograms.append(
-                {
-                    "from": from_,
-                    "to": to,
-                    "from_inclusive": from_inclusive,
-                    "to_inclusive": to_inclusive,
-                    "frequency": frequency,
-                }
+                IntervalResult(
+                    from_=float(from_),
+                    to=float(to),
+                    from_inclusive=from_inclusive,
+                    to_inclusive=to_inclusive,
+                    frequency=frequency,
+                )
+            )
+
+        # Also count NULL values as a separate interval
+        null_stmt = (
+            select(func.count())
+            .select_from(instance_table)
+            .where(
+                instance_table.c.field == field.id,
+                instance_table.c.value_numeric == None,  # noqa: E711
+            )
+        )
+        null_frequency = db.execute(null_stmt).scalar_one()
+
+        if null_frequency > 0:
+            histograms.append(
+                IntervalResult(from_=None, to=None, from_inclusive=True, to_inclusive=True, frequency=null_frequency)
             )
 
     return histograms

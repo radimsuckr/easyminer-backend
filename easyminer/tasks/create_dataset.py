@@ -2,11 +2,12 @@ from easyminer.database import get_sync_db_session
 from easyminer.models.data import DataSource
 from easyminer.models.dynamic_tables import create_dataset_tables
 from easyminer.models.preprocessing import Dataset
+from easyminer.schemas.preprocessing import DatasetResult
 from easyminer.worker import app
 
 
-@app.task
-def create_dataset(data_source_id: int, dataset_name: str, db_url: str):
+@app.task(pydantic=True)
+def create_dataset(data_source_id: int, dataset_name: str, db_url: str) -> DatasetResult:
     # This is done asynchronously to keep API compatibility with the Scala implementation.
     # It's easier than having to mock the flows. We could possibly return a fake task status,
     # store it somewhere and hack around it but it seems like way too much work than to
@@ -17,7 +18,7 @@ def create_dataset(data_source_id: int, dataset_name: str, db_url: str):
             raise ValueError(f"Data source with ID {data_source_id} not found")
 
         # Use renamed column: data_source instead of data_source_id
-        dataset = Dataset(name=dataset_name, data_source=data_source_id)
+        dataset = Dataset(name=dataset_name, data_source=data_source_id, size=datasource.size)
         db.add(dataset)
         db.flush()  # Get the ID
 
@@ -29,3 +30,8 @@ def create_dataset(data_source_id: int, dataset_name: str, db_url: str):
         dataset.active = True
 
         db.commit()
+        db.refresh(dataset)
+
+        return DatasetResult(
+            id=dataset.id, name=dataset.name, data_source=dataset.data_source, type=dataset.type, size=dataset.size
+        )

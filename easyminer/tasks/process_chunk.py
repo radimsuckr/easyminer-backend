@@ -1,9 +1,10 @@
 import csv
 import logging
+import re
 from decimal import Decimal, InvalidOperation
 
 import pydantic
-from sqlalchemy import func, insert, select, update
+from sqlalchemy import insert, select, update
 
 from easyminer.database import get_sync_db_session
 from easyminer.models.data import (
@@ -21,6 +22,11 @@ from easyminer.schemas.data import FieldType
 from easyminer.worker import app
 
 logger = logging.getLogger(__name__)
+
+# Pre-compiled regex for numeric validation (avoids expensive exception handling)
+# Matches standard numeric notations: optional sign, digits, optional decimal point
+# Does NOT support scientific notation or other complex formats for simplicity
+NUMERIC_PATTERN = re.compile(r"^-?\d+\.?\d*$")
 
 
 class ProcessChunkResult(pydantic.BaseModel):
@@ -54,7 +60,7 @@ def process_chunk(
         # Get sync engine for dynamic table operations
         sync_engine = db.get_bind()
 
-        with open(chunk.path, encoding=encoding) as file:
+        with open(chunk.path, encoding=encoding, buffering=8192 * 16) as file:
             reader = csv.reader(file, delimiter=separator, quotechar=quote_char, escapechar=escape_char)
             if original_state == UploadState.initialized:
                 # Create dynamic tables for this data source
@@ -90,16 +96,18 @@ def process_chunk(
             # Get the dynamic table for this data source
             instance_table = get_data_source_table(data_source_id)
 
-            fields = db.query(Field).filter(Field.data_source == data_source_id).all()
-            col_fields = {field.index: field for field in fields}
+            # Optimized field loading: only select needed columns instead of full objects
+            field_stmt = select(Field.id, Field.index).where(Field.data_source == data_source_id).order_by(Field.index)
+            field_results = db.execute(field_stmt).all()
+            col_fields = {row.index: row.id for row in field_results}
 
-            # Count existing rows in dynamic table
-            upload_size = db.execute(select(func.count()).select_from(instance_table)).scalar_one()
-            # Only count non-skipped fields for row counter calculation
-            non_skipped_fields = [f for f in fields if data_types[f.index] is not None]
-            row_counter = int(upload_size / len(non_skipped_fields)) if non_skipped_fields else 0
-            batch_size = 1000
+            # Optimized row counter: use the data source size instead of expensive COUNT query
+            row_counter = data_source.size
+
+            # Optimized batch size for better insert performance
+            batch_size = 10000
             instance_values: list[dict[str, str | float | int | None]] = []
+            rows_processed = 0
             for row in reader:
                 logger.debug(f"Row: {row}")
                 for i, col in enumerate(row):
@@ -112,36 +120,45 @@ def process_chunk(
                     col_nominal = col
                     col_numeric: float | None = None
 
-                    try:
-                        col_numeric = float(Decimal(col))
-                    except InvalidOperation:
-                        pass
+                    # Optimized numeric conversion: pre-validate with regex to avoid expensive exception handling
+                    if col and NUMERIC_PATTERN.match(col):
+                        try:
+                            col_numeric = float(Decimal(col))
+                        except (InvalidOperation, ValueError):
+                            pass
 
                     # Use dynamic table column names: id (was row_id), field (was field_id)
                     instance_values.append(
                         {
                             "id": row_counter,
-                            "field": col_fields[i].id,
+                            "field": col_fields[i],
                             "value_nominal": col_nominal,
                             "value_numeric": col_numeric,
                         }
                     )
                 row_counter += 1
-                if len(instance_values) % batch_size == 0:
+                rows_processed += 1
+                if len(instance_values) >= batch_size:
                     logger.debug(f"Processing batch of {len(instance_values)} instances")
                     _ = db.execute(insert(instance_table), instance_values)
                     instance_values.clear()
+                    # Commit every batch to avoid accumulating huge transactions
+                    db.commit()
             if len(instance_values) > 0:
                 logger.debug(f"Processing last batch of {len(instance_values)} instances")
                 _ = db.execute(insert(instance_table), instance_values)
                 instance_values.clear()
+                db.commit()
 
-        # Unlock the upload
+        # Unlock the upload and update data source size incrementally
         logger.info("Unlocking the upload")
         _ = db.execute(update(Upload).values(state=UploadState.ready).where(Upload.id == chunk.upload_id))
-        upload_size = db.execute(select(func.count()).select_from(instance_table)).scalar_one()
-        _ = db.execute(update(DataSource).values(size=upload_size).where(DataSource.id == data_source_id))
-        logger.info("Unlocked")
+
+        # Update size incrementally instead of expensive COUNT query
+        _ = db.execute(
+            update(DataSource).values(size=DataSource.size + rows_processed).where(DataSource.id == data_source_id)
+        )
+        logger.info(f"Unlocked - processed {rows_processed} rows")
 
         db.commit()
 

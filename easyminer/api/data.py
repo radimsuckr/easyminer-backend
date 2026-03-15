@@ -42,6 +42,7 @@ from easyminer.models.data import (
 from easyminer.models.dynamic_tables import (
     drop_data_source_tables,
     get_data_source_table,
+    get_data_source_value_table,
 )
 from easyminer.schemas.data import (
     AggregatedInstance,
@@ -64,6 +65,7 @@ from easyminer.tasks.aggregate_field_values import aggregate_field_values
 from easyminer.tasks.calculate_field_numeric_detail import (
     calculate_field_numeric_detail,
 )
+from easyminer.tasks.populate_field_values import populate_field_values
 from easyminer.tasks.process_chunk import process_chunk
 from easyminer.tasks.update_field_statistics import update_field_statistics
 
@@ -192,6 +194,10 @@ async def upload_chunk(
                 headers={"db_url": db_url},
             )
             _ = update_field_statistics.apply_async(
+                kwargs={"field_id": field_id, "data_source_id": data_source_id, "db_url": db_url},
+                headers={"db_url": db_url},
+            )
+            _ = populate_field_values.apply_async(
                 kwargs={"field_id": field_id, "data_source_id": data_source_id, "db_url": db_url},
                 headers={"db_url": db_url},
             )
@@ -743,44 +749,29 @@ async def get_field_values(
     if not field:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Field not found")
 
-    # Get the dynamic table for this data source
-    instance_table = get_data_source_table(id)
+    # Query pre-computed values from dynamic value_{ID} table
+    value_table = get_data_source_value_table(id)
 
-    # Use dynamic table column names: id (was row_id), field (was field_id)
     query = (
         select(
-            func.min(instance_table.c.id).label("value_id"),  # Use first row_id as unique identifier
-            instance_table.c.value_nominal,
-            func.count(instance_table.c.pid).label("frequency"),
+            value_table.c.id.label("value_id"),
+            value_table.c.value_nominal,
+            value_table.c.frequency,
         )
-        .where(instance_table.c.field == field.id)
-        .group_by(instance_table.c.value_nominal)
-        .order_by(func.count(instance_table.c.pid).desc())
+        .where(value_table.c.field == field.id)
+        .order_by(value_table.c.frequency.desc())
     )
 
     if field.data_type == FieldType.numeric:
-        query = query.where(instance_table.c.value_numeric.isnot(None))
+        query = query.where(value_table.c.value_numeric.isnot(None))
 
     query = query.limit(limit).offset(offset)
 
     value_results = (await db.execute(query)).all()
 
-    total_rows = (
-        await db.execute(select(func.count(distinct(instance_table.c.id))).select_from(instance_table))
-    ).scalar_one()
-
-    present_rows = (
-        await db.execute(select(func.count(distinct(instance_table.c.id))).where(instance_table.c.field == field.id))
-    ).scalar_one()
-
-    null_frequency = total_rows - present_rows
-
     result: list[FieldValueSchema] = []
     for value_id, value, frequency in value_results:
         result.append(FieldValueSchema(id=value_id, value=value, frequency=frequency))
-
-    if null_frequency > 0:
-        result.append(FieldValueSchema(id=0, value=None, frequency=null_frequency))
 
     return result
 

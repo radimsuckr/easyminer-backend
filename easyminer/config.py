@@ -1,5 +1,5 @@
 import os
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -31,7 +31,7 @@ if not celery_backend:
     raise ValueError('Set "CELERY_BACKEND" environment variable')
 
 
-class EasyMinerModules(str, Enum):
+class EasyMinerModules(StrEnum):
     data = "data"
     preprocessing = "preprocessing"
     miner = "miner"

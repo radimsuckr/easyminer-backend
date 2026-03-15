@@ -1,4 +1,4 @@
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
@@ -10,33 +10,33 @@ if TYPE_CHECKING:
     from easyminer.models.data import DataSource
 
 
-class FieldType(str, Enum):
+class FieldType(StrEnum):
     nominal = "nominal"
     numeric = "numeric"
 
 
-class UploadFormat(str, Enum):
+class UploadFormat(StrEnum):
     nq = "nq"
     nt = "nt"
     ttl = "ttl"
 
 
-class CompressionType(str, Enum):
+class CompressionType(StrEnum):
     zip = "zip"
     gzip = "gzip"
     bzip2 = "bzip2"
     none = ""
 
 
-class MediaType(str, Enum):
+class MediaType(StrEnum):
     csv = "csv"
 
 
-class Locale(str, Enum):
+class Locale(StrEnum):
     en = "en"
 
 
-class DbType(str, Enum):
+class DbType(StrEnum):
     limited = "limited"
 
 
@@ -162,3 +162,13 @@ class Value(BaseSchema):
     id: int
     value: Any = None
     frequency: int
+
+
+class IntervalResult(BaseSchema):
+    from_: float | None = Field(None, alias="from")
+    to: float | None = Field(None)
+    from_inclusive: bool = Field(True)
+    to_inclusive: bool = Field(True)
+    frequency: int = Field(0)
+
+    model_config: ConfigDict = ConfigDict(populate_by_name=True)

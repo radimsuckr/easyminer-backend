@@ -66,9 +66,9 @@ def get_data_source_table(data_source_id: int) -> Table:
         Column("value_numeric", Double, nullable=True),
         Index(f"ix_{table_name}_field", "field"),
         Index(f"ix_{table_name}_id_field", "id", "field"),
-        mysql_engine='MyISAM',
-        mysql_charset='utf8',
-        mysql_collate='utf8_bin',
+        mysql_engine="MyISAM",
+        mysql_charset="utf8",
+        mysql_collate="utf8_bin",
         extend_existing=True,
     )
 
@@ -95,9 +95,10 @@ def get_data_source_value_table(data_source_id: int) -> Table:
         Column("value_numeric", Double, nullable=True),
         Column("frequency", Integer, nullable=False),
         Index(f"ix_{table_name}_field", "field"),
-        mysql_engine='MyISAM',
-        mysql_charset='utf8',
-        mysql_collate='utf8_bin',
+        Index(f"ix_{table_name}_field_freq", "field", "frequency"),
+        mysql_engine="MyISAM",
+        mysql_charset="utf8",
+        mysql_collate="utf8_bin",
         extend_existing=True,
     )
 
@@ -123,9 +124,9 @@ def get_dataset_table(dataset_id: int) -> Table:
         Column("value", Integer, nullable=False),  # references pp_value_{ID}.id
         Index(f"ix_{table_name}_tid", "tid"),
         Index(f"ix_{table_name}_attribute", "attribute"),
-        mysql_engine='MyISAM',
-        mysql_charset='utf8',
-        mysql_collate='utf8_bin',
+        mysql_engine="MyISAM",
+        mysql_charset="utf8",
+        mysql_collate="utf8_bin",
         extend_existing=True,
     )
 
@@ -150,9 +151,9 @@ def get_dataset_value_table(dataset_id: int) -> Table:
         Column("value", String(255), nullable=False),
         Column("frequency", Integer, nullable=False),
         Index(f"ix_{table_name}_attribute", "attribute"),
-        mysql_engine='MyISAM',
-        mysql_charset='utf8',
-        mysql_collate='utf8_bin',
+        mysql_engine="MyISAM",
+        mysql_charset="utf8",
+        mysql_collate="utf8_bin",
         extend_existing=True,
     )
 
