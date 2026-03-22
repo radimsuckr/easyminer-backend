@@ -62,7 +62,11 @@ def before_task_publish_handler(body, exchange, routing_key, *args, **kwargs):
     logger.debug(f"Task {header_id} published")
 
     with get_sync_db_session(db_url) as session:
-        query = insert(Task).values(task_id=UUID(header_id), name=header_id, status=TaskStatusEnum.pending).prefix_with("IGNORE")
+        query = (
+            insert(Task)
+            .values(task_id=UUID(header_id), name=header_id, status=TaskStatusEnum.pending)
+            .prefix_with("IGNORE")
+        )
         session.execute(query)
         session.commit()
 

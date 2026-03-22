@@ -10,18 +10,21 @@ from sqlalchemy import case, func, select
 from easyminer.database import get_sync_db_session
 from easyminer.models.dynamic_tables import get_dataset_table, get_dataset_value_table
 from easyminer.models.preprocessing import Attribute
-from easyminer.parsers.pmml.miner import PMML as PMMLInput
 from easyminer.parsers.pmml.miner import (
+    PMML,
     BBASetting,
     DBASetting,
     Extension,
     InterestMeasureThreshold,
+    SimplifiedPMML,
     TaskSetting,
 )
 from easyminer.schemas.center import DatabaseConfig
 from easyminer.serializers.pmml.miner import create_pmml_result_from_pyarc
 from easyminer.validators.miner import validate_mining_task
 from easyminer.worker import app
+
+PMMLInput = SimplifiedPMML | PMML
 
 logger = logging.getLogger(__name__)
 
@@ -393,8 +396,8 @@ class MinerService:
         return self._df
 
 
-@app.task(pydantic=True)
-def mine(pmml: PMMLInput) -> str:
+@app.task(bind=True)
+def mine(self, pmml: PMMLInput) -> str:
     """Mine association rules from a dataset using PMML task specification.
 
     This Celery task processes a PMML document that specifies mining parameters,
@@ -447,7 +450,7 @@ def mine(pmml: PMMLInput) -> str:
     """
     _ = validate_mining_task(pmml)
 
-    ts = pmml.association_model.task_setting
+    ts = pmml.get_task_setting()
     logger.info(f"PMML Version: {pmml.version}")
     logger.info(f"PMML Header: {pmml.header}")
 
@@ -459,8 +462,15 @@ def mine(pmml: PMMLInput) -> str:
     except ValueError:
         raise ValueError(f"Invalid dataset ID in Dataset extension: {dataset_ext.value}")
 
-    db_url = _build_db_url_from_pmml_extensions(pmml.header.extensions)
-    logger.info(f"Built db_url from PMML extensions: {_mask_password(db_url)}")
+    ext_dict = {ext.name.lower(): ext.value for ext in pmml.header.extensions}
+    if "database-server" in ext_dict:
+        db_url = _build_db_url_from_pmml_extensions(pmml.header.extensions)
+        logger.info(f"Built db_url from PMML extensions: {_mask_password(db_url)}")
+    else:
+        db_url = self.request.headers.get("db_url") if hasattr(self.request, "headers") else None
+        if not db_url:
+            raise ValueError("No database connection info found in PMML extensions or task headers")
+        logger.info(f"Using db_url from task headers: {_mask_password(db_url)}")
 
     # Check if CBA (Classification Based on Associations) is requested
     cba_requested = any(im.interest_measure.lower() == "cba" for im in ts.interest_measure_settings)

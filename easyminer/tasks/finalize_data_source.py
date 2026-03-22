@@ -23,7 +23,9 @@ def finalize_data_source(data_source_id: int, db_url: str) -> None:
         # Build covering index for the GROUP BY after all inserts are done
         table_name = source_table.name
         db.execute(
-            text(f"ALTER TABLE `{table_name}` ADD INDEX `ix_{table_name}_field_values` (`field`, `value_numeric`, `value_nominal`)")
+            text(
+                f"ALTER TABLE `{table_name}` ADD INDEX `ix_{table_name}_field_values` (`field`, `value_numeric`, `value_nominal`)"
+            )
         )
 
         # 1) Populate value table for ALL fields — same as Scala's MysqlValueBuilder.build()

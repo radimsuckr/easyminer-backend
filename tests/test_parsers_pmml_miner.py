@@ -6,17 +6,18 @@ from easyminer.parsers.pmml.miner import (
     DBASettingType,
     LiteralSign,
     SimplePmmlParser,
+    SimplifiedPMML,
 )
 
 
 def test_simple_pmml_parser_basic():
     """Complete PMML with required namespaces"""
     xml_content = """<?xml version="1.0" encoding="UTF-8"?>
-    <PMML xmlns="http://www.dmg.org/PMML-4_0"
+    <PMML xmlns="http://www.dmg.org/PMML-4_2"
           version="4.0"
           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-          xmlns:pmml="http://www.dmg.org/PMML-4_0"
-          xsi:schemaLocation="http://www.dmg.org/PMML-4_0 http://easyminer.eu/schemas/PMML4.0+GUHA0.1.xsd">
+          xmlns:pmml="http://www.dmg.org/PMML-4_2"
+          xsi:schemaLocation="http://www.dmg.org/PMML-4_2 http://easyminer.eu/schemas/PMML4.0+GUHA0.1.xsd">
       <Header copyright="Copyright (c) KIZI UEP, 2025">
         <Extension name="author" value="testuser"/>
         <Extension name="subsystem" value="R"/>
@@ -96,7 +97,7 @@ def test_simple_pmml_parser_basic():
 def test_header_parsing_all_extensions():
     """Header with all R backend extensions"""
     xml_content = """<?xml version="1.0" encoding="UTF-8"?>
-    <PMML xmlns="http://www.dmg.org/PMML-4_0" version="4.0">
+    <PMML xmlns="http://www.dmg.org/PMML-4_2" version="4.0">
       <Header copyright="Test Copyright">
         <Extension name="author" value="john_doe"/>
         <Extension name="subsystem" value="R"/>
@@ -151,7 +152,7 @@ def test_header_parsing_all_extensions():
 def test_bba_setting_one_category():
     """BBA with One category coefficient"""
     xml_content = """<?xml version="1.0" encoding="UTF-8"?>
-    <PMML xmlns="http://www.dmg.org/PMML-4_0" version="4.0">
+    <PMML xmlns="http://www.dmg.org/PMML-4_2" version="4.0">
       <Header><Application name="Test" version="1.0"/></Header>
       <DataDictionary/>
       <TransformationDictionary/>
@@ -195,7 +196,7 @@ def test_bba_setting_one_category():
 def test_bba_setting_subset():
     """BBA with Subset coefficient"""
     xml_content = """<?xml version="1.0" encoding="UTF-8"?>
-    <PMML xmlns="http://www.dmg.org/PMML-4_0" version="4.0">
+    <PMML xmlns="http://www.dmg.org/PMML-4_2" version="4.0">
       <Header><Application name="Test" version="1.0"/></Header>
       <DataDictionary/>
       <TransformationDictionary/>
@@ -238,7 +239,7 @@ def test_bba_setting_subset():
 def test_dba_settings_three_level_structure():
     """DBA 3-level hierarchy (Conjunction/Conjunction/Literal)"""
     xml_content = """<?xml version="1.0" encoding="UTF-8"?>
-    <PMML xmlns="http://www.dmg.org/PMML-4_0" version="4.0">
+    <PMML xmlns="http://www.dmg.org/PMML-4_2" version="4.0">
       <Header><Application name="Test" version="1.0"/></Header>
       <DataDictionary/>
       <TransformationDictionary/>
@@ -332,7 +333,7 @@ def test_dba_settings_three_level_structure():
 def test_dba_settings_with_disjunction():
     """DBA with Disjunction at Level 2"""
     xml_content = """<?xml version="1.0" encoding="UTF-8"?>
-    <PMML xmlns="http://www.dmg.org/PMML-4_0" version="4.0">
+    <PMML xmlns="http://www.dmg.org/PMML-4_2" version="4.0">
       <Header><Application name="Test" version="1.0"/></Header>
       <DataDictionary/>
       <TransformationDictionary/>
@@ -410,7 +411,7 @@ def test_dba_settings_with_disjunction():
 def test_dba_settings_negative_literal():
     """DBA with Negative literal sign"""
     xml_content = """<?xml version="1.0" encoding="UTF-8"?>
-    <PMML xmlns="http://www.dmg.org/PMML-4_0" version="4.0">
+    <PMML xmlns="http://www.dmg.org/PMML-4_2" version="4.0">
       <Header><Application name="Test" version="1.0"/></Header>
       <DataDictionary/>
       <TransformationDictionary/>
@@ -466,7 +467,7 @@ def test_dba_settings_negative_literal():
 def test_antecedent_and_consequent_settings():
     """Antecedent and Consequent references"""
     xml_content = """<?xml version="1.0" encoding="UTF-8"?>
-    <PMML xmlns="http://www.dmg.org/PMML-4_0" version="4.0">
+    <PMML xmlns="http://www.dmg.org/PMML-4_2" version="4.0">
       <Header><Application name="Test" version="1.0"/></Header>
       <DataDictionary/>
       <TransformationDictionary/>
@@ -534,7 +535,7 @@ def test_antecedent_and_consequent_settings():
 def test_interest_measure_conf_and_supp():
     """CONF and SUPP with ThresholdType and CompareType"""
     xml_content = """<?xml version="1.0" encoding="UTF-8"?>
-    <PMML xmlns="http://www.dmg.org/PMML-4_0" version="4.0">
+    <PMML xmlns="http://www.dmg.org/PMML-4_2" version="4.0">
       <Header><Application name="Test" version="1.0"/></Header>
       <DataDictionary/>
       <TransformationDictionary/>
@@ -588,7 +589,7 @@ def test_interest_measure_conf_and_supp():
 def test_interest_measure_rule_length():
     """RULE_LENGTH with Abs ThresholdType"""
     xml_content = """<?xml version="1.0" encoding="UTF-8"?>
-    <PMML xmlns="http://www.dmg.org/PMML-4_0" version="4.0">
+    <PMML xmlns="http://www.dmg.org/PMML-4_2" version="4.0">
       <Header><Application name="Test" version="1.0"/></Header>
       <DataDictionary/>
       <TransformationDictionary/>
@@ -640,7 +641,7 @@ def test_interest_measure_rule_length():
 def test_interest_measure_additional_measures():
     """Optional measures (LIFT, BASE, AAD)"""
     xml_content = """<?xml version="1.0" encoding="UTF-8"?>
-    <PMML xmlns="http://www.dmg.org/PMML-4_0" version="4.0">
+    <PMML xmlns="http://www.dmg.org/PMML-4_2" version="4.0">
       <Header><Application name="Test" version="1.0"/></Header>
       <DataDictionary/>
       <TransformationDictionary/>
@@ -713,7 +714,7 @@ def test_interest_measure_additional_measures():
 def test_lispm_miner_hypotheses_count_max():
     """LISp-Miner extension with HypothesesCountMax"""
     xml_content = """<?xml version="1.0" encoding="UTF-8"?>
-    <PMML xmlns="http://www.dmg.org/PMML-4_0" version="4.0">
+    <PMML xmlns="http://www.dmg.org/PMML-4_2" version="4.0">
       <Header><Application name="Test" version="1.0"/></Header>
       <DataDictionary/>
       <TransformationDictionary/>
@@ -739,7 +740,7 @@ def test_lispm_miner_hypotheses_count_max():
 def test_association_model_attributes():
     """AssociationModel attributes (modelName, functionName, algorithmName)"""
     xml_content = """<?xml version="1.0" encoding="UTF-8"?>
-    <PMML xmlns="http://www.dmg.org/PMML-4_0" version="4.0">
+    <PMML xmlns="http://www.dmg.org/PMML-4_2" version="4.0">
       <Header><Application name="Test" version="1.0"/></Header>
       <DataDictionary/>
       <TransformationDictionary/>
@@ -768,7 +769,7 @@ def test_association_model_attributes():
 def test_interest_measure_threshold_type_case_sensitivity():
     """ThresholdType case sensitivity ("% of all" vs "Abs")"""
     xml_content = """<?xml version="1.0" encoding="UTF-8"?>
-    <PMML xmlns="http://www.dmg.org/PMML-4_0" version="4.0">
+    <PMML xmlns="http://www.dmg.org/PMML-4_2" version="4.0">
       <Header><Application name="Test" version="1.0"/></Header>
       <DataDictionary/>
       <TransformationDictionary/>
@@ -814,7 +815,7 @@ def test_interest_measure_threshold_type_case_sensitivity():
 def test_interest_measure_compare_type_variations():
     """CompareType variations (Greater/Less/Equal)"""
     xml_content = """<?xml version="1.0" encoding="UTF-8"?>
-    <PMML xmlns="http://www.dmg.org/PMML-4_0" version="4.0">
+    <PMML xmlns="http://www.dmg.org/PMML-4_2" version="4.0">
       <Header><Application name="Test" version="1.0"/></Header>
       <DataDictionary/>
       <TransformationDictionary/>
@@ -868,7 +869,7 @@ def test_interest_measure_compare_type_variations():
 def test_data_dictionary_and_transformation_dictionary_empty():
     """Empty DataDictionary and TransformationDictionary"""
     xml_content = """<?xml version="1.0" encoding="UTF-8"?>
-    <PMML xmlns="http://www.dmg.org/PMML-4_0" version="4.0">
+    <PMML xmlns="http://www.dmg.org/PMML-4_2" version="4.0">
       <Header><Application name="Test" version="1.0"/></Header>
       <DataDictionary/>
       <TransformationDictionary/>
@@ -895,7 +896,7 @@ def test_data_dictionary_and_transformation_dictionary_empty():
 def test_data_dictionary_with_number_of_fields():
     """DataDictionary with numberOfFields attribute"""
     xml_content = """<?xml version="1.0" encoding="UTF-8"?>
-    <PMML xmlns="http://www.dmg.org/PMML-4_0" version="4.0">
+    <PMML xmlns="http://www.dmg.org/PMML-4_2" version="4.0">
       <Header><Application name="Test" version="1.0"/></Header>
       <DataDictionary numberOfFields="3"/>
       <TransformationDictionary/>
@@ -920,7 +921,7 @@ def test_data_dictionary_with_number_of_fields():
 def test_complete_mining_task_example():
     """Complete mining task (Age=young → LoanStatus=bad)"""
     xml_content = """<?xml version="1.0" encoding="UTF-8"?>
-    <PMML xmlns="http://www.dmg.org/PMML-4_0" version="4.0">
+    <PMML xmlns="http://www.dmg.org/PMML-4_2" version="4.0">
       <Header copyright="Test">
         <Extension name="author" value="testuser"/>
         <Extension name="subsystem" value="R"/>
@@ -1064,10 +1065,10 @@ def test_complete_mining_task_example():
             assert im.compare_type == "Less than or equal"
 
 
-def test_data_dictionary_and_transformation_dictionary_missing():
-    """Missing DataDictionary/TransformationDictionary raises error"""
+def test_data_dictionary_and_transformation_dictionary_optional():
+    """DataDictionary/TransformationDictionary are optional (flat task-setting format)"""
     xml_content = """<?xml version="1.0" encoding="UTF-8"?>
-    <PMML xmlns="http://www.dmg.org/PMML-4_0" version="4.0">
+    <PMML xmlns="http://www.dmg.org/PMML-4_2" version="4.0">
       <Header><Application name="Test" version="1.0"/></Header>
       <guha:AssociationModel xmlns:guha="http://keg.vse.cz/ns/GUHA0.1rev1" xmlns=""
                              modelName="1" functionName="associationRules" algorithmName="4ft">
@@ -1081,20 +1082,17 @@ def test_data_dictionary_and_transformation_dictionary_missing():
     </PMML>"""
 
     parser = SimplePmmlParser(xml_content)
+    pmml = parser.parse()
 
-    # Missing required elements should raise ValidationError
-    with pytest.raises(Exception) as exc_info:
-        _ = parser.parse()
-
-    # Verify it's a validation error about missing elements
-    error_msg = str(exc_info.value).lower()
-    assert "datadictionary" in error_msg or "transformationdictionary" in error_msg or "missing" in error_msg
+    assert pmml.data_dictionary is None
+    assert pmml.transformation_dictionary is None
+    assert pmml.association_model is not None
 
 
 def test_interest_measure_absolute_thresholds():
     """Absolute thresholds for confidence and support"""
     xml_content = """<?xml version="1.0" encoding="UTF-8"?>
-    <PMML xmlns="http://www.dmg.org/PMML-4_0" version="4.0">
+    <PMML xmlns="http://www.dmg.org/PMML-4_2" version="4.0">
       <Header><Application name="Test" version="1.0"/></Header>
       <DataDictionary/>
       <TransformationDictionary/>
@@ -1141,7 +1139,7 @@ def test_interest_measure_absolute_thresholds():
 def test_interest_measure_percentage_over_100():
     """Percentage values > 1.0 accepted (normalized by mining task)"""
     xml_content = """<?xml version="1.0" encoding="UTF-8"?>
-    <PMML xmlns="http://www.dmg.org/PMML-4_0" version="4.0">
+    <PMML xmlns="http://www.dmg.org/PMML-4_2" version="4.0">
       <Header><Application name="Test" version="1.0"/></Header>
       <DataDictionary/>
       <TransformationDictionary/>
@@ -1174,3 +1172,168 @@ def test_interest_measure_percentage_over_100():
     # Parser accepts value as-is (mining task normalizes to 0.8)
     assert conf.threshold == 80.0
     assert conf.threshold_type == "% of all"
+
+
+# ── Flat (simplified) format tests ────────────────────────────────────────────
+
+
+FLAT_PMML_COMPLETE = """<?xml version="1.0" encoding="UTF-8"?>
+<PMML version="4.2" xmlns="http://www.dmg.org/PMML-4_2">
+  <Header>
+    <Extension name="dataset" value="42"/>
+  </Header>
+  <TaskSetting>
+    <BBASetting id="1"><FieldRef>10</FieldRef><Coefficient><Type>All</Type></Coefficient></BBASetting>
+    <BBASetting id="2"><FieldRef>11</FieldRef><Coefficient><Type>All</Type></Coefficient></BBASetting>
+    <BBASetting id="3"><FieldRef>12</FieldRef><Coefficient><Type>All</Type></Coefficient></BBASetting>
+    <DBASetting id="101" type="Literal"><BASettingRef>1</BASettingRef><LiteralSign>Positive</LiteralSign></DBASetting>
+    <DBASetting id="102" type="Literal"><BASettingRef>2</BASettingRef><LiteralSign>Positive</LiteralSign></DBASetting>
+    <DBASetting id="103" type="Literal"><BASettingRef>3</BASettingRef><LiteralSign>Positive</LiteralSign></DBASetting>
+    <DBASetting id="200" type="Conjunction">
+      <BASettingRef>101</BASettingRef>
+      <BASettingRef>102</BASettingRef>
+    </DBASetting>
+    <AntecedentSetting>200</AntecedentSetting>
+    <ConsequentSetting>103</ConsequentSetting>
+    <InterestMeasureThreshold><InterestMeasure>SUPP</InterestMeasure><Threshold>0.01</Threshold></InterestMeasureThreshold>
+    <InterestMeasureThreshold><InterestMeasure>CONF</InterestMeasure><Threshold>0.5</Threshold></InterestMeasureThreshold>
+    <InterestMeasureThreshold><InterestMeasure>RULE_LENGTH</InterestMeasure><Threshold>5</Threshold></InterestMeasureThreshold>
+    <HypothesesCountMax>1000</HypothesesCountMax>
+  </TaskSetting>
+</PMML>"""
+
+
+def test_flat_format_parses_as_simplified():
+    """Flat format should parse as SimplifiedPMML (tried first)"""
+    parser = SimplePmmlParser(FLAT_PMML_COMPLETE)
+    result = parser.parse()
+    assert isinstance(result, SimplifiedPMML)
+
+
+def test_flat_format_version_and_header():
+    """Flat format: version and header extensions"""
+    parser = SimplePmmlParser(FLAT_PMML_COMPLETE)
+    pmml = parser.parse()
+
+    assert pmml.version == "4.2"
+    ext_dict = {ext.name: ext.value for ext in pmml.header.extensions}
+    assert ext_dict["dataset"] == "42"
+
+
+def test_flat_format_bba_settings():
+    """Flat format: BBASetting with All coefficient type"""
+    parser = SimplePmmlParser(FLAT_PMML_COMPLETE)
+    pmml = parser.parse()
+    ts = pmml.get_task_setting()
+
+    assert len(ts.bba_settings) == 3
+    bba = ts.bba_settings[0]
+    assert bba.id == "1"
+    assert bba.field_ref == "10"
+    assert bba.coefficient.type == CoefficientType.all
+    assert bba.name is None  # Flat format has no Name element
+
+
+def test_flat_format_dba_settings():
+    """Flat format: DBASetting hierarchy"""
+    parser = SimplePmmlParser(FLAT_PMML_COMPLETE)
+    pmml = parser.parse()
+    ts = pmml.get_task_setting()
+
+    assert len(ts.dba_settings) == 4
+
+    # Literals
+    literal = next(d for d in ts.dba_settings if d.id == "101")
+    assert literal.type == DBASettingType.literal
+    assert literal.ba_refs == ["1"]
+    assert literal.literal_sign == LiteralSign.positive
+
+    # Conjunction
+    conj = next(d for d in ts.dba_settings if d.id == "200")
+    assert conj.type == DBASettingType.conjunction
+    assert conj.ba_refs == ["101", "102"]
+
+
+def test_flat_format_interest_measures():
+    """Flat format: InterestMeasureThreshold directly under TaskSetting"""
+    parser = SimplePmmlParser(FLAT_PMML_COMPLETE)
+    pmml = parser.parse()
+    ts = pmml.get_task_setting()
+
+    assert len(ts.interest_measure_settings) == 3
+
+    measures = {im.interest_measure: im.threshold for im in ts.interest_measure_settings}
+    assert measures["SUPP"] == 0.01
+    assert measures["CONF"] == 0.5
+    assert measures["RULE_LENGTH"] == 5.0
+
+
+def test_flat_format_cedent_settings():
+    """Flat format: AntecedentSetting and ConsequentSetting"""
+    parser = SimplePmmlParser(FLAT_PMML_COMPLETE)
+    pmml = parser.parse()
+    ts = pmml.get_task_setting()
+
+    assert ts.antecedent_setting == "200"
+    assert ts.consequent_setting == "103"
+
+
+def test_flat_format_hypotheses_count_max():
+    """Flat format: HypothesesCountMax directly under TaskSetting"""
+    parser = SimplePmmlParser(FLAT_PMML_COMPLETE)
+    pmml = parser.parse()
+    ts = pmml.get_task_setting()
+
+    assert ts.lispm_miner_hypotheses_max == 1000
+
+
+def test_envelope_format_still_works():
+    """Envelope format should still parse correctly as fallback"""
+    xml_content = """<?xml version="1.0" encoding="UTF-8"?>
+    <PMML xmlns="http://www.dmg.org/PMML-4_2" version="4.0">
+      <Header><Application name="Test" version="1.0"/></Header>
+      <DataDictionary/>
+      <TransformationDictionary/>
+      <guha:AssociationModel xmlns:guha="http://keg.vse.cz/ns/GUHA0.1rev1" xmlns=""
+                             modelName="1" functionName="associationRules" algorithmName="4ft">
+        <TaskSetting>
+          <Extension name="LISp-Miner">
+            <HypothesesCountMax>500</HypothesesCountMax>
+          </Extension>
+          <BBASettings>
+            <BBASetting id="1">
+              <Text>Age</Text>
+              <Name>Age</Name>
+              <FieldRef>age</FieldRef>
+              <Coefficient><Type>One category</Type><Category>young</Category></Coefficient>
+            </BBASetting>
+          </BBASettings>
+          <ConsequentSetting>1</ConsequentSetting>
+        </TaskSetting>
+      </guha:AssociationModel>
+    </PMML>"""
+
+    parser = SimplePmmlParser(xml_content)
+    result = parser.parse()
+    assert isinstance(result, PMML)
+
+    ts = result.get_task_setting()
+    assert len(ts.bba_settings) == 1
+    assert ts.bba_settings[0].name == "Age"
+    assert ts.lispm_miner_hypotheses_max == 500
+
+
+def test_get_task_setting_interface_consistent():
+    """Both formats return TaskSetting with same interface via get_task_setting()"""
+    # Flat
+    flat_parser = SimplePmmlParser(FLAT_PMML_COMPLETE)
+    flat_pmml = flat_parser.parse()
+    flat_ts = flat_pmml.get_task_setting()
+
+    # Verify interface attributes exist
+    assert hasattr(flat_ts, "bba_settings")
+    assert hasattr(flat_ts, "dba_settings")
+    assert hasattr(flat_ts, "interest_measure_settings")
+    assert hasattr(flat_ts, "antecedent_setting")
+    assert hasattr(flat_ts, "consequent_setting")
+    assert hasattr(flat_ts, "lispm_miner_hypotheses_max")

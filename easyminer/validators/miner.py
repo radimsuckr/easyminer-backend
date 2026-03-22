@@ -16,7 +16,7 @@ class MinerTaskValidator:
 
     def __init__(self, pmml: PMML):
         self.pmml: PMML = pmml
-        self.task_setting: TaskSetting = pmml.association_model.task_setting
+        self.task_setting: TaskSetting = pmml.get_task_setting()
         self.interest_measures: dict[str, InterestMeasureThreshold] = {
             im.interest_measure.upper(): im for im in self.task_setting.interest_measure_settings
         }
@@ -68,16 +68,18 @@ class MinerTaskValidator:
                 f"Dataset extension must contain a valid integer, got: {ext_dict['dataset']}"
             )
 
-        # Validate database connection extensions
+        # Database extensions are only present in the full GUHA PMML format.
+        # In the flat task-setting format, db_url comes from the API key session.
+        if "database-server" not in ext_dict:
+            return
+
         required_db_extensions = ["database-server", "database-name", "database-user", "database-password"]
         missing = [name for name in required_db_extensions if name not in ext_dict or not ext_dict[name]]
 
         if missing:
             raise MinerTaskValidationError(f"Missing required database extensions in PMML header: {missing}")
 
-        # Validate database-server format (must contain port)
         db_server = ext_dict["database-server"]
-        # Handle both "mysql://host:port" and "host:port" formats
         server_str = db_server.split("://")[1] if "://" in db_server else db_server
 
         if ":" not in server_str:
@@ -85,7 +87,6 @@ class MinerTaskValidator:
                 f"database-server must contain port (format: host:port or mysql://host:port), got: {db_server}"
             )
 
-        # Validate port is numeric
         try:
             port_str = server_str.rsplit(":", 1)[1]
             _ = int(port_str)
@@ -150,7 +151,6 @@ class MinerTaskValidator:
             MinerTaskValidationError: If validation fails
         """
         self._validate_header_extensions()
-        self._validate_interest_measure_config()
 
         # Check if AUTO_CONF_SUPP is enabled
         auto_conf_supp = self._has_measure("AUTO_CONF_SUPP")
