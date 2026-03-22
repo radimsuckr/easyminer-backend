@@ -53,8 +53,10 @@ async def create_preview_upload(db: AsyncSession, settings: PreviewUploadSchema)
     return upload.uuid
 
 
-async def create_chunk(db: AsyncSession, upload_id: int, uploaded_at: datetime, path: str) -> int:
-    chunk = Chunk(upload_id=upload_id, uploaded_at=uploaded_at, path=path)
+async def create_chunk(
+    db: AsyncSession, upload_id: int, uploaded_at: datetime, path: str, is_first: bool = False
+) -> int:
+    chunk = Chunk(upload_id=upload_id, uploaded_at=uploaded_at, path=path, is_first=is_first)
     db.add(chunk)
     await db.flush()
     return chunk.id

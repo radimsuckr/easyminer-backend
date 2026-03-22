@@ -119,7 +119,7 @@ class FieldRead(FieldBase):
 
     id: int
     data_source_id: int = Field(validation_alias="data_source")
-    unique_count: int | None = None
+    unique_values_size: int | None = None
     support: int | None = None
     min_value: float | None = None
     max_value: float | None = None

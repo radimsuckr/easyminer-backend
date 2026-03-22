@@ -4,7 +4,7 @@ import logging
 from collections.abc import AsyncGenerator, Generator
 from datetime import datetime, timedelta
 
-from sqlalchemy import create_engine
+from sqlalchemy import Engine, create_engine
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
@@ -149,10 +149,27 @@ async def get_user_db_session(api_key: str) -> AsyncGenerator[AsyncSession]:
         raise
 
 
+_sync_engines: dict[str, Engine] = {}
+
+
+def dispose_sync_engines() -> None:
+    for engine in _sync_engines.values():
+        engine.dispose()
+    _sync_engines.clear()
+
+
+def get_sync_engine(db_url: str) -> Engine:
+    if db_url not in _sync_engines:
+        _sync_engines[db_url] = create_engine(
+            db_url, echo=settings.echo_sql, pool_pre_ping=True, pool_size=5, max_overflow=10, pool_recycle=300
+        )
+    return _sync_engines[db_url]
+
+
 @contextlib.contextmanager
 def get_sync_db_session(db_url: str) -> Generator[Session]:
-    sync_engine = create_engine(db_url, echo=settings.echo_sql, pool_pre_ping=True)
-    session = sessionmaker(sync_engine)()
+    engine = get_sync_engine(db_url)
+    session = sessionmaker(engine)()
     try:
         yield session
     except Exception:
@@ -160,4 +177,3 @@ def get_sync_db_session(db_url: str) -> Generator[Session]:
         raise
     finally:
         session.close()
-        sync_engine.dispose()

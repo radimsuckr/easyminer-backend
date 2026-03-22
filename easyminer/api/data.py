@@ -32,6 +32,8 @@ from easyminer.decompress import (
 )
 from easyminer.dependencies import ApiKey, AuthenticatedSession, get_database_config
 from easyminer.models.data import (
+    Chunk,
+    ChunkStatus,
     DataSource,
     Field,
     FieldNumericDetail,
@@ -62,12 +64,8 @@ from easyminer.schemas.error import StructuredHTTPException
 from easyminer.schemas.task import TaskStatus
 from easyminer.storage import DiskStorage
 from easyminer.tasks.aggregate_field_values import aggregate_field_values
-from easyminer.tasks.calculate_field_numeric_detail import (
-    calculate_field_numeric_detail,
-)
-from easyminer.tasks.populate_field_values import populate_field_values
+from easyminer.tasks.finalize_data_source import finalize_data_source
 from easyminer.tasks.process_chunk import process_chunk
-from easyminer.tasks.update_field_statistics import update_field_statistics
 
 MAX_FULL_UPLOAD_CHUNK_SIZE = 500 * 1024 * 1.05  # 500KB plus 5% overhead
 MAX_PREVIEW_UPLOAD_CHUNK_SIZE = 100 * 1024 * 1.05  # 100KB plus 5% overhead
@@ -128,9 +126,8 @@ async def start_preview_upload(db: AuthenticatedSession, settings: PreviewUpload
             "description": "Upload successful and closed",
             "model": UploadResponseSchema,
         },
-        status.HTTP_202_ACCEPTED: {"description": "Chunk accepted"},
+        status.HTTP_202_ACCEPTED: {"description": "Chunk accepted or still processing"},
         status.HTTP_403_FORBIDDEN: {"description": "Upload already closed"},
-        status.HTTP_429_TOO_MANY_REQUESTS: {"description": "Uploading chunks too fast"},
     },
 )
 async def upload_chunk(
@@ -139,7 +136,7 @@ async def upload_chunk(
     upload_id: Annotated[UUID, Path()],
     content: Annotated[
         str,
-        Body(examples=[_csv_upload_example], media_type="text/plain"),  # NOTE: text/csv could possibly be used here
+        Body(examples=[_csv_upload_example], media_type="text/plain"),
     ] = "",
 ) -> UploadResponseSchema | PlainTextResponse:
     if len(content) > MAX_FULL_UPLOAD_CHUNK_SIZE:
@@ -166,47 +163,45 @@ async def upload_chunk(
     if upload.state == UploadState.finished:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Upload already closed")
 
-    if upload.state == UploadState.locked:
-        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Upload is locked, try again later")
-
-    # Get database config to pass to Celery tasks
     db_config = await get_database_config(api_key, DbType.limited)
     db_url = db_config.get_sync_url()
 
+    # Finalize: empty chunk on a ready upload
     if upload.state == UploadState.ready and len(content) == 0:
+        chunks = (await db.scalars(select(Chunk).where(Chunk.upload_id == upload.id))).all()
+        statuses = {c.status for c in chunks}
+
+        if ChunkStatus.failed in statuses:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="One or more chunks failed to process",
+            )
+
+        if statuses != {ChunkStatus.processed}:
+            return PlainTextResponse(content="", status_code=status.HTTP_202_ACCEPTED)
+
         upload.state = UploadState.finished
+        data_source_id = upload.data_source.id
         result = UploadResponseSchema(
             id=upload.id,
             name=upload.name,
             type=upload.media_type,
             size=upload.data_source.size,
         )
-
-        data_source_id = upload.data_source.id
-        field_ids = (
-            await db.scalars(select(Field.id).where(Field.data_source == data_source_id).order_by(Field.index))
-        ).all()
         await db.commit()
 
-        for field_id in field_ids:
-            _ = calculate_field_numeric_detail.apply_async(
-                kwargs={"field_id": field_id, "data_source_id": data_source_id, "db_url": db_url},
-                headers={"db_url": db_url},
-            )
-            _ = update_field_statistics.apply_async(
-                kwargs={"field_id": field_id, "data_source_id": data_source_id, "db_url": db_url},
-                headers={"db_url": db_url},
-            )
-            _ = populate_field_values.apply_async(
-                kwargs={"field_id": field_id, "data_source_id": data_source_id, "db_url": db_url},
-                headers={"db_url": db_url},
-            )
+        finalize_data_source.apply_async(
+            kwargs={"data_source_id": data_source_id, "db_url": db_url},
+            headers={"db_url": db_url},
+        )
         return result
 
     if len(content) == 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Empty chunk")
 
-    if upload.state == UploadState.initialized:
+    is_first = upload.state == UploadState.initialized
+
+    if is_first:
         reader = csv.reader(
             io.StringIO(content),
             delimiter=upload.separator,
@@ -234,19 +229,13 @@ async def upload_chunk(
                 },
             )
 
-    # Lock the upload
-    original_state = upload.state
-    logging.info("Locking the upload")
-    upload.state = UploadState.locked
-    await db.flush()
-    logging.info("Locked")
+        upload.state = UploadState.ready
 
     chunk_datetime = datetime.now()
     chunk_path = pathlib.Path(f"{upload_id}/chunks/{chunk_datetime.strftime('%Y%m%d%H%M%S%f')}.chunk")
     storage = DiskStorage()
     _, saved_path = storage.save(chunk_path, content.encode("utf-8"))
-    chunk_id = await create_chunk(db, upload.id, chunk_datetime, str(saved_path))
-    logger.info("Chunk %s created for upload %s", chunk_id, upload_id)
+    chunk_id = await create_chunk(db, upload.id, chunk_datetime, str(saved_path), is_first=is_first)
 
     separator = upload.separator
     quote_char = upload.quotes_char
@@ -257,9 +246,9 @@ async def upload_chunk(
 
     await db.commit()
 
-    _ = process_chunk.apply_async(
-        args=(chunk_id, original_state),
+    process_chunk.apply_async(
         kwargs={
+            "chunk_id": chunk_id,
             "separator": separator,
             "quote_char": quote_char,
             "escape_char": escape_char,

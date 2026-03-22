@@ -4,7 +4,7 @@ from decimal import Decimal
 from typing import TYPE_CHECKING, final
 from uuid import UUID as pyUUID
 
-from sqlalchemy import DECIMAL, UUID, DateTime, Enum, ForeignKey, Integer, PrimaryKeyConstraint, String
+from sqlalchemy import DECIMAL, UUID, Boolean, DateTime, Enum, ForeignKey, Integer, PrimaryKeyConstraint, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from easyminer.database import Base
@@ -18,9 +18,16 @@ if TYPE_CHECKING:
 @final
 class UploadState(int, enum.Enum):
     initialized = 0
-    locked = 1
     ready = 2
     finished = 3
+
+
+@final
+class ChunkStatus(enum.StrEnum):
+    pending = "pending"
+    processing = "processing"
+    processed = "processed"
+    failed = "failed"
 
 
 class Upload(Base):
@@ -87,6 +94,8 @@ class Chunk(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, index=True)
     uploaded_at: Mapped[datetime] = mapped_column(DateTime())
     path: Mapped[str] = mapped_column(String(255))
+    status: Mapped[ChunkStatus] = mapped_column(Enum(ChunkStatus), default=ChunkStatus.pending)
+    is_first: Mapped[bool] = mapped_column(Boolean, default=False)
 
     upload_id: Mapped[int] = mapped_column(ForeignKey("upload.id", ondelete="CASCADE"))
     upload: Mapped["Upload"] = relationship(back_populates="chunks")
@@ -148,7 +157,7 @@ class Field(Base):
     )
 
     @property
-    def unique_count(self) -> int | None:
+    def unique_values_size(self) -> int | None:
         """Return unique count based on field type."""
         if self.data_type == FieldType.numeric:
             return self.unique_values_size_numeric if self.unique_values_size_numeric > 0 else None

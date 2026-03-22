@@ -9,12 +9,13 @@ from celery.signals import (
     celeryd_init,
     task_postrun,
     task_prerun,
+    worker_process_init,
 )
 from kombu import Exchange
 from sqlalchemy import insert, update
 
 from easyminer.config import celery_backend, celery_broker, logging_config
-from easyminer.database import get_sync_db_session
+from easyminer.database import dispose_sync_engines, get_sync_db_session
 from easyminer.models.task import Task, TaskStatusEnum
 
 logger = logging.getLogger(__name__)
@@ -34,6 +35,11 @@ app.autodiscover_tasks(["easyminer.tasks"])
 @celeryd_init.connect()
 def configure_logging(*args, **kwargs):
     logging.config.dictConfig(logging_config)
+
+
+@worker_process_init.connect()
+def reset_db_engines(*args, **kwargs):
+    dispose_sync_engines()
 
 
 def get_db_url_from_headers(kwargs) -> str:
@@ -56,12 +62,9 @@ def before_task_publish_handler(body, exchange, routing_key, *args, **kwargs):
     logger.debug(f"Task {header_id} published")
 
     with get_sync_db_session(db_url) as session:
-        query = insert(Task).values(task_id=UUID(header_id), name=header_id, status=TaskStatusEnum.pending)
-        result = session.execute(query)
+        query = insert(Task).values(task_id=UUID(header_id), name=header_id, status=TaskStatusEnum.pending).prefix_with("IGNORE")
+        session.execute(query)
         session.commit()
-
-    if result.rowcount == 0:
-        logger.error(f"Task {header_id} not saved")
 
 
 @after_task_publish.connect()

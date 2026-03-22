@@ -177,9 +177,9 @@ class MinerService:
             value_table = get_dataset_value_table(self._ds_id)
 
             pivot_columns = [
-                func.max(
-                    case((instance_table.c.attribute == attr.id, value_table.c.value), else_=None)
-                ).label(attr.name)
+                func.max(case((instance_table.c.attribute == attr.id, value_table.c.value), else_=None)).label(
+                    attr.name
+                )
                 for attr in attributes
             ]
 
