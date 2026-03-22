@@ -38,7 +38,7 @@ def test_flat_structure_single_bba():
     # Setup: DBA(1) -> BBA(10, name="age")
     from easyminer.parsers.pmml.miner import BBASettings, DBASettings
 
-    bba1 = _create_bba("10", "age", "age_field")
+    bba1 = _create_bba("10", "age", "age")
     dba1 = _create_dba("1", ["10"], DBASettingType.literal)
 
     task_setting = TaskSetting(
@@ -58,8 +58,8 @@ def test_flat_structure_single_bba():
 def test_flat_structure_multiple_bbas():
     """DBA references multiple BBAs"""
     # Setup: DBA(1) -> [BBA(10, "age"), BBA(11, "salary")]
-    bba1 = _create_bba("10", "age", "age_field")
-    bba2 = _create_bba("11", "salary", "salary_field")
+    bba1 = _create_bba("10", "age", "age")
+    bba2 = _create_bba("11", "salary", "salary")
     dba1 = _create_dba("1", ["10", "11"], DBASettingType.conjunction)
 
     task_setting = TaskSetting(
@@ -81,8 +81,8 @@ def test_two_level_hierarchy():
     # Setup:
     #   DBA(1) -> DBA(2)
     #   DBA(2) -> [BBA(10, "age"), BBA(11, "salary")]
-    bba1 = _create_bba("10", "age", "age_field")
-    bba2 = _create_bba("11", "salary", "salary_field")
+    bba1 = _create_bba("10", "age", "age")
+    bba2 = _create_bba("11", "salary", "salary")
     dba2 = _create_dba("2", ["10", "11"], DBASettingType.conjunction)
     dba1 = _create_dba("1", ["2"], DBASettingType.conjunction)
 
@@ -111,9 +111,9 @@ def test_three_level_hierarchy():
     #            DBA(32) -> BBA(3, "status")
 
     # BBAs (leaf nodes)
-    bba1 = _create_bba("1", "age", "age_field")
-    bba2 = _create_bba("2", "salary", "salary_field")
-    bba3 = _create_bba("3", "status", "status_field")
+    bba1 = _create_bba("1", "age", "age")
+    bba2 = _create_bba("2", "salary", "salary")
+    bba3 = _create_bba("3", "status", "status")
 
     # Level 3 DBAs (Literals)
     dba30 = _create_dba("30", ["1"], DBASettingType.literal)
@@ -148,7 +148,7 @@ def test_duplicate_attributes_deduplicated():
     #   DBA(2) -> BBA(10, "age")
     #   DBA(3) -> BBA(10, "age")  # Same BBA referenced again
 
-    bba1 = _create_bba("10", "age", "age_field")
+    bba1 = _create_bba("10", "age", "age")
     dba2 = _create_dba("2", ["10"], DBASettingType.literal)
     dba3 = _create_dba("3", ["10"], DBASettingType.literal)
     dba1 = _create_dba("1", ["2", "3"], DBASettingType.conjunction)
@@ -174,8 +174,8 @@ def test_mixed_dba_and_bba_references():
     #   DBA(2) -> BBA(10, "age")
     #   BBA(11, "salary")
 
-    bba1 = _create_bba("10", "age", "age_field")
-    bba2 = _create_bba("11", "salary", "salary_field")
+    bba1 = _create_bba("10", "age", "age")
+    bba2 = _create_bba("11", "salary", "salary")
     dba2 = _create_dba("2", ["10"], DBASettingType.literal)
     dba1 = _create_dba("1", ["2", "11"], DBASettingType.conjunction)
 

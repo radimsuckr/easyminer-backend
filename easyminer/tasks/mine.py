@@ -87,57 +87,35 @@ def _mask_password(db_url: str) -> str:
 
 
 def resolve_dba_to_attributes(dba: DBASetting, task_setting: TaskSetting) -> list[str]:
-    """Recursively resolve a DBA (Derived Boolean Attribute) to leaf-level attribute names.
+    """Recursively resolve a DBA (Derived Boolean Attribute) to leaf-level attribute references.
 
     DBAs form a hierarchical structure where:
     - Level 1 & 2 DBAs (Conjunction/Disjunction) reference other DBAs via BASettingRef
     - Level 3 DBAs (Literal) reference BBAs (Basic Boolean Attributes) via BASettingRef
 
-    This function recursively traverses the DBA hierarchy to collect all leaf-level
-    attribute names from BBAs.
-
-    Args:
-        dba: The DBA setting to resolve
-        task_setting: Task setting containing all BBA and DBA definitions
-
-    Returns:
-        List of unique attribute names (from BBAs)
-
-    Example:
-        DBA(id=10, type=Conjunction) -> [DBA(id=20), DBA(id=21)]
-          DBA(id=20, type=Conjunction) -> [DBA(id=30), DBA(id=31)]
-            DBA(id=30, type=Literal) -> BBA(id=1, name="age")
-            DBA(id=31, type=Literal) -> BBA(id=2, name="salary")
-          DBA(id=21, type=Literal) -> BBA(id=3, name="status")
-
-        Result: ["age", "salary", "status"]
+    Returns field_ref values from BBAs. In the envelope PMML format these are attribute
+    names; in the flat format these are integer attribute IDs.
     """
-    attribute_names: set[str] = set()
+    field_refs: set[str] = set()
 
-    # Build lookup dictionaries for efficient access
     bba_by_id: dict[str, BBASetting] = {bba.id: bba for bba in task_setting.bba_settings}
     dba_by_id: dict[str, DBASetting] = {dba.id: dba for dba in task_setting.dba_settings}
 
     def _resolve_ba_ref(ba_ref: str) -> None:
-        """Recursively resolve a BA reference (can be BBA or DBA)"""
-        # First check if it's a DBA (Derived Boolean Attribute)
         if ba_ref in dba_by_id:
             referenced_dba = dba_by_id[ba_ref]
-            # Recurse into the DBA's references
             for nested_ba_ref in referenced_dba.ba_refs:
                 _resolve_ba_ref(nested_ba_ref)
-        # Otherwise it must be a BBA (Basic Boolean Attribute)
         elif ba_ref in bba_by_id:
             referenced_bba = bba_by_id[ba_ref]
-            attribute_names.add(referenced_bba.name)
+            field_refs.add(referenced_bba.field_ref)
         else:
             logger.warning(f"BASettingRef '{ba_ref}' not found in BBA or DBA settings")
 
-    # Start resolution from the input DBA
     for ba_ref in dba.ba_refs:
         _resolve_ba_ref(ba_ref)
 
-    return sorted(attribute_names)  # Sort for deterministic output
+    return sorted(field_refs)
 
 
 class MinerService:
@@ -146,6 +124,8 @@ class MinerService:
         self._db_url: str = db_url
         self._required_attributes: list[str] | None = required_attributes
         self._df: pd.DataFrame | None = None
+        # Maps field_ref (ID or name) → attribute name (column name in DataFrame)
+        self._attr_ref_to_name: dict[str, str] = {}
 
     def _load_data(self) -> None:
         """
@@ -158,14 +138,19 @@ class MinerService:
         Uses dynamic tables: dataset_{ID} and pp_value_{ID}
         """
         with get_sync_db_session(self._db_url) as db:
-            # Build query with optional attribute name filter
-            # Use renamed column: dataset instead of dataset_id
             query = select(Attribute).where(Attribute.dataset == self._ds_id)
             if self._required_attributes:
-                query = query.where(Attribute.name.in_(self._required_attributes))
-                logger.info(
-                    f"Loading {len(self._required_attributes)} required attributes: {self._required_attributes}"
-                )
+                # Flat PMML format uses integer attribute IDs as field_ref;
+                # envelope format uses attribute names.
+                if all(ref.isdigit() for ref in self._required_attributes):
+                    attr_ids = [int(ref) for ref in self._required_attributes]
+                    query = query.where(Attribute.id.in_(attr_ids))
+                    logger.info(f"Loading {len(attr_ids)} required attributes by ID: {attr_ids}")
+                else:
+                    query = query.where(Attribute.name.in_(self._required_attributes))
+                    logger.info(
+                        f"Loading {len(self._required_attributes)} required attributes by name: {self._required_attributes}"
+                    )
             else:
                 logger.info("Loading all attributes from dataset")
 
@@ -174,6 +159,11 @@ class MinerService:
                 self._df = pd.DataFrame()
                 logger.warning("No attributes found")
                 return
+
+            # Build ID→name mapping so callers using numeric IDs can find column names
+            for attr in attributes:
+                self._attr_ref_to_name[str(attr.id)] = attr.name
+                self._attr_ref_to_name[attr.name] = attr.name
 
             # Get dynamic tables for this dataset
             instance_table = get_dataset_table(self._ds_id)
@@ -390,6 +380,12 @@ class MinerService:
 
         return cars
 
+    def resolve_attr_refs(self, refs: list[str]) -> list[str]:
+        """Translate attribute references (IDs or names) to DataFrame column names."""
+        if self._df is None:
+            self._load_data()
+        return [self._attr_ref_to_name.get(ref, ref) for ref in refs]
+
     def get_dataframe(self) -> pd.DataFrame:
         if self._df is None:
             raise ValueError("Data not loaded yet. Call _load_data() first.")
@@ -585,7 +581,11 @@ def mine(self, pmml: PMMLInput) -> str:
 
     svc = MinerService(dataset_id, db_url, required_attributes=required_attrs)
 
-    # Identify target column (should be the consequent attribute)
+    # Translate attribute refs (IDs or names) to DataFrame column names
+    antecedent_attrs = svc.resolve_attr_refs(antecedent_attrs)
+    consequent_attrs = svc.resolve_attr_refs(consequent_attrs)
+    logger.info(f"Resolved to column names - antecedent: {antecedent_attrs}, consequent: {consequent_attrs}")
+
     if not consequent_attrs:
         raise ValueError("No consequent attributes found")
     target_col = consequent_attrs[0]
