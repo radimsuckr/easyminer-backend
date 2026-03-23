@@ -64,20 +64,21 @@ def process_chunk(
                     reader = csv.reader(file, delimiter=separator, quotechar=quote_char, escapechar=escape_char)
                     header = next(reader)
 
-                field_id = 1
+                field_rows = []
                 for i, col in enumerate(header):
                     if data_types[i] is None:
                         continue
-                    db.add(
-                        Field(
-                            id=field_id,
-                            name=col,
-                            index=i,
-                            data_type=data_types[i],
-                            data_source=data_source_id,
-                        )
-                    )
-                    field_id += 1
+                    field_rows.append({
+                        "name": col,
+                        "index": i,
+                        "data_type": data_types[i],
+                        "data_source": data_source_id,
+                        "unique_values_size_nominal": 0,
+                        "unique_values_size_numeric": 0,
+                        "support_nominal": 0,
+                        "support_numeric": 0,
+                    })
+                db.execute(insert(Field), field_rows)
                 db.flush()
 
                 data_source.active = True

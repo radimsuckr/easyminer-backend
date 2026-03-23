@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from easyminer.app import app
 from easyminer.database import Base
 from easyminer.dependencies import get_authenticated_db_session
+from easyminer.models.data import Field
 
 BASE_URL: str = "http://test"
 
@@ -25,9 +26,11 @@ async def async_engine() -> AsyncGenerator[AsyncEngine]:
     # Use in-memory SQLite for tests
     engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
 
-    # Create all tables
+    # SQLite doesn't support autoincrement on composite PKs, temporarily disable it
+    Field.__table__.c.id.autoincrement = False
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    Field.__table__.c.id.autoincrement = True
 
     yield engine
 

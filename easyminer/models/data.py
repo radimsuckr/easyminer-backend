@@ -130,14 +130,13 @@ class Field(Base):
     """Field model representing a column in a data source.
 
     Uses composite primary key (id, data_source) for Scala compatibility.
-    Note: autoincrement not used because SQLite doesn't support it with composite keys.
-    IDs are assigned manually based on max(id)+1 for the data_source.
+    MySQL supports autoincrement on the first column of a composite PK.
     """
 
     __tablename__: str = "field"
     __table_args__ = (PrimaryKeyConstraint("id", "data_source"),)
 
-    id: Mapped[int] = mapped_column()
+    id: Mapped[int] = mapped_column(autoincrement=True)
     name: Mapped[str] = mapped_column(String(255))
     data_type: Mapped["FieldType"] = mapped_column(Enum(FieldType))
     index: Mapped[int] = mapped_column(Integer, nullable=False)

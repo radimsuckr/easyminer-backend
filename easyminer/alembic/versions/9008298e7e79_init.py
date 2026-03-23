@@ -1,8 +1,8 @@
 """init
 
-Revision ID: ee5e104952da
+Revision ID: 9008298e7e79
 Revises:
-Create Date: 2026-03-23 08:43:15.619555+01:00
+Create Date: 2026-03-23 12:50:59.200594+01:00
 
 """
 
@@ -13,7 +13,7 @@ from alembic import op
 
 
 # revision identifiers, used by Alembic.
-revision: str = "ee5e104952da"
+revision: str = "9008298e7e79"
 down_revision: str | None = None
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
@@ -110,7 +110,7 @@ def upgrade() -> None:
     op.create_index(op.f("ix_dataset_id"), "dataset", ["id"], unique=False)
     op.create_table(
         "field",
-        sa.Column("id", sa.Integer(), nullable=False),
+        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
         sa.Column("name", sa.String(length=255), nullable=False),
         sa.Column("data_type", sa.Enum("nominal", "numeric", name="fieldtype"), nullable=False),
         sa.Column("index", sa.Integer(), nullable=False),
