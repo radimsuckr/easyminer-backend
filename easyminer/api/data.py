@@ -701,7 +701,7 @@ async def get_field_stats(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Field is not of numeric type")
 
     field_numerical_details = (
-        await db.execute(select(FieldNumericDetail).where(FieldNumericDetail.id == field_id))
+        await db.execute(select(FieldNumericDetail).where(FieldNumericDetail.field_id == field_id))
     ).scalar_one_or_none()
     if not field_numerical_details:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Field numeric details not found")
@@ -817,7 +817,7 @@ async def get_aggregated_values(
     # Select min and max values if not provided
     if min is None:
         field_min = (
-            await db.execute(select(FieldNumericDetail.min_value).where(FieldNumericDetail.id == field_id))
+            await db.execute(select(FieldNumericDetail.min_value).where(FieldNumericDetail.field_id == field_id))
         ).scalar_one_or_none()
         if field_min is None:
             raise HTTPException(
@@ -827,7 +827,7 @@ async def get_aggregated_values(
         min = field_min
     if max is None:
         field_max = (
-            await db.execute(select(FieldNumericDetail.max_value).where(FieldNumericDetail.id == field_id))
+            await db.execute(select(FieldNumericDetail.max_value).where(FieldNumericDetail.field_id == field_id))
         ).scalar_one_or_none()
         if field_max is None:
             raise HTTPException(

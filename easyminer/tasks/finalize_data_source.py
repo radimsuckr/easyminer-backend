@@ -66,7 +66,7 @@ def finalize_data_source(data_source_id: int, db_url: str) -> None:
         # 3) Insert numeric detail for ALL fields at once
         db.execute(
             insert(FieldNumericDetail).from_select(
-                ["id", "min_value", "max_value", "avg_value"],
+                ["field_id", "min_value", "max_value", "avg_value"],
                 select(
                     Field.id,
                     func.min(source_table.c.value_numeric),

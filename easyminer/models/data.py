@@ -197,9 +197,10 @@ class FieldNumericDetail(Base):
 
     __tablename__: str = "field_numeric_detail"
 
-    id: Mapped[int] = mapped_column(ForeignKey("field.id", ondelete="CASCADE"), primary_key=True, index=True)
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    field_id: Mapped[int] = mapped_column(ForeignKey("field.id", ondelete="CASCADE"), unique=True, index=True)
     min_value: Mapped[Decimal] = mapped_column(DECIMAL)
     max_value: Mapped[Decimal] = mapped_column(DECIMAL)
     avg_value: Mapped[Decimal] = mapped_column(DECIMAL)
 
-    field: Mapped["Field"] = relationship("Field", back_populates="numeric_detail")
+    field: Mapped["Field"] = relationship("Field", back_populates="numeric_detail", foreign_keys=[field_id])
