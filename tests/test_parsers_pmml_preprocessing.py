@@ -81,13 +81,13 @@ def test_salary_equidistant_intervals():
     assert attribute.max_value == 12541.0
 
     # Test transformations
-    assert attribute.transform(8500.0) == "[8110.00, 9587.00)"
-    assert attribute.transform(10000.0) == "[9587.00, 11064.00)"
-    assert attribute.transform(12000.0) == "[11064.00, 12541.00)"
+    assert attribute.transform(8500.0) == "[8110.0,9587.0)"
+    assert attribute.transform(10000.0) == "[9587.0,11064.0)"
+    assert attribute.transform(12000.0) == "[11064.0,12541.0)"
 
 
 def test_equidistant_intervals_with_explicit_algorithm():
-    """Equidistant via Extension algorithm (NotImplementedError)"""
+    """Equidistant via Extension algorithm"""
     xml_content = """<?xml version="1.0" encoding="UTF-8"?>
     <TransformationDictionary xmlns="http://www.dmg.org/PMML-4_2">
         <DerivedField name="test-equidistant">
@@ -101,55 +101,50 @@ def test_equidistant_intervals_with_explicit_algorithm():
     </TransformationDictionary>"""
 
     pmml = TransformationDictionary.from_xml_string(xml_content)
+    attribute = create_attribute_from_pmml(pmml.derived_fields[0])
 
-    # This should raise NotImplementedError since we don't have explicit support for equidistant via Extension
-    try:
-        _ = create_attribute_from_pmml(pmml.derived_fields[0])
-        assert False, "Expected NotImplementedError for equidistant-intervals algorithm"
-    except NotImplementedError as e:
-        assert "equidistant-intervals" in str(e)
+    assert isinstance(attribute, EquidistantIntervalsAttribute)
+    assert attribute.name == "test-equidistant"
+    assert attribute.field_id == 200
+    assert attribute.bins == 4
+    assert attribute.min_value == 0.0
+    assert attribute.max_value == 100.0
+
+    assert attribute.transform(12.0) == "[0.0,25.0)"
+    assert attribute.transform(50.0) == "[50.0,75.0)"
+    assert attribute.transform(100.0) == "[75.0,100.0)"
 
 
 def test_salary_equifrequent_intervals():
-    """Equifrequent intervals with margins"""
+    """Equifrequent intervals PMML parsing"""
     xml_content = """<?xml version="1.0" encoding="UTF-8"?>
     <TransformationDictionary xmlns="http://www.dmg.org/PMML-4_2">
         <DerivedField name="salary-equifrequent-intervals">
             <Discretize field="734">
                 <Extension name="algorithm" value="equifrequent-intervals" />
                 <Extension name="bins" value="5" />
-                <Extension name="leftMargin" value="8110" />
-                <Extension name="rightMargin" value="12541" />
             </Discretize>
         </DerivedField>
     </TransformationDictionary>"""
 
     pmml = TransformationDictionary.from_xml_string(xml_content)
-    cutpoints = [9000.0, 10000.0, 11000.0, 12000.0]
-    attribute = create_attribute_from_pmml(pmml.derived_fields[0], cutpoints=cutpoints)
+    attribute = create_attribute_from_pmml(pmml.derived_fields[0])
 
     assert isinstance(attribute, EquifrequentIntervalsAttribute)
     assert attribute.name == "salary-equifrequent-intervals"
     assert attribute.field_id == 734
     assert attribute.bins == 5
-    assert attribute.cutpoints == cutpoints
-
-    # Test transformations
-    assert attribute.transform(8500.0) == "bin_0"
-    assert attribute.transform(9500.0) == "bin_1"
-    assert attribute.transform(12500.0) == "bin_4"
+    assert attribute.intervals is None  # Not built yet — requires value frequencies
 
 
 def test_salary_equisized_intervals():
-    """Equisized intervals with support and margins"""
+    """Equisized intervals PMML parsing"""
     xml_content = """<?xml version="1.0" encoding="UTF-8"?>
     <TransformationDictionary xmlns="http://www.dmg.org/PMML-4_2">
         <DerivedField name="salary-equisized-intervals">
             <Discretize field="734">
                 <Extension name="algorithm" value="equisized-intervals" />
                 <Extension name="support" value="0.2" />
-                <Extension name="leftMargin" value="8110" />
-                <Extension name="rightMargin" value="12541" />
             </Discretize>
         </DerivedField>
     </TransformationDictionary>"""
@@ -161,34 +156,7 @@ def test_salary_equisized_intervals():
     assert attribute.name == "salary-equisized-intervals"
     assert attribute.field_id == 734
     assert attribute.support == 0.2
-    assert attribute.min_value == 8110.0
-    assert attribute.max_value == 12541.0
-
-    # Test transformation
-    result = attribute.transform(9000.0)
-    assert result.startswith("[")
-    assert result.endswith(")")
-
-
-def test_equisized_intervals_requires_margins():
-    """Equisized requires margins (ValueError)"""
-    xml_content = """<?xml version="1.0" encoding="UTF-8"?>
-    <TransformationDictionary xmlns="http://www.dmg.org/PMML-4_2">
-        <DerivedField name="test-equisized">
-            <Discretize field="100">
-                <Extension name="algorithm" value="equisized-intervals" />
-                <Extension name="support" value="0.2" />
-            </Discretize>
-        </DerivedField>
-    </TransformationDictionary>"""
-
-    pmml = TransformationDictionary.from_xml_string(xml_content)
-
-    try:
-        _ = create_attribute_from_pmml(pmml.derived_fields[0])
-        assert False, "Expected ValueError for missing margins"
-    except ValueError as e:
-        assert "requires leftMargin and rightMargin" in str(e)
+    assert attribute.intervals is None  # Not built yet — requires value frequencies
 
 
 def test_salary_interval_enumeration():
@@ -446,8 +414,8 @@ def test_numeric_intervals_closure_types():
     assert attribute.max_value == 20.0
 
     # Test transformations using the equidistant logic
-    assert attribute.transform(5.0) == "[0.00, 10.00)"
-    assert attribute.transform(15.0) == "[10.00, 20.00)"
+    assert attribute.transform(5.0) == "[0.0,10.0)"
+    assert attribute.transform(15.0) == "[10.0,20.0)"
 
 
 def test_xml_with_different_encodings():
@@ -566,7 +534,7 @@ def test_multiple_attributes_in_single_pmml():
 
     # Test transformations work for each
     assert attribute1.transform("test") == "test"
-    assert attribute2.transform(5.0) == "[0.00, 10.00)"
+    assert attribute2.transform(5.0) == "[0.0,10.0)"
     assert attribute3.transform("A") == "category1"
 
 
@@ -620,12 +588,12 @@ def test_apply_transformation_with_equidistant_intervals():
 
     # Test transformations including out of range values
     test_cases = [
-        (5.0, "[0.00, 10.00)"),
-        (15.0, "[10.00, 20.00)"),
+        (5.0, "[0.0,10.0)"),
+        (15.0, "[10.0,20.0)"),
         (25.0, "out_of_range"),  # Above maximum
         (-5.0, "out_of_range"),  # Below minimum
         (None, "None"),
-        ("12.5", "[10.00, 20.00)"),  # String input that can be converted to float
+        ("12.5", "[10.0,20.0)"),  # String input that can be converted to float
     ]
 
     for input_value, expected in test_cases:

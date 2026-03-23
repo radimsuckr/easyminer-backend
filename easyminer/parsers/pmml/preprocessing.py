@@ -1,8 +1,21 @@
 from decimal import Decimal
+from math import ceil
 from typing import Protocol, cast, runtime_checkable
 
 from pydantic import BaseModel, Field
 from pydantic_xml import BaseXmlModel, attr, element
+
+from easyminer.preprocessing.smoothing import (
+    AttributeInterval,
+    IntervalBorder,
+    ValueFrequency,
+    finalize_intervals,
+    format_interval,
+    init_equifrequent_intervals,
+    init_equisized_intervals,
+    smooth_equifrequent,
+    smooth_equisized,
+)
 
 PMML_NS: str = "http://www.dmg.org/PMML-4_2"
 NSMAP: dict[str, str] = {
@@ -124,7 +137,10 @@ class EquidistantIntervalsAttribute(BaseModel):
             lower = self.min_value + i * width
             upper = lower + width
             if lower <= numeric_value < upper or (i == self.bins - 1 and numeric_value == upper):
-                return f"[{lower:.2f}, {upper:.2f})"
+                return format_interval(
+                    IntervalBorder(lower, inclusive=True),
+                    IntervalBorder(upper, inclusive=False),
+                )
         return "out_of_range"
 
 
@@ -132,9 +148,30 @@ class EquifrequentIntervalsAttribute(BaseModel):
     name: str
     field_id: int
     bins: int
-    cutpoints: list[float] = Field(exclude=True)
+    intervals: list[AttributeInterval] | None = Field(default=None, exclude=True)
+
+    @classmethod
+    def build(
+        cls,
+        name: str,
+        field_id: int,
+        bins_count: int,
+        values: list[ValueFrequency],
+        unique_values_count: int,
+        dataset_size: int,
+    ) -> "EquifrequentIntervalsAttribute":
+        """Build equifrequent intervals from sorted ascending value frequencies."""
+        max_frequency = ceil(dataset_size / bins_count)
+        intervals = init_equifrequent_intervals(values, bins_count, unique_values_count, dataset_size)
+        if len(intervals) > 1:
+            values_desc = list(reversed(values))
+            smooth_equifrequent(intervals, values_desc, max_frequency)
+            finalize_intervals(intervals)
+        return cls(name=name, field_id=field_id, bins=bins_count, intervals=intervals)
 
     def transform(self, value: str | float) -> str:
+        if self.intervals is None:
+            raise RuntimeError("Intervals not built — call build() with value frequencies first")
         if isinstance(value, str):
             try:
                 numeric_value = float(value)
@@ -143,20 +180,49 @@ class EquifrequentIntervalsAttribute(BaseModel):
         else:
             numeric_value = value
 
-        for i, cut in enumerate(self.cutpoints):
-            if numeric_value < cut:
-                return f"bin_{i}"
-        return f"bin_{len(self.cutpoints)}"
+        for interval in self.intervals:
+            from_ok = (
+                numeric_value >= interval.from_border.value
+                if interval.from_border.inclusive
+                else numeric_value > interval.from_border.value
+            )
+            to_ok = (
+                numeric_value <= interval.to_border.value
+                if interval.to_border.inclusive
+                else numeric_value < interval.to_border.value
+            )
+            if from_ok and to_ok:
+                return format_interval(interval.from_border, interval.to_border)
+        return "out_of_range"
 
 
 class EquisizedIntervalsAttribute(BaseModel):
     name: str
     field_id: int
     support: float
-    min_value: float
-    max_value: float
+    intervals: list[AttributeInterval] | None = Field(default=None, exclude=True)
+
+    @classmethod
+    def build(
+        cls,
+        name: str,
+        field_id: int,
+        support: float,
+        values: list[ValueFrequency],
+        dataset_size: int,
+    ) -> "EquisizedIntervalsAttribute":
+        """Build equisized intervals from sorted ascending value frequencies."""
+        min_frequency = dataset_size * support
+        intervals = init_equisized_intervals(values, min_frequency)
+        if len(intervals) > 1:
+            values_desc = list(reversed(values))
+            smooth_equisized(intervals, values_desc, min_frequency)
+            finalize_intervals(intervals)
+        return cls(name=name, field_id=field_id, support=support, intervals=intervals)
 
     def transform(self, value: str | float) -> str:
+        if self.intervals is None:
+            raise RuntimeError("Intervals not built — call build() with value frequencies first")
         if isinstance(value, str):
             try:
                 numeric_value = float(value)
@@ -165,20 +231,20 @@ class EquisizedIntervalsAttribute(BaseModel):
         else:
             numeric_value = value
 
-        if self.max_value <= self.min_value:
-            return "invalid_range"
-
-        range_ = self.max_value - self.min_value
-        bin_width = range_ * self.support
-        if bin_width <= 0:
-            return "invalid_bin_width"
-
-        bin_index = int((numeric_value - self.min_value) / bin_width)
-        max_bin = int(1 / self.support) - 1
-        bin_index = min(max(bin_index, 0), max_bin)
-        bin_start = self.min_value + bin_width * bin_index
-        bin_end = bin_start + bin_width
-        return f"[{bin_start:.2f}, {bin_end:.2f})"
+        for interval in self.intervals:
+            from_ok = (
+                numeric_value >= interval.from_border.value
+                if interval.from_border.inclusive
+                else numeric_value > interval.from_border.value
+            )
+            to_ok = (
+                numeric_value <= interval.to_border.value
+                if interval.to_border.inclusive
+                else numeric_value < interval.to_border.value
+            )
+            if from_ok and to_ok:
+                return format_interval(interval.from_border, interval.to_border)
+        return "out_of_range"
 
 
 class NumericIntervalsAttribute(BaseModel):
@@ -189,18 +255,20 @@ class NumericIntervalsAttribute(BaseModel):
         to_inclusive: bool
 
         def contains(self, value: float) -> bool:
-            if self.from_inclusive:
-                if value < self.from_value:
-                    return False
-            else:
-                if value <= self.from_value:
-                    return False
-            if self.to_inclusive:
-                if value > self.to_value:
-                    return False
-            else:
-                if value >= self.to_value:
-                    return False
+            if self.from_value != float("-inf"):
+                if self.from_inclusive:
+                    if value < self.from_value:
+                        return False
+                else:
+                    if value <= self.from_value:
+                        return False
+            if self.to_value != float("inf"):
+                if self.to_inclusive:
+                    if value > self.to_value:
+                        return False
+                else:
+                    if value >= self.to_value:
+                        return False
             return True
 
     class Bin(BaseModel):
@@ -241,7 +309,6 @@ def create_attribute_from_pmml(
     derived_field: DerivedField,
     min_value: float | None = None,
     max_value: float | None = None,
-    cutpoints: list[float] | None = None,
 ) -> Attribute:
     """Convert PMML DerivedField to transformation attribute with optional overrides"""
     if derived_field.discretize:
@@ -281,25 +348,22 @@ def create_attribute_from_pmml(
                     name=derived_field.name,
                     field_id=field_id,
                     bins=int(extensions.get("bins", 5)),
-                    cutpoints=cutpoints or [],
                 )
             elif extensions["algorithm"] == "equisized-intervals":
-                # Require leftMargin and rightMargin to be present, don't assume defaults
-                if "leftMargin" not in extensions or "rightMargin" not in extensions:
-                    raise ValueError(
-                        "equisized-intervals algorithm requires leftMargin and rightMargin extensions "
-                        + f"for field {derived_field.name}"
-                    )
-
                 return EquisizedIntervalsAttribute(
                     name=derived_field.name,
                     field_id=field_id,
                     support=float(extensions.get("support", 0.2)),
-                    min_value=min_value or float(extensions["leftMargin"]),
-                    max_value=max_value or float(extensions["rightMargin"]),
+                )
+            elif extensions["algorithm"] == "equidistant-intervals":
+                return EquidistantIntervalsAttribute(
+                    name=derived_field.name,
+                    field_id=field_id,
+                    bins=int(extensions.get("bins", 5)),
+                    min_value=min_value or float(extensions.get("leftMargin", 0)),
+                    max_value=max_value or float(extensions.get("rightMargin", 0)),
                 )
             else:
-                # Unsupported algorithm
                 raise NotImplementedError(
                     f"Unsupported discretization algorithm '{extensions['algorithm']}' for field {derived_field.name}"
                 )
@@ -308,37 +372,34 @@ def create_attribute_from_pmml(
             # Handle explicit bins (equidistant or numeric intervals)
             discretize_bins = derived_field.discretize.discretize_bins
 
-            # Check if all bins have valid intervals
-            if all(
+            # Check if all bins have finite intervals (for equidistant detection)
+            all_finite = all(
                 bin_item.interval.left_margin is not None and bin_item.interval.right_margin is not None
                 for bin_item in discretize_bins
-            ):
+            )
+
+            if all_finite:
                 # Check if this is equidistant intervals:
                 # 1. All bins must have unique bin values (no overlapping bin labels)
                 # 2. Intervals must be adjacent with no gaps
                 bin_values = [bin_item.bin_value for bin_item in discretize_bins]
                 if len(set(bin_values)) == len(bin_values) and len(discretize_bins) > 1:
-                    # Sort bins by left margin to check if they are consecutive
-                    # Since we already checked that left_margin is not None, we can safely cast
                     sorted_bins = sorted(
                         discretize_bins,
                         key=lambda b: float(cast(Decimal, b.interval.left_margin)),
                     )
 
-                    # Check if intervals are consecutive with no gaps
                     is_consecutive = True
                     for i in range(len(sorted_bins) - 1):
-                        # We know these are not None due to the check above
                         assert sorted_bins[i].interval.right_margin is not None
                         assert sorted_bins[i + 1].interval.left_margin is not None
                         current_right = float(cast(Decimal, sorted_bins[i].interval.right_margin))
                         next_left = float(cast(Decimal, sorted_bins[i + 1].interval.left_margin))
-                        if abs(current_right - next_left) > 1e-10:  # Allow for small floating point errors
+                        if abs(current_right - next_left) > 1e-10:
                             is_consecutive = False
                             break
 
                     if is_consecutive:
-                        # We know these are not None due to the check above
                         assert sorted_bins[0].interval.left_margin is not None
                         assert sorted_bins[-1].interval.right_margin is not None
                         parsed_min = float(sorted_bins[0].interval.left_margin)
@@ -352,32 +413,34 @@ def create_attribute_from_pmml(
                             max_value=max_value or parsed_max,
                         )
 
-                # If not equidistant, treat as numeric intervals
-                # Group bins by bin_value (multiple intervals can have the same bin value)
-                bin_groups: dict[str, list[NumericIntervalsAttribute.Interval]] = {}
-                for bin_item in discretize_bins:
-                    if bin_item.bin_value not in bin_groups:
-                        bin_groups[bin_item.bin_value] = []
+            # Numeric intervals (supports open-ended intervals with -inf/+inf)
+            bin_groups: dict[str, list[NumericIntervalsAttribute.Interval]] = {}
+            for bin_item in discretize_bins:
+                if bin_item.bin_value not in bin_groups:
+                    bin_groups[bin_item.bin_value] = []
 
-                    if bin_item.interval.left_margin is not None and bin_item.interval.right_margin is not None:
-                        interval = NumericIntervalsAttribute.Interval(
-                            from_value=float(bin_item.interval.left_margin),
-                            from_inclusive=bin_item.interval.closure in ["closedOpen", "closedClosed"],
-                            to_value=float(bin_item.interval.right_margin),
-                            to_inclusive=bin_item.interval.closure in ["openClosed", "closedClosed"],
-                        )
-                        bin_groups[bin_item.bin_value].append(interval)
-
-                attribute_bins: list[NumericIntervalsAttribute.Bin] = []
-                for bin_value, intervals in bin_groups.items():
-                    attribute_bins.append(NumericIntervalsAttribute.Bin(bin_value=bin_value, intervals=intervals))
-
-                return NumericIntervalsAttribute(name=derived_field.name, field_id=field_id, bins=attribute_bins)
-            else:
-                # Some bins have missing interval data
-                raise ValueError(
-                    f"Some bins in field {derived_field.name} have missing leftMargin or rightMargin values"
+                from_value = (
+                    float(bin_item.interval.left_margin) if bin_item.interval.left_margin is not None else float("-inf")
                 )
+                to_value = (
+                    float(bin_item.interval.right_margin)
+                    if bin_item.interval.right_margin is not None
+                    else float("inf")
+                )
+
+                interval = NumericIntervalsAttribute.Interval(
+                    from_value=from_value,
+                    from_inclusive=bin_item.interval.closure in ["closedOpen", "closedClosed"],
+                    to_value=to_value,
+                    to_inclusive=bin_item.interval.closure in ["openClosed", "closedClosed"],
+                )
+                bin_groups[bin_item.bin_value].append(interval)
+
+            attribute_bins: list[NumericIntervalsAttribute.Bin] = []
+            for bin_value, intervals_list in bin_groups.items():
+                attribute_bins.append(NumericIntervalsAttribute.Bin(bin_value=bin_value, intervals=intervals_list))
+
+            return NumericIntervalsAttribute(name=derived_field.name, field_id=field_id, bins=attribute_bins)
 
     raise NotImplementedError(
         f"DerivedField {derived_field.name} does not have a valid discretize or map_values configuration"
