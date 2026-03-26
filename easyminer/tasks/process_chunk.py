@@ -19,6 +19,7 @@ from easyminer.models.dynamic_tables import (
     get_data_source_table,
 )
 from easyminer.schemas.data import FieldType
+from easyminer.storage import get_storage
 from easyminer.worker import app
 
 logger = logging.getLogger(__name__)
@@ -57,12 +58,16 @@ def process_chunk(
         try:
             sync_engine = db.get_bind()
 
+            storage = get_storage()
+            content = storage.read(chunk.path).decode(encoding)
+
             if chunk.is_first:
                 create_data_source_tables(sync_engine, data_source_id)
 
-                with open(chunk.path, encoding=encoding, buffering=8192 * 16) as file:
-                    reader = csv.reader(file, delimiter=separator, quotechar=quote_char, escapechar=escape_char)
-                    header = next(reader)
+                reader = csv.reader(
+                    io.StringIO(content), delimiter=separator, quotechar=quote_char, escapechar=escape_char
+                )
+                header = next(reader)
 
                 field_rows = []
                 for i, col in enumerate(header):
@@ -91,8 +96,6 @@ def process_chunk(
                     self.retry(countdown=2)
 
             # Count lines to atomically claim a row_id range
-            with open(chunk.path, encoding=encoding, buffering=8192 * 16) as file:
-                content = file.read()
             line_count = content.count("\n")
             if chunk.is_first:
                 line_count -= 1  # exclude header

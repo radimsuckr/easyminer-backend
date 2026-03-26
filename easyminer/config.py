@@ -22,6 +22,14 @@ class Settings(BaseSettings):
     user_session_ttl: int = 300
     skip_migrations: bool = False
 
+    storage_backend: str = "disk"
+    s3_endpoint_url: str | None = None
+    s3_bucket: str | None = None
+    s3_access_key: str | None = None
+    s3_secret_key: str | None = None
+    s3_region: str = "us-east-1"
+    s3_prefix: str = ""
+
 
 celery_broker = os.getenv("CELERY_BROKER")
 if not celery_broker:

@@ -6,6 +6,7 @@ authors = [{ name = "Radim Sückr", email = "sucr02@vse.cz" }]
 dependencies = [
 	"alembic>=1.13.2",
 	"asyncache>=0.1.1",
+	"boto3>=1.35.0",
 	"celery[redis,tblib]>=5.4.0",
 	"defusedxml>=0.7.1",
 	"fastapi[standard]>=0.111.1",
@@ -23,8 +24,10 @@ requires-python = ">= 3.13"
 [dependency-groups]
 dev = [
 	"aiosqlite>=0.21.0",
+	"boto3-stubs[s3]>=1.35.0",
 	"celery-types>=0.23.0",
 	"lxml-stubs>=0.5.1",
+	"moto[s3]>=5.0.0",
 	"mypy>=1.11.0",
 	"pandas-stubs>=2.2.3.250308",
 	"pytest>=8.3.1",

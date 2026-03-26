@@ -62,7 +62,7 @@ from easyminer.schemas.data import (
 )
 from easyminer.schemas.error import StructuredHTTPException
 from easyminer.schemas.task import TaskStatus
-from easyminer.storage import DiskStorage
+from easyminer.storage import get_storage
 from easyminer.tasks.aggregate_field_values import aggregate_field_values
 from easyminer.tasks.finalize_data_source import finalize_data_source
 from easyminer.tasks.process_chunk import process_chunk
@@ -233,9 +233,9 @@ async def upload_chunk(
 
     chunk_datetime = datetime.now()
     chunk_path = pathlib.Path(f"{upload_id}/chunks/{chunk_datetime.strftime('%Y%m%d%H%M%S%f')}.chunk")
-    storage = DiskStorage()
-    _, saved_path = storage.save(chunk_path, content.encode("utf-8"))
-    chunk_id = await create_chunk(db, upload.id, chunk_datetime, str(saved_path), is_first=is_first)
+    storage = get_storage()
+    key = storage.save(str(chunk_path), content.encode("utf-8"))
+    chunk_id = await create_chunk(db, upload.id, chunk_datetime, key, is_first=is_first)
 
     separator = upload.separator
     quote_char = upload.quotes_char

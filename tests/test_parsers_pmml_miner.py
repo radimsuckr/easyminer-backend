@@ -1,5 +1,3 @@
-import pytest
-
 from easyminer.parsers.pmml.miner import (
     PMML,
     CoefficientType,
