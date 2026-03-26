@@ -5,8 +5,8 @@ description = "Easyminer backend"
 authors = [{ name = "Radim Sückr", email = "sucr02@vse.cz" }]
 dependencies = [
 	"alembic>=1.13.2",
-	"asyncache>=0.1.1",
 	"boto3>=1.35.0",
+	"cachetools-async>=0.0.5",
 	"celery[redis,tblib]>=5.4.0",
 	"defusedxml>=0.7.1",
 	"fastapi[standard]>=0.111.1",

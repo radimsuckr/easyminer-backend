@@ -1,8 +1,8 @@
 import logging
 
 import httpx
-from asyncache import cached
 from cachetools import TTLCache
+from cachetools_async import cached
 from fastapi import HTTPException, status
 
 from easyminer.config import settings
