@@ -1,11 +1,12 @@
 import logging
-from typing import Any
+from typing import Any, Literal
 
 import fim
 import pandas as pd
 from pyarc import TransactionDB
 from pyarc.algorithms import createCARs, top_rules
-from sqlalchemy import case, func, select
+from sqlalchemy import Table, case, func, select
+from sqlalchemy.orm import Session
 
 from easyminer.database import get_sync_db_session
 from easyminer.models.dynamic_tables import get_dataset_table, get_dataset_value_table
@@ -118,11 +119,23 @@ def resolve_dba_to_attributes(dba: DBASetting, task_setting: TaskSetting) -> lis
     return sorted(field_refs)
 
 
+PivotMethod = Literal["python", "db"]
+PIVOT_PYTHON: PivotMethod = "python"
+PIVOT_DB: PivotMethod = "db"
+
+
 class MinerService:
-    def __init__(self, dataset_id: int, db_url: str, required_attributes: list[str] | None = None):
+    def __init__(
+        self,
+        dataset_id: int,
+        db_url: str,
+        required_attributes: list[str] | None = None,
+        pivot_method: PivotMethod = PIVOT_PYTHON,
+    ):
         self._ds_id: int = dataset_id
         self._db_url: str = db_url
         self._required_attributes: list[str] | None = required_attributes
+        self._pivot_method: PivotMethod = pivot_method
         self._df: pd.DataFrame | None = None
         # Maps field_ref (ID or name) → attribute name (column name in DataFrame)
         self._attr_ref_to_name: dict[str, str] = {}
@@ -132,16 +145,15 @@ class MinerService:
         Load data from database into DataFrame.
 
         Only loads attributes specified in required_attributes (if set), otherwise loads all.
-        Uses a single SQL-level pivot query so the DB returns data already in wide format,
-        transferring N rows instead of N*attributes rows.
+        Supports two pivot strategies controlled by pivot_method:
+        - "python" (default): loads raw EAV data and pivots in pandas (faster for large datasets)
+        - "db": uses SQL-level GROUP BY pivot (original approach)
 
         Uses dynamic tables: dataset_{ID} and pp_value_{ID}
         """
         with get_sync_db_session(self._db_url) as db:
             query = select(Attribute).where(Attribute.dataset == self._ds_id)
             if self._required_attributes:
-                # Flat PMML format uses integer attribute IDs as field_ref;
-                # envelope format uses attribute names.
                 if all(ref.isdigit() for ref in self._required_attributes):
                     attr_ids = [int(ref) for ref in self._required_attributes]
                     query = query.where(Attribute.id.in_(attr_ids))
@@ -160,33 +172,70 @@ class MinerService:
                 logger.warning("No attributes found")
                 return
 
-            # Build ID→name mapping so callers using numeric IDs can find column names
+            attr_id_to_name = {}
             for attr in attributes:
                 self._attr_ref_to_name[str(attr.id)] = attr.name
                 self._attr_ref_to_name[attr.name] = attr.name
+                attr_id_to_name[attr.id] = attr.name
 
-            # Get dynamic tables for this dataset
             instance_table = get_dataset_table(self._ds_id)
             value_table = get_dataset_value_table(self._ds_id)
+            attr_ids = [a.id for a in attributes]
 
-            pivot_columns = [
-                func.max(case((instance_table.c.attribute == attr.id, value_table.c.value), else_=None)).label(
-                    attr.name
-                )
-                for attr in attributes
-            ]
+            if self._pivot_method == PIVOT_DB:
+                self._load_data_db_pivot(db, attributes, instance_table, value_table, attr_ids)
+            else:
+                self._load_data_pandas_pivot(db, attr_id_to_name, instance_table, value_table, attr_ids)
 
-            pivot_query = (
-                select(*pivot_columns)
-                .select_from(instance_table)
-                .join(value_table, instance_table.c.value == value_table.c.id)
-                .where(instance_table.c.attribute.in_([a.id for a in attributes]))
-                .group_by(instance_table.c.tid)
+            logger.info(
+                f"Loaded {len(self._df)} rows with {len(self._df.columns)} columns (pivot={self._pivot_method})"
             )
 
-            self._df = pd.read_sql(pivot_query, db.connection())
+    def _load_data_pandas_pivot(
+        self,
+        db: Session,
+        attr_id_to_name: dict[int, str],
+        instance_table: Table,
+        value_table: Table,
+        attr_ids: list[int],
+    ) -> None:
+        """Load raw EAV data and pivot in pandas. Faster for large datasets."""
+        value_map_query = select(value_table.c.id, value_table.c.value).where(value_table.c.attribute.in_(attr_ids))
+        value_map_df = pd.read_sql(value_map_query, db.connection())
+        id_to_value = dict(zip(value_map_df["id"], value_map_df["value"]))
+        logger.info(f"Loaded {len(id_to_value)} unique values from pp_value table")
 
-            logger.info(f"Loaded {len(self._df)} rows with {len(self._df.columns)} columns")
+        raw_query = select(instance_table.c.tid, instance_table.c.attribute, instance_table.c.value).where(
+            instance_table.c.attribute.in_(attr_ids)
+        )
+        raw_df = pd.read_sql(raw_query, db.connection())
+        logger.info(f"Loaded {len(raw_df)} raw EAV rows")
+
+        raw_df["value"] = raw_df["value"].map(id_to_value)
+        raw_df["attribute"] = raw_df["attribute"].map(attr_id_to_name)
+
+        self._df = raw_df.pivot(index="tid", columns="attribute", values="value")
+        self._df.columns.name = None
+        self._df = self._df.reset_index(drop=True)
+
+    def _load_data_db_pivot(
+        self, db: Session, attributes: list[Attribute], instance_table: Table, value_table: Table, attr_ids: list[int]
+    ) -> None:
+        """Pivot in SQL using GROUP BY + CASE WHEN."""
+        pivot_columns = [
+            func.max(case((instance_table.c.attribute == attr.id, value_table.c.value), else_=None)).label(attr.name)
+            for attr in attributes
+        ]
+
+        pivot_query = (
+            select(*pivot_columns)
+            .select_from(instance_table)
+            .join(value_table, instance_table.c.value == value_table.c.id)
+            .where(instance_table.c.attribute.in_(attr_ids))
+            .group_by(instance_table.c.tid)
+        )
+
+        self._df = pd.read_sql(pivot_query, db.connection())
 
     def _build_transactions(self) -> list[list[str]]:
         """Build transaction string representation directly from DataFrame.
@@ -584,7 +633,13 @@ def mine(self, pmml: PMMLInput) -> str:
     required_attrs = list(set(antecedent_attrs + consequent_attrs))
     logger.info(f"Loading {len(required_attrs)} unique attributes from dataset")
 
-    svc = MinerService(dataset_id, db_url, required_attributes=required_attrs)
+    pivot_method = ext_dict.get("pivot-method", PIVOT_PYTHON)
+    if pivot_method not in (PIVOT_PYTHON, PIVOT_DB):
+        logger.warning(f"Unknown pivot-method '{pivot_method}', falling back to '{PIVOT_PYTHON}'")
+        pivot_method = PIVOT_PYTHON
+    logger.info(f"Pivot method: {pivot_method}")
+
+    svc = MinerService(dataset_id, db_url, required_attributes=required_attrs, pivot_method=pivot_method)
 
     # Translate attribute refs (IDs or names) to DataFrame column names
     antecedent_attrs = svc.resolve_attr_refs(antecedent_attrs)
