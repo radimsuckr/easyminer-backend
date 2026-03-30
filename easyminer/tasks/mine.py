@@ -177,16 +177,14 @@ class MinerService:
             ]
 
             pivot_query = (
-                select(instance_table.c.tid, *pivot_columns)
+                select(*pivot_columns)
                 .select_from(instance_table)
                 .join(value_table, instance_table.c.value == value_table.c.id)
                 .where(instance_table.c.attribute.in_([a.id for a in attributes]))
                 .group_by(instance_table.c.tid)
-                .order_by(instance_table.c.tid)
             )
 
             self._df = pd.read_sql(pivot_query, db.connection())
-            self._df = self._df.drop(columns=["tid"])
 
             logger.info(f"Loaded {len(self._df)} rows with {len(self._df.columns)} columns")
 
