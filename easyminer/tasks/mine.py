@@ -188,24 +188,32 @@ class MinerService:
 
             logger.info(f"Loaded {len(self._df)} rows with {len(self._df.columns)} columns")
 
-    def _prepare_transaction_db(self, target_col: str) -> tuple[TransactionDB, list[str]]:
-        """
-        Prepare pyARC TransactionDB from loaded DataFrame.
+    def _build_transactions(self) -> list[list[str]]:
+        """Build transaction string representation directly from DataFrame.
 
-        Args:
-            target_col: Name of the target/consequent column
-
-        Returns:
-            Tuple of (TransactionDB, list of transactions as strings)
+        Each transaction is a list of "column:=:value" strings — the format
+        expected by fim.arules() and pyARC top_rules().
         """
-        if not hasattr(self, "_df") or self._df is None:
+        if self._df is None:
+            self._load_data()
+
+        str_df = pd.DataFrame({col: col + ":=:" + self._df[col].astype(str) for col in self._df.columns})
+        transactions = str_df.values.tolist()
+
+        logger.info(f"Built {len(transactions)} transactions")
+        return transactions
+
+    def _prepare_transaction_db(self, target_col: str) -> TransactionDB:
+        """Prepare pyARC TransactionDB from loaded DataFrame.
+
+        Only needed for CBA pruning (M1Algorithm/M2Algorithm).
+        """
+        if self._df is None:
             self._load_data()
 
         txn_db = TransactionDB.from_DataFrame(self._df, target=target_col)
-        transactions = txn_db.string_representation
-
-        logger.info(f"Prepared TransactionDB: {len(transactions)} transactions, target='{target_col}'")
-        return txn_db, transactions
+        logger.info(f"Prepared TransactionDB: {len(txn_db.string_representation)} transactions, target='{target_col}'")
+        return txn_db
 
     def _build_appearance_constraints(self, antecedent_attrs: list[str], consequent_attrs: list[str]) -> dict[str, str]:
         """
@@ -279,7 +287,7 @@ class MinerService:
         if max_rule_length:
             logger.info(f"  Max rule length: {max_rule_length}")
 
-        _, transactions = self._prepare_transaction_db(target_col)
+        transactions = self._build_transactions()
 
         appearance = self._build_appearance_constraints(antecedent_attrs, consequent_attrs)
 
@@ -339,8 +347,7 @@ class MinerService:
         if max_rule_length:
             logger.info(f"  Max rule length: {max_rule_length}")
 
-        # Prepare transaction database
-        _, transactions = self._prepare_transaction_db(target_col)
+        transactions = self._build_transactions()
 
         # Build appearance constraints
         appearance = self._build_appearance_constraints(antecedent_attrs, consequent_attrs)
@@ -636,7 +643,7 @@ def mine(self, pmml: PMMLInput) -> str:
         try:
             from pyarc.algorithms import M1Algorithm, M2Algorithm
 
-            txn_db, _ = svc._prepare_transaction_db(target_col)
+            txn_db = svc._prepare_transaction_db(target_col)
 
             logger.info("  ? Applying M1 algorithm...")
             m1_clf = M1Algorithm(mined_rules, txn_db).build()
