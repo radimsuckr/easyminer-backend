@@ -1,5 +1,6 @@
-from typing import Literal
+from typing import Any, Literal
 
+import numpy as np
 import pandas as pd
 from pydantic_xml import BaseXmlModel, attr, element
 
@@ -175,12 +176,14 @@ def create_pmml_result(
 # ============================================================================
 
 
-def calculate_fourfold_table(rule, transactions_df: pd.DataFrame, total_transactions: int) -> dict[str, int]:
-    """
-    Calculate fourfold table by directly counting from data (GUHA definition).
+def calculate_fourfold_tables_batch(
+    rules: list[Any], transactions_df: pd.DataFrame, total_transactions: int
+) -> list[dict[str, int]]:
+    """Calculate fourfold tables for all rules using pre-computed item masks.
 
-    This matches Scala behavior by calculating exact counts rather than using
-    potentially inaccurate pyARC percentage values.
+    Pre-computes a boolean mask for every unique (column, value) pair once,
+    then combines them per rule. This avoids redundant recomputation when
+    multiple rules share the same items.
 
     GUHA 4ft table definition:
         a = rows where antecedent TRUE and consequent TRUE
@@ -188,32 +191,36 @@ def calculate_fourfold_table(rule, transactions_df: pd.DataFrame, total_transact
         c = rows where antecedent FALSE and consequent TRUE
         d = rows where antecedent FALSE and consequent FALSE
     """
-    antecedent_items = rule.antecedent
-    consequent_attr = rule.consequent.attribute
-    consequent_val = rule.consequent.value
+    item_masks: dict[tuple[str, str], np.ndarray] = {}
+    for col in transactions_df.columns:
+        col_values = transactions_df[col].values
+        for val in transactions_df[col].unique():
+            item_masks[(col, val)] = col_values == val
 
-    # Create masks for antecedent and consequent
-    mask_consequent = transactions_df[consequent_attr] == consequent_val
-    mask_antecedent = pd.Series([True] * len(transactions_df), index=transactions_df.index)
+    cons_count_cache: dict[tuple[str, str], int] = {}
 
-    for k, v in antecedent_items:
-        mask_antecedent &= transactions_df[k] == v
+    results = []
+    for rule in rules:
+        ante_mask = np.ones(total_transactions, dtype=bool)
+        for attr_name, val in rule.antecedent:
+            ante_mask &= item_masks[(attr_name, val)]
 
-    # Count all four cells directly from data
-    a = int((mask_antecedent & mask_consequent).sum())  # Both TRUE
-    b = int((mask_antecedent & ~mask_consequent).sum())  # Ante TRUE, Cons FALSE
-    c = int((~mask_antecedent & mask_consequent).sum())  # Ante FALSE, Cons TRUE
-    d = int((~mask_antecedent & ~mask_consequent).sum())  # Both FALSE
+        cons_key = (rule.consequent.attribute, rule.consequent.value)
+        cons_mask = item_masks[cons_key]
 
-    # Validation
-    if a < 0 or b < 0 or c < 0 or d < 0:
-        raise ValueError(f"Invalid contingency table: negative values detected. a={a}, b={b}, c={c}, d={d}")
+        a = int((ante_mask & cons_mask).sum())
+        ante_count = int(ante_mask.sum())
+        if cons_key not in cons_count_cache:
+            cons_count_cache[cons_key] = int(cons_mask.sum())
+        cons_count = cons_count_cache[cons_key]
 
-    total = a + b + c + d
-    if total != total_transactions:
-        raise ValueError(f"Invalid contingency table: sum mismatch. a+b+c+d={total}, expected={total_transactions}")
+        b = ante_count - a
+        c = cons_count - a
+        d = total_transactions - a - b - c
 
-    return {"a": a, "b": b, "c": c, "d": d}
+        results.append({"a": a, "b": b, "c": c, "d": d})
+
+    return results
 
 
 def create_pmml_result_from_pyarc(
@@ -282,6 +289,8 @@ def create_pmml_result_from_pyarc(
                 )
             )
 
+        all_fourfold = calculate_fourfold_tables_batch(rules, transactions_df, total_transactions)
+
         # Create DBAs and Association Rules
         dbas = []
         arules = []
@@ -299,9 +308,9 @@ def create_pmml_result_from_pyarc(
                 # Collect BA references for antecedent
                 ante_ba_refs = []
                 ante_texts = []
-                for attr, value in rule.antecedent:
-                    ante_ba_refs.append(bba_lookup[(attr, value)])
-                    ante_texts.append(f"{attr}({value})")
+                for attr_name, value in rule.antecedent:
+                    ante_ba_refs.append(bba_lookup[(attr_name, value)])
+                    ante_texts.append(f"{attr_name}({value})")
 
                 dbas.append(
                     DBA(
@@ -326,12 +335,10 @@ def create_pmml_result_from_pyarc(
                 )
             )
 
-            fourfold = calculate_fourfold_table(
-                rule=rule, transactions_df=transactions_df, total_transactions=total_transactions
-            )
+            fourfold = all_fourfold[rule_idx - 1]
 
             if rule.antecedent:
-                ante_text = " AND ".join([f"{attr}({value})" for attr, value in rule.antecedent])
+                ante_text = " AND ".join([f"{attr_name}({value})" for attr_name, value in rule.antecedent])
                 rule_text = f"{ante_text} => {cons_attr}({cons_value})"
             else:
                 rule_text = f"=> {cons_attr}({cons_value})"
