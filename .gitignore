@@ -412,3 +412,7 @@ thesis/
 
 # Docs - for now
 docs/
+
+# Evaluation datasets and results (downloaded/generated)
+tools/data/
+tools/results/
