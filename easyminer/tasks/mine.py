@@ -314,6 +314,7 @@ class MinerService:
         min_confidence: float,
         max_rule_length: int | None = None,
         min_lift: float | None = None,
+        target_rule_count: int | None = None,
     ) -> list[Any]:
         """Mode 1: Standard mining with fixed user-provided thresholds.
 
@@ -366,6 +367,10 @@ class MinerService:
         if max_rule_length:
             cars = [car for car in cars if len(car.antecedent) + 1 <= max_rule_length]  # +1 for consequent
             logger.info(f"  ? After length filter (?{max_rule_length}): {len(cars)} rules")
+
+        if target_rule_count:
+            cars = sorted(cars, key=lambda r: (-r.confidence, -r.support))[:target_rule_count]
+            logger.info(f"  After rule count limit ({target_rule_count}): {len(cars)} rules")
 
         return cars
 
@@ -651,15 +656,15 @@ def mine(self, pmml: PMMLInput) -> str:
     target_col = consequent_attrs[0]
     logger.info(f"Target column: {target_col}")
 
+    # Extract target rule count from PMML (if specified)
+    hypotheses_max = ts.lispm_miner_hypotheses_max
+    target_rule_count = hypotheses_max if hypotheses_max else 1000
+    logger.info(f"Target rule count: {target_rule_count}")
+
     # Route to appropriate mining mode
     if auto_conf_supp:
         # Mode 2: AUTO_CONF_SUPP - automatic threshold detection
         logger.info("=== MODE 2: AUTO_CONF_SUPP Mining ===")
-
-        # Extract target rule count from PMML (if specified)
-        hypotheses_max = ts.lispm_miner_hypotheses_max
-        target_rule_count = hypotheses_max if hypotheses_max else 1000
-        logger.info(f"Target rule count: {target_rule_count}")
 
         # Mine with automatic thresholds
         mined_rules = svc.mine_mode2_auto(
@@ -688,6 +693,7 @@ def mine(self, pmml: PMMLInput) -> str:
             min_confidence=min_confidence,
             max_rule_length=max_rule_length,
             min_lift=min_lift,
+            target_rule_count=target_rule_count,
         )
 
     logger.info(f"Mining complete: {len(mined_rules)} rules found")
