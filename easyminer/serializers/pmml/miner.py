@@ -229,6 +229,7 @@ def create_pmml_result_from_pyarc(
     total_transactions: int,
     total_attributes: int,
     headers_data: list[dict] | None = None,
+    default_class: tuple[str, str] | None = None,
 ) -> PMML:
     """
     Create PMML result from pyARC mining results (fim.arules or pyARC CARs).
@@ -250,6 +251,8 @@ def create_pmml_result_from_pyarc(
     number_of_rules = len(rules)
 
     # Detect rule format (fim tuples vs pyARC CARs)
+    bba_lookup: dict[tuple[str, str], str] = {}
+    dba_counter = 1
     if not rules:
         bbas = []
         dbas = []
@@ -357,6 +360,46 @@ def create_pmml_result_from_pyarc(
                     ),
                 )
             )
+
+    if default_class is not None:
+        attr_name, value = default_class
+
+        if (attr_name, value) not in bba_lookup:
+            bba_id = str(len(bbas) + 1)
+            bba_lookup[(attr_name, value)] = bba_id
+            bbas.append(
+                BBA(id=bba_id, text=f"{attr_name}({value})", field_ref=attr_name, cat_ref=value)
+            )
+
+        default_cons_dba_id = str(dba_counter)
+        dba_counter += 1
+        dbas.append(
+            DBA(
+                id=default_cons_dba_id,
+                text=f"{attr_name}({value})",
+                ba_refs=[bba_lookup[(attr_name, value)]],
+            )
+        )
+
+        cons_count = int((transactions_df[attr_name] == value).sum())
+        default_ft = FourFtTable(
+            a=cons_count,
+            b=total_transactions - cons_count,
+            c=0,
+            d=0,
+        )
+
+        default_rule_id = str(len(arules) + 1)
+        arules.append(
+            AssociationRule(
+                id=default_rule_id,
+                antecedent=None,
+                consequent=default_cons_dba_id,
+                text=f"* => {attr_name}({value})",
+                four_ft_table=default_ft,
+            )
+        )
+        number_of_rules += 1
 
     association_rules = AssociationRules(bbas=bbas, dbas=dbas, arules=arules)
 

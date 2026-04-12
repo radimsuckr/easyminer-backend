@@ -699,6 +699,7 @@ def mine(self, pmml: PMMLInput) -> str:
     logger.info(f"Mining complete: {len(mined_rules)} rules found")
 
     cba_extensions = []
+    cba_default_class: tuple[str, str] | None = None
     if cba_requested:
         logger.info("Applying CBA M1/M2 pruning to mined rules")
         try:
@@ -711,7 +712,8 @@ def mine(self, pmml: PMMLInput) -> str:
             logger.info(f"  ? After M1: {len(m1_clf.rules)} rules")
 
             logger.info("  ? Applying M2 algorithm...")
-            m2_clf = M2Algorithm(m1_clf.rules, txn_db).build()
+            m2_algo = M2Algorithm(m1_clf.rules, txn_db)
+            m2_clf = m2_algo.build()
             logger.info(f"  ? After M2: {len(m2_clf.rules)} rules")
 
             accuracy = m2_clf.test_transactions(txn_db)
@@ -719,6 +721,15 @@ def mine(self, pmml: PMMLInput) -> str:
             pruned_rules = m2_clf.rules
             original_rule_count = len(mined_rules)
             mined_rules = pruned_rules
+
+            # pyARC bugs in default class handling:
+            # 1. build() copies default_class to Classifier but not default_class_attribute
+            # 2. M2Algorithm.stage3 sets default_class_attribute = classdist_keys[0][0],
+            #    but classdist keys are plain strings (class values), so [0][0] yields the
+            #    first *character* instead of the attribute name.
+            # We use target_col (the known target attribute) directly.
+            if m2_algo.default_class:
+                cba_default_class = (target_col, m2_algo.default_class)
 
             cba_extensions = [
                 {"name": "cba_applied", "value": "true"},
@@ -758,6 +769,7 @@ def mine(self, pmml: PMMLInput) -> str:
         total_transactions=len(svc_df),
         total_attributes=total_attributes,
         headers_data=headers_data,
+        default_class=cba_default_class,
     )
 
     xml = result.to_xml()
