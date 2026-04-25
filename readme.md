@@ -7,9 +7,12 @@
 3. `uv sync`
 4. `source .venv/bin/activate`
 5. `cp .env.example .env`
-   - Update `.env` variables if applicable
+    - Update `.env` variables if applicable
 7. `docker compose up -d`
-8. `just dev`
+8. Launch:
+    - `just dev` for API
+    - `just celery` for Celery worker
+    - `just fake_server` for EasyMinerCenter API mock
 
 ## Celery auto-reload
 
