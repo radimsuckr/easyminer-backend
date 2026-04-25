@@ -367,9 +367,7 @@ def create_pmml_result_from_pyarc(
         if (attr_name, value) not in bba_lookup:
             bba_id = str(len(bbas) + 1)
             bba_lookup[(attr_name, value)] = bba_id
-            bbas.append(
-                BBA(id=bba_id, text=f"{attr_name}({value})", field_ref=attr_name, cat_ref=value)
-            )
+            bbas.append(BBA(id=bba_id, text=f"{attr_name}({value})", field_ref=attr_name, cat_ref=value))
 
         default_cons_dba_id = str(dba_counter)
         dba_counter += 1

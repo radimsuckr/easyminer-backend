@@ -31,12 +31,6 @@ def upgrade() -> None:
         sa.UniqueConstraint("uuid"),
     )
     op.create_table(
-        "task_result",
-        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
-        sa.Column("value", sa.JSON(), nullable=False),
-        sa.PrimaryKeyConstraint("id"),
-    )
-    op.create_table(
         "upload",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
         sa.Column("uuid", sa.UUID(), nullable=False),
@@ -133,9 +127,7 @@ def upgrade() -> None:
         ),
         sa.Column("status_message", sa.String(length=255), nullable=True),
         sa.Column("data_source_id", sa.Integer(), nullable=True),
-        sa.Column("result_id", sa.Integer(), nullable=True),
         sa.ForeignKeyConstraint(["data_source_id"], ["data_source.id"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(["result_id"], ["task_result.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index(op.f("ix_task_task_id"), "task", ["task_id"], unique=True)
@@ -182,6 +174,5 @@ def downgrade() -> None:
     op.drop_index(op.f("ix_chunk_id"), table_name="chunk")
     op.drop_table("chunk")
     op.drop_table("upload")
-    op.drop_table("task_result")
     op.drop_table("preview_upload")
     # ### end Alembic commands ###
