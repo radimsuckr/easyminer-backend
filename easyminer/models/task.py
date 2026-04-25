@@ -1,14 +1,10 @@
 import enum
-from typing import TYPE_CHECKING
 from uuid import UUID
 
-from sqlalchemy import Enum, ForeignKey, String
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import Enum, String
+from sqlalchemy.orm import Mapped, mapped_column
 
 from easyminer.database import Base
-
-if TYPE_CHECKING:
-    from easyminer.models.data import DataSource
 
 
 class TaskStatusEnum(enum.Enum):
@@ -29,6 +25,3 @@ class Task(Base):
     name: Mapped[str] = mapped_column(String(100))
     status: Mapped[TaskStatusEnum] = mapped_column(Enum(TaskStatusEnum), default=TaskStatusEnum.pending)
     status_message: Mapped[str | None] = mapped_column(String(255), nullable=True)
-
-    data_source_id: Mapped[int | None] = mapped_column(ForeignKey("data_source.id", ondelete="CASCADE"), nullable=True)
-    data_source: Mapped["DataSource"] = relationship("DataSource", back_populates="tasks")

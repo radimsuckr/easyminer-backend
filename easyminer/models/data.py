@@ -12,7 +12,6 @@ from easyminer.schemas.data import CompressionType, DbType, FieldType, Locale, M
 
 if TYPE_CHECKING:
     from easyminer.models.preprocessing import Attribute, Dataset
-    from easyminer.models.task import Task
 
 
 @final
@@ -122,7 +121,6 @@ class DataSource(Base):
     upload: Mapped["Upload"] = relationship(
         back_populates="data_source", cascade="all, delete-orphan", single_parent=True
     )
-    tasks: Mapped[list["Task"]] = relationship(back_populates="data_source", cascade="all, delete-orphan")
     datasets: Mapped[list["Dataset"]] = relationship(back_populates="data_source_rel", cascade="all, delete-orphan")
 
 

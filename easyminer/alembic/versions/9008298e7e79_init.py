@@ -126,8 +126,6 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.Column("status_message", sa.String(length=255), nullable=True),
-        sa.Column("data_source_id", sa.Integer(), nullable=True),
-        sa.ForeignKeyConstraint(["data_source_id"], ["data_source.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index(op.f("ix_task_task_id"), "task", ["task_id"], unique=True)
