@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "easyminer.fullname" . }}
+  labels:
+    {{- include "easyminer.labels" . | nindent 4 }}
+data:
+  EASYMINER_CENTER_URL: {{ .Values.config.easyminerCenterUrl | quote }}
+  EASYMINER_MODULES: {{ .Values.config.modules | quote }}
+  USER_SESSION_TTL: {{ .Values.config.userSessionTtl | toString | quote }}
+  SKIP_MIGRATIONS: {{ .Values.config.skipMigrations | toString | quote }}
+  DEBUG_LOGS: {{ .Values.config.debugLogs | toString | quote }}
+  ECHO_SQL: {{ .Values.config.echoSql | toString | quote }}
+  STORAGE_BACKEND: {{ .Values.config.storageBackend | quote }}
+  S3_BUCKET: {{ .Values.config.s3.bucket | quote }}
+  S3_ENDPOINT_URL: {{ .Values.config.s3.endpointUrl | quote }}
+  S3_REGION: {{ .Values.config.s3.region | quote }}
+  S3_PREFIX: {{ .Values.config.s3.prefix | quote }}

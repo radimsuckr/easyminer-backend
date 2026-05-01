@@ -1,0 +1,96 @@
+api:
+  replicaCount: 1
+  image:
+    repository: easyminer-backend
+    tag: latest
+    pullPolicy: IfNotPresent
+  resources: {}
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 80
+
+worker:
+  replicaCount: 1
+  image:
+    repository: easyminer-backend-worker
+    tag: latest
+    pullPolicy: IfNotPresent
+  resources: {}
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 80
+
+config:
+  easyminerCenterUrl: "http://localhost:8001"
+  modules: "data,preprocessing,miner"
+  userSessionTtl: 300
+  skipMigrations: false
+  debugLogs: false
+  echoSql: false
+  storageBackend: "disk"  # "disk" or "s3"
+  s3:
+    bucket: ""
+    endpointUrl: ""
+    region: "us-east-1"
+    prefix: ""
+
+# Sensitive values stored in a K8s Secret
+secrets:
+  s3AccessKey: ""
+  s3SecretKey: ""
+
+# Used only when redis.enabled=false
+externalRedis:
+  brokerUrl: ""
+  backendUrl: ""
+
+redis:
+  enabled: true
+  image:
+    repository: redis
+    tag: alpine
+    pullPolicy: IfNotPresent
+  persistence:
+    enabled: false  # set to true for durable queues (creates a PVC)
+    size: 1Gi
+    storageClass: ""
+  resources: {}
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8000
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: easyminer.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+podAnnotations: {}
+podSecurityContext:
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

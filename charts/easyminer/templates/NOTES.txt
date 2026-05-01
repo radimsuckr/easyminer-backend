@@ -1,0 +1,24 @@
+EasyMiner Backend has been deployed.
+
+API endpoint:
+{{- if .Values.ingress.enabled }}
+{{- range .Values.ingress.hosts }}
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ .host }}
+{{- end }}
+{{- else if eq .Values.service.type "NodePort" }}
+  export NODE_PORT=$(kubectl get svc {{ include "easyminer.fullname" . }}-api -o jsonpath="{.spec.ports[0].nodePort}")
+  export NODE_IP=$(kubectl get nodes -o jsonpath="{.items[0].status.addresses[0].address}")
+  echo "http://$NODE_IP:$NODE_PORT"
+{{- else }}
+  kubectl port-forward svc/{{ include "easyminer.fullname" . }}-api {{ .Values.service.port }}:{{ .Values.service.port }}
+  curl http://localhost:{{ .Values.service.port }}/api/v1/status
+{{- end }}
+
+Components deployed:
+  - API: {{ .Values.api.replicaCount }} replica(s) of {{ .Values.api.image.repository }}:{{ .Values.api.image.tag }}
+  - Worker: {{ .Values.worker.replicaCount }} replica(s) of {{ .Values.worker.image.repository }}:{{ .Values.worker.image.tag }}
+{{- if .Values.redis.enabled }}
+  - Redis: bundled ({{ .Values.redis.image.repository }}:{{ .Values.redis.image.tag }})
+{{- else }}
+  - Redis: external (broker={{ .Values.externalRedis.brokerUrl }})
+{{- end }}
