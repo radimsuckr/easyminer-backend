@@ -1,0 +1,41 @@
+---
+name: Publish Helm chart
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - charts/easyminer-backend/Chart.yaml
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  helm:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set lowercase owner
+        id: owner
+        run: echo "value=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR OCI registry
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io \
+            --username "${{ github.actor }}" \
+            --password-stdin
+
+      - name: Package Helm chart
+        run: helm package charts/easyminer-backend
+
+      - name: Push Helm chart to GHCR
+        run: |
+          CHART_FILE=$(ls easyminer-backend-*.tgz)
+          helm push "$CHART_FILE" oci://ghcr.io/${{ steps.owner.outputs.value }}/charts
+
+      - name: Log out from GHCR OCI registry
+        if: always()
+        run: helm registry logout ghcr.io

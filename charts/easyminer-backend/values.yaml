@@ -1,7 +1,7 @@
 api:
   replicaCount: 1
   image:
-    repository: easyminer-backend
+    repository: ghcr.io/radimsuckr/easyminer-backend
     tag: latest
     pullPolicy: IfNotPresent
   resources: {}
@@ -14,7 +14,7 @@ api:
 worker:
   replicaCount: 1
   image:
-    repository: easyminer-backend-worker
+    repository: ghcr.io/radimsuckr/easyminer-backend-worker
     tag: latest
     pullPolicy: IfNotPresent
   resources: {}

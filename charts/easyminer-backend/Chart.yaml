@@ -1,5 +1,5 @@
 apiVersion: v2
-name: easyminer
+name: easyminer-backend
 description: EasyMiner Backend — FastAPI + Celery data mining application
 type: application
 version: 0.1.0
