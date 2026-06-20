@@ -11,7 +11,7 @@ dependencies = [
 	"defusedxml>=0.7.1",
 	"fastapi[standard]>=0.111.1",
 	"pandas>=2.2.3",
-	"pyARC @ https://github.com/radimsuckr/pyARC.git",
+	"pyARC @ https://github.com/KIZI/pyARC-easyminer-backend2.git",
 	"pydantic-settings>=2.4.0",
 	"pydantic-xml[lxml]>=2.17.0",
 	"pyhumps>=3.8.0",
